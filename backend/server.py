@@ -9865,12 +9865,22 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
                     expiry_str = user_data.get("expiry", "")
                     expiry_date = None
                     if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
-                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                            try:
-                                expiry_date = datetime.strptime(expiry_str.strip(), fmt)
-                                break
-                            except ValueError:
-                                continue
+                        expiry_str = str(expiry_str).strip()
+                        # Try epoch timestamp first
+                        try:
+                            _epoch = int(expiry_str)
+                            if _epoch > 0:
+                                expiry_date = datetime.utcfromtimestamp(_epoch)
+                        except (ValueError, TypeError, OSError):
+                            pass
+                        # Try date string formats
+                        if not expiry_date:
+                            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
+                                try:
+                                    expiry_date = datetime.strptime(expiry_str, fmt)
+                                    break
+                                except ValueError:
+                                    continue
                     
                     status = "active"
                     if expiry_date and expiry_date < datetime.utcnow():

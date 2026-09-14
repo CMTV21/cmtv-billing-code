@@ -466,6 +466,10 @@ class XtreamUIService:
                     expiry_clean = expiry_raw.replace('<br>', ' ')
                     expiry = re.sub(r'<[^>]+>', '', expiry_clean).strip()
                     
+                    # Log first few to help debug expiry format issues
+                    if len(users) < 3:
+                        logger.info(f"User {username}: expiry_raw='{expiry_raw[:60]}', parsed='{expiry}'")
+                    
                     # Extract max connections (column 9)
                     max_conn = str(row[9]) if len(row) > 9 else "1"
                     
