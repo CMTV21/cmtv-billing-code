@@ -637,8 +637,6 @@ class EmailService:
             )
         
         # Use template with variable replacement
-        from datetime import datetime
-        
         subject = template["subject"].replace("{{amount}}", f"{total:.2f}").replace("{{order_id}}", order_id)
         content = template["html_content"]
         content = content.replace("{{customer_name}}", user_name)

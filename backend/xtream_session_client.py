@@ -169,7 +169,7 @@ class XtreamUISessionClient:
                                     'max_connections': data['data'].get('max_connections', 1),
                                     'bouquets': data.get('bouquets', [])
                                 })
-                        except:
+                        except Exception:
                             pass
             
             return packages
@@ -257,7 +257,7 @@ class XtreamUISessionClient:
                                 'bouquets': data.get('bouquets', []),
                                 'is_trial': True
                             }
-                except:
+                except Exception:
                     pass
                 
                 return None

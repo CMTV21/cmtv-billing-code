@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Header, Depends, BackgroundTasks
 from bson import ObjectId
+from xtreamui_service import xtream_api_call as _xtream_api_call
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/launcher", tags=["launcher"])
@@ -67,7 +68,7 @@ async def _fetch_live_line_status(service: dict, settings: dict) -> dict:
     panel_index = service.get("panel_index", 0)
     if isinstance(panel_index, str):
         try: panel_index = int(panel_index)
-        except: panel_index = 0
+        except (ValueError, TypeError): panel_index = 0
     
     result = {
         "connections": service.get("max_connections", 1),
@@ -91,7 +92,7 @@ async def _fetch_live_line_status(service: dict, settings: dict) -> dict:
                     if isinstance(line, dict) and line.get("username"):
                         exp = _parse_exp_date(line.get("exp_date") or line.get("expiry"))
                         try: conn = int(line.get("max_connections", 1))
-                        except: conn = 1
+                        except (ValueError, TypeError): conn = 1
                         
                         result["connections"] = conn
                         result["expires_at"] = exp.isoformat() if exp else None
@@ -122,7 +123,7 @@ async def _fetch_live_line_status(service: dict, settings: dict) -> dict:
                             if ui.get("username"):
                                 exp = _parse_exp_date(ui.get("exp_date"))
                                 try: conn = int(ui.get("max_connections", 1))
-                                except: conn = 1
+                                except (ValueError, TypeError): conn = 1
                                 
                                 result["connections"] = conn
                                 result["expires_at"] = exp.isoformat() if exp else None

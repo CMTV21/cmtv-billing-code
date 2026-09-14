@@ -76,7 +76,7 @@ class XtreamUISessionClient:
             try:
                 self.session.cookies.load(ignore_discard=True, ignore_expires=True)
                 logger.info(f"Loaded existing session from {self.cookie_file}")
-            except:
+            except Exception:
                 pass
         
         self.logged_in = False
@@ -126,7 +126,7 @@ class XtreamUISessionClient:
                     try:
                         self.session.cookies.save(ignore_discard=True, ignore_expires=True)
                         logger.info(f"✓ Session saved to cookie file")
-                    except:
+                    except Exception:
                         pass
                     
                     logger.info("✓ XtreamUI login successful - redirected to dashboard")
@@ -439,7 +439,7 @@ class XtreamUISessionClient:
                                 exp_dt = datetime.strptime(current_exp_clean.strip(), "%Y-%m-%d %H:%M:%S")
                                 new_exp_dt = exp_dt + timedelta(days=365)
                                 new_exp_str = new_exp_dt.strftime("%Y-%m-%d %H:%M:%S")
-                            except:
+                            except Exception:
                                 new_exp_str = ""
                             
                             # Auto-detect member_id from logged-in reseller
@@ -825,7 +825,7 @@ class XtreamUISessionClient:
                             try:
                                 raw = pd.get('bouquets', '[]')
                                 pkg_bouquet_ids = json.loads(raw) if isinstance(raw, str) else (raw if isinstance(raw, list) else [])
-                            except:
+                            except Exception:
                                 pass
                             if not pkg_bouquet_ids and data.get('bouquets'):
                                 top = data.get('bouquets', [])
@@ -838,7 +838,7 @@ class XtreamUISessionClient:
                                 'max_connections': pd.get('max_connections', 1),
                                 'bouquets': pkg_bouquet_ids, 'is_trial': True
                             }
-                except:
+                except Exception:
                     pass
                 return None
 

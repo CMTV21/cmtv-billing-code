@@ -59,14 +59,14 @@ class BackendTester:
                 self.log(f"PASSED - {name} (Status: {response.status_code})", "PASS")
                 try:
                     return True, response.json()
-                except:
+                except Exception:
                     return True, {}
             else:
                 self.log(f"FAILED - {name} (Expected {expected_status}, got {response.status_code})", "FAIL")
                 try:
                     error_detail = response.json()
                     self.log(f"Error: {error_detail}", "FAIL")
-                except:
+                except Exception:
                     self.log(f"Response: {response.text[:200]}", "FAIL")
                 return False, {}
         

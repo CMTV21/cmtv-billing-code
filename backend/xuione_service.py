@@ -337,7 +337,7 @@ class XuiOneService:
                 import json
                 return json.loads(bouquets_str)
             return bouquets_str if isinstance(bouquets_str, list) else []
-        except:
+        except Exception:
             return []
     
     def get_bouquets(self) -> Dict[str, Any]:
@@ -492,7 +492,7 @@ class XuiOneService:
                                     try:
                                         expiry_dt = datetime.fromtimestamp(int(expiry_timestamp))
                                         expiry_str = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
-                                    except:
+                                    except Exception:
                                         expiry_str = str(expiry_timestamp)
                                 
                                 users.append({
@@ -532,7 +532,7 @@ class XuiOneService:
                                     try:
                                         expiry_dt = datetime.fromtimestamp(int(expiry_timestamp))
                                         expiry_str = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
-                                    except:
+                                    except Exception:
                                         expiry_str = str(expiry_timestamp)
                                 users.append({
                                     "user_id": line.get('id'),

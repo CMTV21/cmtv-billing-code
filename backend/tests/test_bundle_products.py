@@ -39,7 +39,7 @@ class TestBundleProducts:
         for pid in self.created_product_ids:
             try:
                 self.session.delete(f"{BASE_URL}/api/admin/products/{pid}")
-            except:
+            except Exception:
                 pass
     
     def create_test_product(self, name_suffix: str, price: float = 10.0) -> str:

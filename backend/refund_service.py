@@ -29,7 +29,7 @@ class RefundService:
         try:
             # Try as ObjectId first
             order = await self.orders.find_one({"_id": ObjectId(order_id), "user_id": user_id})
-        except:
+        except Exception:
             # Fallback to string ID
             order = await self.orders.find_one({"_id": order_id, "user_id": user_id})
         
@@ -84,7 +84,7 @@ class RefundService:
         # Convert refund_id to ObjectId
         try:
             refund_oid = ObjectId(refund_id)
-        except:
+        except Exception:
             refund_oid = refund_id  # Fallback to string
         
         refund = await self.refunds.find_one({"_id": refund_oid})

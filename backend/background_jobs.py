@@ -368,7 +368,7 @@ class BackgroundJobScheduler:
                                     try:
                                         exp = datetime.strptime(str(exp_str).strip(), fmt)
                                         break
-                                    except:
+                                    except Exception:
                                         continue
                             doc = {"username": uname, "password": user_data.get("password", ""), "panel_type": "xuione", "panel_index": i,
                                    "panel_name": panel_name, "account_type": "subscriber", "max_connections": user_data.get("max_connections", 1),
@@ -408,7 +408,7 @@ class BackgroundJobScheduler:
                                     try:
                                         exp = datetime.strptime(str(exp_str).strip(), fmt)
                                         break
-                                    except:
+                                    except Exception:
                                         continue
                             doc = {"username": uname, "password": user_data.get("password", ""), "panel_type": "onestream", "panel_index": i,
                                    "panel_name": panel_name, "account_type": "subscriber", "max_connections": user_data.get("max_connections", 1),

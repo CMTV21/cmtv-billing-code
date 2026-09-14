@@ -84,7 +84,7 @@ class ServiceLifecycleManager:
         async for service in self.services.find({
             "status": "active",
             "expiry_date": {"$lt": now},
-            "user_id": {"$exists": True, "$ne": "", "$ne": None}
+            "user_id": {"$exists": True, "$nin": ["", None]}
         }):
             try:
                 # Get user info for notification
@@ -200,7 +200,7 @@ class ServiceLifecycleManager:
                 "$gte": start_of_target_day,
                 "$lte": end_of_target_day
             },
-            "user_id": {"$exists": True, "$ne": "", "$ne": None}
+            "user_id": {"$exists": True, "$nin": ["", None]}
         }):
             # Check if already warned for this period
             recent_warning = await self.lifecycle_logs.find_one({

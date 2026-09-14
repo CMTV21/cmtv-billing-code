@@ -8,6 +8,39 @@ import re
 
 logger = logging.getLogger(__name__)
 
+async def xtream_api_call(panel: dict, action: str, extra_data: dict = None) -> dict:
+    """JSON POST to XtreamUI panels exposing an api_key-based reseller_api.php endpoint."""
+    import httpx
+    api_key = panel.get("api_key", "")
+    panel_url = panel.get("panel_url", "").rstrip("/")
+    
+    if not panel_url.endswith(".php"):
+        panel_url = f"{panel_url}/reseller_api.php"
+    
+    payload = {"api_key": api_key, "action": action}
+    if extra_data:
+        payload.update(extra_data)
+    
+    logger.info(f"XtreamAPI POST {panel_url} action={action}")
+    
+    async with httpx.AsyncClient(verify=panel.get("ssl_verify", False), timeout=30.0) as client:
+        resp = await client.post(
+            panel_url,
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        logger.info(f"XtreamAPI response: status={resp.status_code}, body={resp.text[:500]}")
+        
+        data = resp.json()
+        
+        if isinstance(data, dict) and data.get("status") == "error":
+            raise Exception(data.get("message", "API error"))
+        
+        resp.raise_for_status()
+        return data
+
+
 class XtreamUIService:
     """XtreamUI R22F API Service - Python version of WHMCS module"""
     
@@ -451,6 +484,46 @@ class XtreamUIService:
             users = []
             import re
             
+            date_re = re.compile(r'\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?|\d{1,2}/\d{1,2}/\d{4}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?')
+            unlimited_re = re.compile(r'^(unlimited|never|lifetime|n/a)$', re.I)
+            conn_re = re.compile(r'^\d+\s*/\s*(\d+)$')
+
+            def _strip(cell) -> str:
+                return re.sub(r'<[^>]+>', '', str(cell).replace('<br>', ' ').replace('<br/>', ' ')).strip()
+
+            def _find_expiry(row) -> tuple:
+                # Column layout varies across XtreamUI builds; scan cells for a date-like value
+                for idx in range(3, len(row)):
+                    text = _strip(row[idx])
+                    if not text:
+                        continue
+                    m = date_re.search(text)
+                    if m:
+                        val = m.group(0).replace('T', ' ')
+                        sm = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})(.*)$', val)
+                        if sm:
+                            val = f"{sm.group(3)}-{int(sm.group(1)):02d}-{int(sm.group(2)):02d}{sm.group(4)}"
+                        return val, str(row[idx])
+                    if unlimited_re.match(text):
+                        return text, str(row[idx])
+                    if text.isdigit() and len(text) == 10:
+                        return text, str(row[idx])
+                if len(row) > 7:
+                    return _strip(row[7]), str(row[7])
+                return "", ""
+
+            def _find_max_conn(row) -> str:
+                for idx in range(3, len(row)):
+                    text = _strip(row[idx])
+                    m = conn_re.match(text)
+                    if m:
+                        return m.group(1)
+                if len(row) > 9:
+                    fallback = _strip(row[9])
+                    if fallback.isdigit():
+                        return fallback
+                return "1"
+
             for row in users_data:
                 if len(row) >= 2:
                     # Extract username - may be wrapped in <strong> tags
@@ -458,29 +531,28 @@ class XtreamUIService:
                     username = re.sub(r'<[^>]+>', '', username_raw).strip()
                     
                     # Extract password (column 2)
-                    password = str(row[2]) if len(row) > 2 else ""
+                    password = _strip(row[2]) if len(row) > 2 else ""
                     
-                    # Extract expiry date (column 7) - format: "2026-03-01<br>17:16:52" or "<span class="expired">2026-01-27<br>09:32:20</span>"
-                    expiry_raw = str(row[7]) if len(row) > 7 else ""
-                    # First strip all HTML tags, then replace <br> with space
-                    expiry_clean = expiry_raw.replace('<br>', ' ')
-                    expiry = re.sub(r'<[^>]+>', '', expiry_clean).strip()
+                    expiry, expiry_raw = _find_expiry(row)
                     
                     # Log first few to help debug expiry format issues
                     if len(users) < 3:
                         logger.info(f"User {username}: expiry_raw='{expiry_raw[:60]}', parsed='{expiry}'")
+                        if not expiry:
+                            logger.info(f"User {username} full row: {[_strip(c)[:40] for c in row]}")
                     
-                    # Extract max connections (column 9)
-                    max_conn = str(row[9]) if len(row) > 9 else "1"
+                    max_conn = _find_max_conn(row)
                     
                     # Extract user ID (column 0)
-                    user_id = str(row[0]) if len(row) > 0 else ""
+                    user_id = _strip(row[0]) if len(row) > 0 else ""
                     
-                    # Determine status from icons (column 4 shows enabled/disabled status)
-                    status_icon = str(row[4]) if len(row) > 4 else ""
+                    # Determine status from icons (scan status icon cells for disabled markers)
                     status = "active"
-                    if "text-danger" in status_icon or "fa-times" in status_icon:
-                        status = "disabled"
+                    for idx in range(3, min(len(row), 8)):
+                        cell = str(row[idx])
+                        if '<i' in cell and ("text-danger" in cell or "fa-times" in cell or "fa-ban" in cell):
+                            status = "disabled"
+                            break
                     
                     users.append({
                         "user_id": user_id,

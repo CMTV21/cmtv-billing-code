@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Query, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -52,7 +52,7 @@ from auth import (
     get_password_hash, verify_password, create_access_token,
     get_current_user, get_current_admin_user, get_current_staff_user
 )
-from xtreamui_service import get_xtream_service, XtreamUIService
+from xtreamui_service import get_xtream_service, XtreamUIService, xtream_api_call
 from xtreamui_session_client import XtreamUISessionClient
 from onestream_service import OneStreamService, get_onestream_service
 from nxtdash_service import NxtDashService, get_nxtdash_service
@@ -120,7 +120,6 @@ license_validations_collection = db.license_validations
 imported_users_collection = db.imported_users
 
 # Deduplicate imported users and create unique index on startup
-import asyncio
 async def ensure_indexes():
     # Step 1: Remove duplicates by username + panel_name + account_type
     pipeline = [
@@ -254,10 +253,10 @@ async def ensure_indexes():
             if start and expiry:
                 if isinstance(start, str):
                     try: start = datetime.fromisoformat(start.replace("Z", ""))
-                    except: continue
+                    except ValueError: continue
                 if isinstance(expiry, str):
                     try: expiry = datetime.fromisoformat(expiry.replace("Z", ""))
-                    except: continue
+                    except ValueError: continue
                 actual_days = (expiry - start).days
                 if actual_days < prod_dur_days - 5:  # Service was given less time than it should
                     correct_expiry = start + timedelta(days=prod_dur_days)
@@ -377,7 +376,7 @@ def str_to_objectid(id_str: str) -> ObjectId:
     """Convert string ID to ObjectId"""
     try:
         return ObjectId(id_str)
-    except:
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid ID format")
 
 def generate_username(length: int = 9) -> str:
@@ -1277,7 +1276,7 @@ async def verify_email(token: str):
     try:
         await verify_email_api(token)
         return RedirectResponse(url="/?message=email_verified")
-    except:
+    except Exception:
         return RedirectResponse(url="/?error=invalid_token")
 
 class ResendVerificationRequest(BaseModel):
@@ -3008,28 +3007,6 @@ async def blockonomics_webhook(request: Request, background_tasks: BackgroundTas
         logger.error(f"Blockonomics webhook error: {e}")
         return {"status": "error", "message": str(e)}
 
-    webhook_url = f"{base_url}/api/webhooks/stripe"
-    
-    from stripe_service import get_stripe_service
-    stripe = get_stripe_service(stripe_settings, webhook_url)
-    
-    if stripe:
-        result = await stripe.handle_webhook(body, signature)
-        
-        if result.get("success") and (result.get("payment_status") or result.get("status")) == "paid":
-            session_id = result["session_id"]
-            # Process payment (same as status check above)
-            # ...
-    
-    return {"status": "received"}
-
-    # Handle payment capture completion
-    if data.get("event_type") == "PAYMENT.CAPTURE.COMPLETED":
-        # Extract order info and process
-        pass
-    
-    return {"status": "received"}
-
 @app.get("/api/reseller/check-username/{username}")
 async def check_reseller_username(username: str, current_user: dict = Depends(get_current_user)):
     """Check if a reseller username already exists on any panel"""
@@ -3308,10 +3285,10 @@ async def get_services(current_user: dict = Depends(get_current_user)):
                 # Convert strings to datetime if needed
                 if isinstance(panel_expiry, str):
                     try: panel_expiry = datetime.fromisoformat(panel_expiry.replace("Z", "+00:00").replace("+00:00", ""))
-                    except: panel_expiry = None
+                    except ValueError: panel_expiry = None
                 if isinstance(service_expiry, str):
                     try: service_expiry = datetime.fromisoformat(service_expiry.replace("Z", "+00:00").replace("+00:00", ""))
-                    except: service_expiry = None
+                    except ValueError: service_expiry = None
                 # Update if panel expiry differs from service expiry
                 if panel_expiry and (not service_expiry or abs((panel_expiry - service_expiry).total_seconds()) > 3600):
                     service["expiry_date"] = panel_expiry
@@ -3332,7 +3309,7 @@ async def get_services(current_user: dict = Depends(get_current_user)):
             panel_index = service.get("panel_index") or 0
             if isinstance(panel_index, str):
                 try: panel_index = int(panel_index)
-                except: panel_index = 0
+                except (ValueError, TypeError): panel_index = 0
             panels = settings.get(panel_type, {}).get("panels", [])
             if panels and panel_index < len(panels):
                 p = panels[panel_index]
@@ -3548,7 +3525,7 @@ async def customer_reply_to_ticket(ticket_id: str, reply: dict, current_user: di
         pass
     
     try:
-        await send_admin_email_notification(
+        await send_email_notification(
             "ticket_reply",
             f"Customer replied to ticket #{ticket_id[:8]}: {ticket.get('subject', 'N/A')}",
             f"From: {user.get('name', 'Unknown') if user else 'Unknown'}\n\nMessage:\n{message[:300]}"
@@ -4407,7 +4384,7 @@ async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_curre
     return {"message": "Invoice deleted"}
 
 @app.get("/api/admin/invoices/{invoice_id}/pdf")
-async def download_invoice_pdf(invoice_id: str, current_user: dict = Depends(get_current_admin_user)):
+async def admin_download_invoice_pdf(invoice_id: str, current_user: dict = Depends(get_current_admin_user)):
     """Generate and download invoice PDF"""
     from invoice_pdf import generate_invoice_pdf
     from fastapi.responses import Response
@@ -5343,7 +5320,7 @@ async def extend_xuione_line(xuione_service, existing_service: dict, item: dict,
         if isinstance(current_expiry, str):
             try:
                 current_expiry = datetime.fromisoformat(current_expiry.replace("Z", ""))
-            except:
+            except ValueError:
                 current_expiry = datetime.utcnow()
         if not current_expiry:
             current_expiry = datetime.utcnow()
@@ -5544,7 +5521,6 @@ async def provision_xuione_service(order_id: str, order: dict, user: dict, item:
             "status": "pending",
             "panel_type": "xuione",
             "panel_index": panel_index,
-            "panel_type": "xuione",
             "panel_name": panel_name,
             "created_at": datetime.utcnow()
         }
@@ -6483,40 +6459,6 @@ async def get_panel_names():
         "onestream_panels": onestream_info,
         "nxtdash_panels": nxtdash_info
     }
-
-    if not service:
-        raise HTTPException(status_code=404, detail="Service not found")
-    
-    settings = await get_settings()
-    xtream_service = get_xtream_service(settings.get("xtream", {}))
-    
-    if xtream_service:
-        result = xtream_service.terminate_account(
-            username=service["xtream_username"],
-            password=service["xtream_password"]
-        )
-        
-        if result["success"]:
-            await services_collection.update_one(
-                {"_id": str_to_objectid(service_id)},
-                {"$set": {"status": "cancelled"}}
-            )
-            
-            # Send email
-            user = await users_collection.find_one({"_id": str_to_objectid(service["user_id"])})
-            email_service = get_email_service(settings.get("smtp", {}))
-            if email_service:
-                await email_service.send_service_cancelled(
-                    user_email=user["email"],
-                    user_name=user["name"],
-                    service_name=service["product_name"]
-                )
-            
-            return {"message": "Service cancelled successfully"}
-        else:
-            raise HTTPException(status_code=500, detail=result.get("error", "Failed to cancel"))
-    
-    raise HTTPException(status_code=500, detail="XtreamUI service not configured")
 
 class ManualServiceCreate(BaseModel):
     user_id: str
@@ -9137,40 +9079,7 @@ async def restore_template_version(
     return {"message": f"Template restored to version {version['version_number']}"}
 
 
-async def _xtream_api_call(panel: dict, action: str, extra_data: dict = None) -> dict:
-    """Make a JSON POST call to XtreamUI panels with api_key-based auth.
-    Used for panels that expose a reseller_api.php JSON endpoint."""
-    import httpx
-    api_key = panel.get("api_key", "")
-    panel_url = panel.get("panel_url", "").rstrip("/")
-    
-    # Ensure URL points to the reseller API endpoint
-    if not panel_url.endswith(".php"):
-        panel_url = f"{panel_url}/reseller_api.php"
-    
-    payload = {"api_key": api_key, "action": action}
-    if extra_data:
-        payload.update(extra_data)
-    
-    logger.info(f"XtreamAPI POST {panel_url} action={action}")
-    
-    async with httpx.AsyncClient(verify=panel.get("ssl_verify", False), timeout=30.0) as client:
-        resp = await client.post(
-            panel_url,
-            json=payload,
-            headers={"Content-Type": "application/json"}
-        )
-        
-        logger.info(f"XtreamAPI response: status={resp.status_code}, body={resp.text[:500]}")
-        
-        data = resp.json()
-        
-        # Check for API-level errors
-        if isinstance(data, dict) and data.get("status") == "error":
-            raise Exception(data.get("message", "API error"))
-        
-        resp.raise_for_status()
-        return data
+_xtream_api_call = xtream_api_call
 
 
 @app.get("/api/admin/bouquets/sync")
@@ -9555,7 +9464,7 @@ async def get_bouquets(panel_id: int = 0, panel_type: str = 'xtream', current_us
                         bouquet_raw = line.get("bouquet", "[]")
                         if isinstance(bouquet_raw, str):
                             try: bouquet_ids = ast.literal_eval(bouquet_raw)
-                            except: bouquet_ids = []
+                            except (ValueError, SyntaxError): bouquet_ids = []
                         elif isinstance(bouquet_raw, list):
                             bouquet_ids = bouquet_raw
                         else:
@@ -13145,23 +13054,6 @@ async def reject_refund_endpoint(
     """Reject a refund request"""
     await refund_service.reject_refund(refund_id, current_user["sub"], notes)
     return {"message": "Refund rejected"}
-
-    xtream_service = XtreamUIService(
-        panel_url=panel["panel_url"],
-        admin_username=panel["admin_username"],
-        admin_password=panel["admin_password"],
-        ssl_verify=panel.get("ssl_verify", False),
-        http_basic_user=panel.get("http_basic_user", ""),
-        http_basic_pass=panel.get("http_basic_pass", ""),
-        proxy_url=panel.get("proxy_url", "")
-    )
-    
-    result = xtream_service.test_connection()
-    
-    if result["success"]:
-        return {"message": f"Connection successful to {panel.get('name', 'panel')}", "details": result}
-    else:
-        return {"message": "Connection failed", "error": result.get("error")}
 
 # ============ USER GUIDE PDF ============
 @app.get("/api/admin/user-guide")
