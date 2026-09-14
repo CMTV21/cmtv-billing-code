@@ -5275,16 +5275,56 @@ async def extend_xuione_line(xuione_service, existing_service: dict, item: dict,
                 logger.error("XuiOne: Login failed for extension")
                 return
         
-        # Get the line ID from the existing service (stored in dedicatedip or xuione_line_id)
-        line_id = existing_service.get("dedicatedip") or existing_service.get("xuione_line_id")
+        # Get the line ID from the existing service
+        line_id = existing_service.get("dedicatedip") or existing_service.get("xuione_line_id") or existing_service.get("xtream_user_id")
+        
+        # If no line_id stored, try to find it by looking up the username on the panel
+        if not line_id:
+            username = existing_service.get("xtream_username", "")
+            logger.warning(f"No line ID stored, looking up by username: {username}")
+            try:
+                api_url = xuione_service.get_api_url()
+                lines_resp = xuione_service.session.get(
+                    api_url,
+                    params={'api_key': xuione_service.api_key, 'action': 'get_lines'},
+                    timeout=15
+                )
+                if lines_resp.status_code == 200:
+                    lines_data = lines_resp.json().get('data', [])
+                    for line in lines_data:
+                        if line.get('username') == username:
+                            line_id = line.get('id')
+                            # Store it for future renewals
+                            await services_collection.update_one(
+                                {"_id": existing_service["_id"]},
+                                {"$set": {"xuione_line_id": line_id, "dedicatedip": line_id}}
+                            )
+                            logger.info(f"Found and stored line_id: {line_id}")
+                            break
+            except Exception as e:
+                logger.error(f"Failed to lookup line by username: {e}")
         
         if not line_id:
-            logger.error(f"No line ID found for service {existing_service.get('_id')}")
+            logger.error(f"No line ID found for service {existing_service.get('_id')} - cannot extend")
             return
         
         # Calculate extend days from product duration, fallback to term_months
         pkg_duration = product.get("duration") or product.get("official_duration")
         pkg_dur_unit = (product.get("duration_unit") or product.get("official_duration_in") or "months").lower()
+        
+        # Infer from name if missing
+        if not pkg_duration:
+            pname = (product.get("name") or "").upper()
+            if "ANNUAL" in pname or "12 MONTH" in pname or "1 YEAR" in pname:
+                pkg_duration = 12
+                pkg_dur_unit = "months"
+            elif "6 MONTH" in pname:
+                pkg_duration = 6
+                pkg_dur_unit = "months"
+            elif "3 MONTH" in pname:
+                pkg_duration = 3
+                pkg_dur_unit = "months"
+        
         if pkg_duration:
             pkg_duration = int(pkg_duration)
             if pkg_dur_unit in ("months", "month"):
@@ -5296,15 +5336,21 @@ async def extend_xuione_line(xuione_service, existing_service: dict, item: dict,
             else:
                 extend_days = pkg_duration * 30
         else:
-            extend_days = item["term_months"] * 30
+            extend_days = item.get("term_months", 1) * 30
         
-        current_expiry = existing_service.get("expiry_date", datetime.utcnow())
+        # Parse current expiry safely
+        current_expiry = existing_service.get("expiry_date")
+        if isinstance(current_expiry, str):
+            try:
+                current_expiry = datetime.fromisoformat(current_expiry.replace("Z", ""))
+            except:
+                current_expiry = datetime.utcnow()
+        if not current_expiry:
+            current_expiry = datetime.utcnow()
         
         if current_expiry < datetime.utcnow():
-            # Expired, start from now
             new_expiry = datetime.utcnow() + timedelta(days=extend_days)
         else:
-            # Active, extend from current expiry
             new_expiry = current_expiry + timedelta(days=extend_days)
         
         new_expiry_str = new_expiry.strftime("%Y-%m-%d")
@@ -5513,11 +5559,21 @@ async def provision_xuione_service(order_id: str, order: dict, user: dict, item:
                 existing_service = await services_collection.find_one({
                     "_id": str_to_objectid(renewal_service_id),
                     "user_id": order["user_id"],
-                    "status": "active",
                     "panel_type": "xuione"
                 })
                 if existing_service:
                     logger.info(f"Renewal: Extending XuiOne line {existing_service.get('xtream_username')}")
+            
+            # Also check by action_type=renew without explicit service ID
+            if not existing_service and item.get("action_type") in ("renew", "extend"):
+                existing_service = await services_collection.find_one({
+                    "user_id": order["user_id"],
+                    "product_id": item["product_id"],
+                    "panel_type": "xuione",
+                    "status": {"$in": ["active", "expired"]}
+                })
+                if existing_service:
+                    logger.info(f"Renewal (by product match): Extending XuiOne line {existing_service.get('xtream_username')}")
             
             if existing_service:
                 # RENEWAL - Extend existing line using edit_line API
@@ -7731,14 +7787,22 @@ async def sync_xuione_users(panel_index: int = 0, current_user: dict = Depends(g
             
             expiry_str = user_data.get("expiry", "")
             expiry_date = None
-            if expiry_str and expiry_str not in ["Unlimited", "NEVER", ""]:
-                date_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
-                for fmt in date_formats:
-                    try:
-                        expiry_date = datetime.strptime(expiry_str.strip(), fmt)
-                        break
-                    except ValueError:
-                        continue
+            if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
+                # Try epoch timestamp first
+                try:
+                    _epoch = int(str(expiry_str).strip())
+                    if _epoch > 0:
+                        expiry_date = datetime.utcfromtimestamp(_epoch)
+                except (ValueError, TypeError, OSError):
+                    pass
+                if not expiry_date:
+                    date_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
+                    for fmt in date_formats:
+                        try:
+                            expiry_date = datetime.strptime(expiry_str.strip(), fmt)
+                            break
+                        except ValueError:
+                            continue
             
             status = "active"
             if expiry_date and expiry_date < datetime.utcnow():
@@ -7784,14 +7848,22 @@ async def sync_xuione_users(panel_index: int = 0, current_user: dict = Depends(g
             
             expiry_str = reseller_data.get("expiry", "NEVER")
             expiry_date = None
-            if expiry_str and expiry_str not in ["Unlimited", "NEVER", ""]:
-                date_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
-                for fmt in date_formats:
-                    try:
-                        expiry_date = datetime.strptime(expiry_str.strip(), fmt)
-                        break
-                    except ValueError:
-                        continue
+            if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
+                # Try epoch timestamp first
+                try:
+                    _epoch = int(str(expiry_str).strip())
+                    if _epoch > 0:
+                        expiry_date = datetime.utcfromtimestamp(_epoch)
+                except (ValueError, TypeError, OSError):
+                    pass
+                if not expiry_date:
+                    date_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
+                    for fmt in date_formats:
+                        try:
+                            expiry_date = datetime.strptime(expiry_str.strip(), fmt)
+                            break
+                        except ValueError:
+                            continue
             
             reseller_doc = {
                 "panel_index": panel_index,
@@ -9792,7 +9864,7 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
                     # Parse expiry date
                     expiry_str = user_data.get("expiry", "")
                     expiry_date = None
-                    if expiry_str and expiry_str not in ["Unlimited", "NEVER", ""]:
+                    if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
                         for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
                             try:
                                 expiry_date = datetime.strptime(expiry_str.strip(), fmt)
@@ -9921,14 +9993,22 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
                     # Parse expiry date
                     expiry_str = user_data.get("expiry", "")
                     expiry_date = None
-                    if expiry_str and expiry_str not in ["Unlimited", "NEVER", ""]:
-                        date_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
-                        for fmt in date_formats:
-                            try:
-                                expiry_date = datetime.strptime(expiry_str.strip(), fmt)
-                                break
-                            except ValueError:
-                                continue
+                    if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
+                        # Try epoch timestamp first
+                        try:
+                            _epoch = int(str(expiry_str).strip())
+                            if _epoch > 0:
+                                expiry_date = datetime.utcfromtimestamp(_epoch)
+                        except (ValueError, TypeError, OSError):
+                            pass
+                        if not expiry_date:
+                            date_formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
+                            for fmt in date_formats:
+                                try:
+                                    expiry_date = datetime.strptime(expiry_str.strip(), fmt)
+                                    break
+                                except ValueError:
+                                    continue
                     
                     status = "active"
                     if expiry_date and expiry_date < datetime.utcnow():
@@ -10384,8 +10464,6 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
     
     return results
 
-@app.post("/api/admin/xtream/sync-users")
-
 @app.post("/api/admin/xtream/import-usernames")
 async def import_xtream_usernames(request: Request, panel_index: int = 0, current_user: dict = Depends(get_current_admin_user)):
     """Import users by username via lookup_line API (for API-key panels). Accepts single username or CSV list."""
@@ -10486,6 +10564,7 @@ async def import_xtream_usernames(request: Request, panel_index: int = 0, curren
     }
 
 
+@app.post("/api/admin/xtream/sync-users")
 async def sync_users_from_panel(panel_index: int = 0, current_user: dict = Depends(get_current_admin_user)):
     """Sync users and subresellers from XtreamUI panel to billing system (1:1 mirror)"""
     settings = await get_settings()
@@ -10601,19 +10680,29 @@ async def sync_users_from_panel(panel_index: int = 0, current_user: dict = Depen
             # Parse expiry date - handle multiple formats
             expiry_str = user_data.get("expiry", "")
             expiry_date = None
-            if expiry_str and expiry_str not in ["Unlimited", "NEVER", ""]:
-                # Try multiple date formats
-                date_formats = [
-                    "%Y-%m-%d %H:%M:%S",  # Full datetime: 2026-03-01 17:16:52
-                    "%Y-%m-%d %H:%M",      # Without seconds: 2026-08-18 07:59
-                    "%Y-%m-%d",            # Date only: 2026-02-26
-                ]
-                for fmt in date_formats:
-                    try:
-                        expiry_date = datetime.strptime(expiry_str.strip(), fmt)
-                        break
-                    except ValueError:
-                        continue
+            if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
+                expiry_str = str(expiry_str).strip()
+                # Try epoch timestamp first (integer or string of digits)
+                try:
+                    epoch = int(expiry_str)
+                    if epoch > 0:
+                        expiry_date = datetime.utcfromtimestamp(epoch)
+                except (ValueError, TypeError, OSError):
+                    pass
+                
+                # Try date string formats
+                if not expiry_date:
+                    date_formats = [
+                        "%Y-%m-%d %H:%M:%S",
+                        "%Y-%m-%d %H:%M",
+                        "%Y-%m-%d",
+                    ]
+                    for fmt in date_formats:
+                        try:
+                            expiry_date = datetime.strptime(expiry_str, fmt)
+                            break
+                        except ValueError:
+                            continue
             
             # Determine status
             status = "active"
@@ -10663,7 +10752,7 @@ async def sync_users_from_panel(panel_index: int = 0, current_user: dict = Depen
             # Parse expiry - resellers usually have "NEVER"
             expiry_str = reseller_data.get("expiry", "NEVER")
             expiry_date = None
-            if expiry_str and expiry_str not in ["Unlimited", "NEVER", ""]:
+            if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
                 # Try multiple date formats
                 date_formats = [
                     "%Y-%m-%d %H:%M:%S",  # Full datetime
