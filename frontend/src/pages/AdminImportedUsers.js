@@ -85,6 +85,13 @@ export default function AdminImportedUsers() {
       value: `nxtdash-${index}`,
       label: `${panel.name} (NXT Dash)`
     })),
+    ...(settings?.aether?.panels || []).map((panel, index) => ({ 
+      ...panel, 
+      type: 'aether', 
+      index: index,
+      value: `aether-${index}`,
+      label: `${panel.name || 'Aether'} (Aether)`
+    })),
     ...ghostsurfPanels.map((panel, index) => ({ 
       ...panel, 
       type: 'ghostsurf', 
@@ -1128,6 +1135,8 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
       return settings?.onestream?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name} (1-Stream)` })) || [];
     } else if (formData.panel_type === 'nxtdash') {
       return settings?.nxtdash?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name} (NXT Dash)` })) || [];
+    } else if (formData.panel_type === 'aether') {
+      return settings?.aether?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name || 'Aether'} (Aether)` })) || [];
     } else {
       return settings?.xuione?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name} (XuiOne)` })) || [];
     }
@@ -1175,9 +1184,20 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
     enabled: formData.panel_type === 'nxtdash' && formData.account_type === 'subscriber',
   });
 
+  // Fetch packages for Aether
+  const { data: aetherPackages } = useQuery({
+    queryKey: ['aether-packages', formData.panel_index],
+    queryFn: async () => {
+      const response = await adminAPI.getAetherPackages(formData.panel_index);
+      return response.data;
+    },
+    enabled: formData.panel_type === 'aether' && formData.account_type === 'subscriber',
+  });
+
   const packages = formData.panel_type === 'xtream' ? (xtreamPackages?.packages || []) 
     : formData.panel_type === 'onestream' ? (onestreamPackages?.packages || [])
     : formData.panel_type === 'nxtdash' ? (nxtdashPackages?.packages || [])
+    : formData.panel_type === 'aether' ? ([...(aetherPackages?.packages || []), ...(aetherPackages?.trial_packages || [])])
     : (xuionePackages?.packages || []);
 
   const handleSubmit = async (e) => {
@@ -1317,6 +1337,7 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
               <option value="xuione">XuiOne</option>
               <option value="onestream">1-Stream</option>
               <option value="nxtdash">NXT Dash</option>
+              <option value="aether">Aether</option>
             </select>
           </div>
 
@@ -1355,9 +1376,9 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
               <option value="subscriber">Subscriber</option>
               {(formData.panel_type === 'xtream' || formData.panel_type === 'onestream') && <option value="reseller">Reseller</option>}
             </select>
-            {(formData.panel_type === 'xuione' || formData.panel_type === 'nxtdash') && (
+            {(formData.panel_type === 'xuione' || formData.panel_type === 'nxtdash' || formData.panel_type === 'aether') && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Note: {formData.panel_type === 'xuione' ? 'XuiOne' : 'NXT Dash'} reseller creation is not supported via API
+                Note: {formData.panel_type === 'xuione' ? 'XuiOne' : formData.panel_type === 'aether' ? 'Aether' : 'NXT Dash'} reseller creation is not supported via API
               </p>
             )}
           </div>
@@ -1534,6 +1555,12 @@ function ExtendUserModal({ user, onClose, onSuccess }) {
       } else if (panelType === 'onestream') {
         const response = await adminAPI.syncOneStreamPackages(user.panel_index || 0);
         return (response.data?.packages || []).filter(p => !p.is_trial);
+      } else if (panelType === 'nxtdash') {
+        const response = await adminAPI.getNxtDashPackages(user.panel_index || 0);
+        return response.data?.packages || [];
+      } else if (panelType === 'aether') {
+        const response = await adminAPI.getAetherPackages(user.panel_index || 0);
+        return [...(response.data?.packages || []), ...(response.data?.extension_packages || [])];
       } else {
         const response = await adminAPI.syncXuiOnePackages(user.panel_index || 0);
         return (response.data?.packages || []).filter(p => !p.is_trial);
@@ -1705,7 +1732,7 @@ function ExtendUserModal({ user, onClose, onSuccess }) {
 
           <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
             <p className="text-sm text-green-800 dark:text-green-200">
-              <strong>Note:</strong> This will extend the subscription on both the billing system and the {user.panel_type === 'xtream' ? 'XtreamUI' : user.panel_type === 'onestream' ? '1-Stream' : 'XuiOne'} panel.
+              <strong>Note:</strong> This will extend the subscription on both the billing system and the {({ xtream: 'XtreamUI', onestream: '1-Stream', nxtdash: 'NXT Dash', aether: 'Aether' })[user.panel_type] || 'XuiOne'} panel.
             </p>
           </div>
 

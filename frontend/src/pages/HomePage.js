@@ -87,6 +87,9 @@ export default function HomePage() {
     } else if (panelType === 'nxtdash') {
       panel = nxtdashPanels.find(p => p.index === Number(panelIndex));
       return panel?.name || `NXT Dash ${Number(panelIndex) + 1}`;
+    } else if (panelType === 'aether') {
+      panel = (panelData?.aether_panels || []).find(p => p.index === Number(panelIndex));
+      return panel?.name || `Aether ${Number(panelIndex) + 1}`;
     } else {
       panel = panels.find(p => p.index === Number(panelIndex));
       return panel?.name || `Server ${Number(panelIndex) + 1}`;
@@ -531,7 +534,7 @@ function GroupedProductCard({ products, connections }) {
               );
             })}
           </div>
-          {product.show_channels !== false && (
+          {sorted.some((p) => p.show_channels !== false) && (
           <button onClick={handleShowChannels}
             className="mt-3 w-full flex items-center justify-center gap-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 px-3 py-2 rounded-lg hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition text-sm font-medium">
             <Info className="w-4 h-4" /> View Channels

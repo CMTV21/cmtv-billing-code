@@ -23,6 +23,7 @@ import NotificationSettings from '../components/NotificationSettings';
 import OneStreamPanelManagement from '../components/OneStreamPanelManagement';
 import NxtDashPanelManagement from '../components/NxtDashPanelManagement';
 import GhostSurfPanelManagement from '../components/GhostSurfPanelManagement';
+import AetherPanelManagement from '../components/AetherPanelManagement';
 import InvoiceSettings from '../components/InvoiceSettings';
 import SEOSettings from '../components/SEOSettings';
 import { toast } from 'sonner';
@@ -90,25 +91,31 @@ export default function AdminSettings() {
               </button>
               <button
                 onClick={() => setActiveTab('nxtdash')}
-                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center justify-between ${
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium ${
                   activeTab === 'nxtdash' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 NXT Dash Panels
+              </button>
+              <button
+                onClick={() => setActiveTab('aether')}
+                data-testid="settings-tab-aether"
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center justify-between ${
+                  activeTab === 'aether' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                Aether Panels
                 <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                  activeTab === 'nxtdash' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  activeTab === 'aether' ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
                 }`}>New</span>
               </button>
               <button
                 onClick={() => setActiveTab('ghostsurf')}
-                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center justify-between ${
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium ${
                   activeTab === 'ghostsurf' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
                 GhostSurf VPN
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                  activeTab === 'ghostsurf' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300'
-                }`}>New</span>
               </button>
               <button
                 onClick={() => setActiveTab('branding')}
@@ -294,6 +301,11 @@ export default function AdminSettings() {
             {/* GhostSurf VPN Tab */}
             {activeTab === 'ghostsurf' && (
               <GhostSurfPanelManagement settings={settings} />
+            )}
+
+            {/* Aether Tab */}
+            {activeTab === 'aether' && (
+              <AetherPanelManagement settings={settings} />
             )}
 
             {/* Branding Tab */}

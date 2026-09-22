@@ -141,6 +141,27 @@ async def _fetch_live_line_status(service: dict, settings: dict) -> dict:
                 except Exception as e:
                     logger.debug(f"Live player_api check failed for {username}: {e}")
     
+    elif panel_type == "aether":
+        ae_panels = settings.get("aether", {}).get("panels", [])
+        if panel_index < len(ae_panels):
+            try:
+                from aether_service import get_aether_service, AetherService
+                ae = get_aether_service(ae_panels[panel_index])
+                if ae and username:
+                    res = await ae.get_line(username)
+                    if res.get("success"):
+                        line = res["line"]
+                        exp = None if line.get("unlimited") else AetherService.parse_exp(line.get("exp_date"))
+                        result["connections"] = int(line.get("max_connections", 1) or 1)
+                        result["expires_at"] = exp.isoformat() if exp else None
+                        result["days_remaining"] = max(0, (exp - datetime.utcnow()).days) if exp else None
+                        result["live"] = True
+                        st = AetherService.line_status(line)
+                        result["status"] = "suspended" if st in ("suspended", "banned") else st
+                        return result
+            except Exception as e:
+                logger.debug(f"Live aether check failed for {username}: {e}")
+
     elif panel_type == "ghostsurf":
         gs_panels = settings.get("ghostsurf", {}).get("panels", [])
         if panel_index < len(gs_panels):
@@ -518,6 +539,33 @@ async def import_existing_line(request: Request, key: dict = Depends(_verify_lau
             logger.debug(f"Import check failed on xtream panel {idx}: {e}")
             continue
     
+    # Try Aether panels if not found yet
+    if not line_data:
+        for idx, panel in enumerate(settings.get("aether", {}).get("panels", [])):
+            try:
+                from aether_service import get_aether_service, AetherService
+                ae = get_aether_service(panel)
+                if not ae:
+                    continue
+                res = await ae.find_line(username, password)
+                if res.get("success"):
+                    line = res["line"]
+                    line_data = {
+                        "username": line.get("username", username),
+                        "password": line.get("password") or password,
+                        "exp_date": None if line.get("unlimited") else line.get("exp_date"),
+                        "max_connections": line.get("max_connections", 1),
+                        "status": AetherService.line_status(line),
+                        "id": line.get("id"),
+                    }
+                    matched_panel_type = "aether"
+                    matched_panel_index = idx
+                    matched_panel_name = panel.get("name", f"Aether {idx + 1}")
+                    break
+            except Exception as e:
+                logger.debug(f"Import check failed on aether panel {idx}: {e}")
+                continue
+
     # Try GhostSurf panels if not found yet
     if not line_data:
         gs_panels = settings.get("ghostsurf", {}).get("panels", [])
@@ -604,6 +652,13 @@ async def import_existing_line(request: Request, key: dict = Depends(_verify_lau
     if matched_panel_type == "xtream":
         panel = xtream_panels[matched_panel_index]
         streaming_url = panel.get("streaming_url", panel.get("panel_url", ""))
+    elif matched_panel_type == "aether":
+        try:
+            from aether_service import get_aether_service
+            ae = get_aether_service(settings["aether"]["panels"][matched_panel_index])
+            streaming_url = await ae.resolve_streaming_url(username) if ae else ""
+        except Exception:
+            streaming_url = ""
     
     if existing_service:
         service_id = str(existing_service["_id"])

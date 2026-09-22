@@ -459,6 +459,35 @@ class BackgroundJobScheduler:
                 except Exception as e:
                     logger.warning(f"Auto-sync failed for nxtdash panel {panel.get('name', i)}: {e}")
             
+            # Sync Aether panels
+            for i, panel in enumerate(settings.get("aether", {}).get("panels", [])):
+                if not panel.get("active", True):
+                    continue
+                try:
+                    from aether_service import get_aether_service, AetherService
+                    ae = get_aether_service(panel)
+                    if not ae:
+                        continue
+                    panel_name = panel.get("name", f"Aether {i+1}")
+                    result = await ae.get_all_lines()
+                    if not result.get("success"):
+                        continue
+                    for line in result.get("lines", []):
+                        uname = line.get("username", "")
+                        if not uname:
+                            continue
+                        doc = {"username": uname, "password": line.get("password", ""), "panel_type": "aether", "panel_index": i,
+                               "panel_name": panel_name, "account_type": "subscriber", "aether_line_id": str(line.get("id", "")),
+                               "aether_package_id": line.get("package_id"), "max_connections": line.get("max_connections", 1),
+                               "expiry_date": None if line.get("unlimited") else AetherService.parse_exp(line.get("exp_date")),
+                               "status": AetherService.line_status(line), "is_trial": 1 if line.get("trial") else 0,
+                               "last_synced": datetime.utcnow()}
+                        r = await imported_users_collection.update_one({"username": uname, "panel_name": panel_name}, {"$set": doc}, upsert=True)
+                        if r.upserted_id: total_synced += 1
+                        elif r.modified_count: total_updated += 1
+                except Exception as e:
+                    logger.warning(f"Auto-sync failed for aether panel {panel.get('name', i)}: {e}")
+            
             if total_synced > 0 or total_updated > 0:
                 logger.info(f"Auto-sync complete: {total_synced} new, {total_updated} updated total")
             

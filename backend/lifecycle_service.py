@@ -327,6 +327,19 @@ class ServiceLifecycleManager:
                 except Exception as e:
                     logger.warning(f"Credit check failed for {name}: {e}")
 
+            # Check Aether panels
+            for i, panel in enumerate(settings.get("aether", {}).get("panels", [])):
+                name = panel.get("name", f"Aether Panel {i+1}")
+                try:
+                    from aether_service import get_aether_service
+                    svc = get_aether_service(panel)
+                    if svc:
+                        balance = await svc.get_balance()
+                        if balance is not None and balance < low_threshold:
+                            alerts.append(f"*{name}*: {balance:g} credits remaining")
+                except Exception as e:
+                    logger.warning(f"Credit check failed for {name}: {e}")
+
             if alerts:
                 # Check if already alerted recently (once per 6 hours)
                 recent = await self.lifecycle_logs.find_one({

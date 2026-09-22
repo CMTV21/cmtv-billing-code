@@ -451,6 +451,19 @@ class GhostSurfSettings(BaseModel):
     panels: List[GhostSurfPanel] = []
 
 
+class AetherPanel(BaseModel):
+    id: Optional[str] = None
+    name: str = ""
+    panel_url: str = ""       # https://bestpanel.xyz
+    api_token: str = ""       # pmk_... Bearer token (reseller or admin kind)
+    streaming_url: str = ""   # Optional override; otherwise read from line credentials
+    ssl_verify: bool = True
+    active: bool = True
+
+class AetherSettings(BaseModel):
+    panels: List[AetherPanel] = []
+
+
 
 class Settings(BaseModel):
     id: Optional[str] = None
@@ -459,6 +472,7 @@ class Settings(BaseModel):
     onestream: OneStreamSettings = Field(default_factory=OneStreamSettings)
     nxtdash: NxtDashSettings = Field(default_factory=NxtDashSettings)
     ghostsurf: GhostSurfSettings = Field(default_factory=GhostSurfSettings)
+    aether: AetherSettings = Field(default_factory=AetherSettings)
     smtp: SMTPSettings = Field(default_factory=SMTPSettings)
     paypal: PayPalSettings = Field(default_factory=PayPalSettings)
     stripe: StripeSettings = Field(default_factory=StripeSettings)

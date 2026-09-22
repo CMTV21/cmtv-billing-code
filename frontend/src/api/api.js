@@ -222,6 +222,12 @@ export const adminAPI = {
   getNxtDashBouquets: (panelIndex = 0) => api.get(`/api/admin/nxtdash/bouquets?panel_index=${panelIndex}`),
   updateNxtDashBouquetNames: (bouquets, panelIndex = 0) => api.put(`/api/admin/nxtdash/bouquets?panel_index=${panelIndex}`, { bouquets }),
   syncNxtDashUsers: (panelIndex = 0) => api.post(`/api/admin/nxtdash/sync-users?panel_index=${panelIndex}`),
+  // Aether
+  testAether: (panelIndex = 0) => api.post(`/api/admin/aether/test?panel_index=${panelIndex}`),
+  getAetherPackages: (panelIndex = 0) => api.get(`/api/admin/aether/packages?panel_index=${panelIndex}`),
+  getAetherBouquets: (panelIndex = 0) => api.get(`/api/admin/aether/bouquets?panel_index=${panelIndex}`),
+  getAetherPackageBouquets: (packageId, panelIndex = 0) => api.get(`/api/admin/aether/packages/${packageId}/bouquets?panel_index=${panelIndex}`),
+  syncAetherUsers: (panelIndex = 0) => api.post(`/api/admin/aether/sync-users?panel_index=${panelIndex}`),
   // Maintenance
   deduplicateImportedUsers: () => api.post('/api/admin/imported-users/deduplicate'),
   // Staff management

@@ -43,6 +43,7 @@ export default function AdminProducts() {
   const onestreamPanels = settings?.onestream?.panels || [];
   const nxtdashPanels = settings?.nxtdash?.panels || [];
   const ghostsurfPanels = settings?.ghostsurf?.panels || [];
+  const aetherPanels = settings?.aether?.panels || [];
   
   // Combine all panel types with a type indicator
   const allPanels = [
@@ -50,7 +51,8 @@ export default function AdminProducts() {
     ...xuionePanels.map((panel, index) => ({ ...panel, type: 'xuione', originalIndex: index })),
     ...onestreamPanels.map((panel, index) => ({ ...panel, type: 'onestream', originalIndex: index })),
     ...nxtdashPanels.map((panel, index) => ({ ...panel, type: 'nxtdash', originalIndex: index })),
-    ...ghostsurfPanels.map((panel, index) => ({ ...panel, type: 'ghostsurf', originalIndex: index }))
+    ...ghostsurfPanels.map((panel, index) => ({ ...panel, type: 'ghostsurf', originalIndex: index })),
+    ...aetherPanels.map((panel, index) => ({ ...panel, type: 'aether', originalIndex: index }))
   ];
   
   // For components that need just XtreamUI panels (like ResellerPackageModal)
@@ -70,6 +72,9 @@ export default function AdminProducts() {
     }
     if (panelType === 'ghostsurf') {
       return ghostsurfPanels[panelIndex]?.name || `GhostSurf VPN ${panelIndex}`;
+    }
+    if (panelType === 'aether') {
+      return aetherPanels[panelIndex]?.name || `Aether Panel ${panelIndex}`;
     }
     return xtreamPanels[panelIndex]?.name || `Panel ${panelIndex}`;
   };
@@ -410,7 +415,7 @@ export default function AdminProducts() {
                     <option value="all">All Panels</option>
                     {allPanels.map((panel, idx) => (
                       <option key={idx} value={`${panel.type}-${panel.originalIndex}`}>
-                        {panel.name || `${panel.type === 'xuione' ? 'XuiOne' : panel.type === 'onestream' ? '1-Stream' : panel.type === 'nxtdash' ? 'NXT Dash' : panel.type === 'ghostsurf' ? 'GhostSurf VPN' : 'XtreamUI'} Panel ${panel.originalIndex + 1}`}
+                        {panel.name || `${panel.type === 'xuione' ? 'XuiOne' : panel.type === 'onestream' ? '1-Stream' : panel.type === 'nxtdash' ? 'NXT Dash' : panel.type === 'ghostsurf' ? 'GhostSurf VPN' : panel.type === 'aether' ? 'Aether' : 'XtreamUI'} Panel ${panel.originalIndex + 1}`}
                       </option>
                     ))}
                   </select>
@@ -684,6 +689,7 @@ function ProductFormModal({ product, onClose, onSuccess }) {
   const onestreamPanels = settings?.onestream?.panels || [];
   const nxtdashPanels = settings?.nxtdash?.panels || [];
   const ghostsurfPanels = settings?.ghostsurf?.panels || [];
+  const aetherPanels = settings?.aether?.panels || [];
   
   // Combine all panel types with a type indicator
   const allPanels = [
@@ -691,6 +697,7 @@ function ProductFormModal({ product, onClose, onSuccess }) {
     ...xuionePanels.map((panel, index) => ({ ...panel, type: 'xuione', originalIndex: index, label: `${panel.name} (XuiOne)` })),
     ...onestreamPanels.map((panel, index) => ({ ...panel, type: 'onestream', originalIndex: index, label: `${panel.name} (1-Stream)` })),
     ...nxtdashPanels.map((panel, index) => ({ ...panel, type: 'nxtdash', originalIndex: index, label: `${panel.name} (NXT Dash)` })),
+    ...aetherPanels.map((panel, index) => ({ ...panel, type: 'aether', originalIndex: index, label: `${panel.name || 'Aether'} (Aether)` })),
     ...ghostsurfPanels.map((panel, index) => ({ ...panel, type: 'ghostsurf', originalIndex: index, label: `${panel.name || 'GhostSurf VPN'} (GhostSurf)` }))
   ];
   
@@ -735,6 +742,9 @@ function ProductFormModal({ product, onClose, onSuccess }) {
       } else if (selectedPanelInfo.type === 'ghostsurf') {
         const response = await api.get(`/api/admin/ghostsurf/plans/${selectedPanelInfo.index}`);
         return response.data.packages || [];
+      } else if (selectedPanelInfo.type === 'aether') {
+        const response = await adminAPI.getAetherPackages(selectedPanelInfo.index);
+        return response.data.packages || [];
       } else {
         const response = await adminAPI.syncPackagesFromPanel(selectedPanelInfo.index);
         return response.data.packages || [];
@@ -758,6 +768,9 @@ function ProductFormModal({ product, onClose, onSuccess }) {
         return response.data.trial_packages || [];
       } else if (selectedPanelInfo.type === 'ghostsurf') {
         return []; // GhostSurf doesn't have trial packages
+      } else if (selectedPanelInfo.type === 'aether') {
+        const response = await adminAPI.getAetherPackages(selectedPanelInfo.index);
+        return response.data.trial_packages || [];
       } else {
         const response = await adminAPI.syncTrialPackagesFromPanel(selectedPanelInfo.index);
         return response.data.packages || [];
@@ -794,6 +807,14 @@ function ProductFormModal({ product, onClose, onSuccess }) {
       // For NXT Dash: packages don't carry bouquets — auto-select ALL available bouquets
       if (selectedPanelInfo.type === 'nxtdash' && packageBouquetIds.length === 0 && availableBouquets?.length > 0) {
         packageBouquetIds = availableBouquets.map(b => parseInt(b.id)).filter(id => !isNaN(id));
+      }
+
+      // For Aether: fetch the package's own bouquet list and pre-select the default-included ones
+      if (selectedPanelInfo.type === 'aether') {
+        adminAPI.getAetherPackageBouquets(pkg.id, selectedPanelInfo.index).then((resp) => {
+          const defaults = (resp.data?.bouquets || []).filter(b => b.default_included !== false).map(b => parseInt(b.id)).filter(id => !isNaN(id));
+          if (defaults.length > 0) setFormData(prev => ({ ...prev, bouquets: defaults }));
+        }).catch(() => {});
       }
       
       console.log('Package bouquet IDs:', packageBouquetIds);
