@@ -1,7 +1,14 @@
 from datetime import datetime
 import logging
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
+
+
+def _uid(user_id):
+    # CMTV local change 2026-09-24: users._id is an ObjectId, but callers pass the id as a string.
+    # Matching on the string never found the user, so balances always read $0 and updates did nothing.
+    return ObjectId(user_id) if isinstance(user_id, str) and ObjectId.is_valid(user_id) else user_id
 
 class CreditService:
     """Manage customer credit balances"""
@@ -22,7 +29,7 @@ class CreditService:
     
     async def get_balance(self, user_id: str) -> float:
         """Get user's credit balance"""
-        user = await self.users.find_one({"_id": user_id})
+        user = await self.users.find_one({"_id": _uid(user_id)})
         return user.get("credit_balance", 0.0) if user else 0.0
     
     async def add_credits(
@@ -51,7 +58,7 @@ class CreditService:
         
         # Update user balance
         await self.users.update_one(
-            {"_id": user_id},
+            {"_id": _uid(user_id)},
             {"$set": {"credit_balance": new_balance}}
         )
         
@@ -92,7 +99,7 @@ class CreditService:
         
         # Update balance
         await self.users.update_one(
-            {"_id": user_id},
+            {"_id": _uid(user_id)},
             {"$set": {"credit_balance": new_balance}}
         )
         

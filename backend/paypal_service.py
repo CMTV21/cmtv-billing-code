@@ -96,6 +96,60 @@ class PayPalService:
             logger.error(f"PayPal order creation error: {e}")
             return {"success": False, "error": str(e)}
     
+    def get_order(self, order_id):
+        """Look up a PayPal order (CMTV local change 2026-09-24): lets billing check which billing order and
+        amount it was created for before capturing it."""
+        if not self.access_token:
+            return {"success": False, "error": "PayPal not authenticated"}
+        try:
+            response = requests.get(
+                f"{self.base_url}/v2/checkout/orders/{order_id}",
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                timeout=20
+            )
+            if response.status_code != 200:
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+            data = response.json()
+            unit = (data.get("purchase_units") or [{}])[0]
+            amount = unit.get("amount") or {}
+            return {
+                "success": True,
+                "status": data.get("status"),
+                "reference_id": unit.get("reference_id") or unit.get("custom_id") or "",
+                "amount": amount.get("value"),
+                "currency": amount.get("currency_code"),
+            }
+        except Exception as e:
+            logger.error(f"PayPal get_order error: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_capture(self, capture_id):
+        """Look up a PayPal capture (CMTV local change 2026-09-24), so webhooks can be verified with PayPal
+        instead of trusting the webhook body."""
+        if not self.access_token:
+            return {"success": False, "error": "PayPal not authenticated"}
+        try:
+            response = requests.get(
+                f"{self.base_url}/v2/payments/captures/{capture_id}",
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                timeout=20
+            )
+            if response.status_code != 200:
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+            data = response.json()
+            amount = data.get("amount") or {}
+            return {
+                "success": True,
+                "status": data.get("status"),
+                "custom_id": data.get("custom_id") or data.get("invoice_id") or "",
+                "paypal_order_id": ((data.get("supplementary_data") or {}).get("related_ids") or {}).get("order_id", ""),
+                "amount": amount.get("value"),
+                "currency": amount.get("currency_code"),
+            }
+        except Exception as e:
+            logger.error(f"PayPal get_capture error: {e}")
+            return {"success": False, "error": str(e)}
+
     def capture_order(self, order_id):
         """Capture/complete a PayPal order"""
         if not self.access_token:

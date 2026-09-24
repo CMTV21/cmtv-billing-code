@@ -103,7 +103,7 @@ class UpdateManager:
                 shutil.copytree(
                     f"{self.app_dir}/backend", 
                     f"{backup_path}/backend", 
-                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '.venv')
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '.venv', 'venv', '*.log')  # CMTV local change 2026-09-24: the folder is 'venv' (no dot); copying it added 1.4 GB to every update backup
                 )
             
             if os.path.exists(f"{self.app_dir}/frontend"):

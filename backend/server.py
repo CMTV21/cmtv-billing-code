@@ -13,6 +13,7 @@ import aiofiles
 import random
 import string
 import secrets
+import hashlib
 import asyncio
 import re
 import shutil
@@ -393,6 +394,32 @@ def generate_password(length: int = 9) -> str:
     characters = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
     return ''.join(random.choices(characters, k=length))
 
+
+# CMTV local change 2026-09-24: emails are stored as typed, so "John@x.com" and "john@x.com" were treated as
+# different people (login failed with the "wrong" capitals, and sign-up could create a second account).
+def _email_ci(email: str) -> dict:
+    """Mongo condition matching this email in any capitalisation"""
+    return {"$regex": f"^{re.escape(email.strip())}$", "$options": "i"}
+
+async def find_user_by_email(email: str):
+    """The account with this email: exact match first, otherwise any capitalisation, but only if that points to
+    a single account. Returns None when it's ambiguous, so we never guess which of two accounts was meant."""
+    email = email.strip()
+    user = await users_collection.find_one({"email": email})
+    if user:
+        return user
+    matches = await users_collection.find({"email": _email_ci(email)}).to_list(length=2)
+    if len(matches) > 1:
+        logger.warning(f"Email lookup for '{email}' is ambiguous: matches {len(matches)} accounts with different capitalisation")
+        return None
+    return matches[0] if matches else None
+
+async def email_in_use(email: str, exclude_user_id=None):
+    """Any account already using this email, in any capitalisation (for sign-up / email change checks)"""
+    query = {"email": _email_ci(email)}
+    if exclude_user_id is not None:
+        query["_id"] = {"$ne": str_to_objectid(exclude_user_id)}
+    return await users_collection.find_one(query)
 
 async def create_customer_for_imported_user(imported_user: dict) -> Optional[str]:
     """Create or link a billing customer account for an imported panel user.
@@ -1148,7 +1175,7 @@ async def register(user_data: UserCreate):
                 raise HTTPException(status_code=403, detail=f"Security verification failed (score: {score}). Please try again.")
     
     # Check if email already exists
-    existing_user = await users_collection.find_one({"email": user_data.email})
+    existing_user = await email_in_use(user_data.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -1295,7 +1322,7 @@ async def resend_verification(data: ResendVerificationRequest):
     """Resend verification email, optionally update email address"""
     login_id = data.email.strip()
     if "@" in login_id:
-        user = await users_collection.find_one({"email": login_id})
+        user = await find_user_by_email(login_id)
     else:
         user = await users_collection.find_one({"panel_username": login_id})
     if not user:
@@ -1311,7 +1338,7 @@ async def resend_verification(data: ResendVerificationRequest):
     
     # If changing email, check it's not taken
     if target_email != data.email:
-        existing = await users_collection.find_one({"email": target_email})
+        existing = await email_in_use(target_email, exclude_user_id=user["_id"])
         if existing:
             raise HTTPException(status_code=400, detail="That email is already registered")
         await users_collection.update_one(
@@ -1355,6 +1382,167 @@ async def resend_verification(data: ResendVerificationRequest):
         import traceback
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Failed to send verification email. Please try again.")
+
+# CMTV local change 2026-09-24: self-service "forgot password". Emails a one-time reset link that expires after
+# PASSWORD_RESET_TTL. Only a SHA-256 hash of the token is stored, so the database alone can't be used to reset passwords.
+PASSWORD_RESET_TTL = timedelta(hours=1)
+PASSWORD_RESET_COOLDOWN = timedelta(minutes=2)  # at most one reset email per account per cooldown
+
+class ForgotPasswordRequest(BaseModel):
+    email: str  # Can be email OR username, same as login
+    recaptcha_token: Optional[str] = None
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+def _hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def _mask_email(email: str) -> str:
+    """jo***@gmail.com - enough for the customer to recognise their account, without showing the full address"""
+    local, _, domain = email.partition("@")
+    return f"{local[:2]}***@{domain}"
+
+async def _find_reset_account(login_id: str):
+    """Find exactly one account for a reset request, or None if there is no match or the match is ambiguous"""
+    if "@" in login_id:
+        return await find_user_by_email(login_id)
+    matches = await users_collection.find({"panel_username": login_id}).to_list(length=2)
+    if len(matches) > 1:
+        logger.warning(f"Password reset for username '{login_id}' refused: matches {len(matches)} accounts")
+        return None
+    return matches[0] if matches else None
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest):
+    """Email a password reset link. Always gives the same answer, so it can't be used to find out who has an account."""
+    generic = {"message": "If an account matches, a password reset link has been sent to its email address. The link expires in 1 hour."}
+
+    settings = await get_settings()
+    recaptcha_settings = settings.get("recaptcha", {})
+    if recaptcha_settings.get("enabled"):
+        if not data.recaptcha_token:
+            raise HTTPException(status_code=403, detail="Security verification required. Please refresh and try again.")
+        secret_key = recaptcha_settings.get("secret_key")
+        if secret_key:
+            success, score, _ = await RecaptchaService.verify_token(
+                data.recaptcha_token, secret_key, action="forgot_password",
+                min_score=recaptcha_settings.get("customer_score_threshold", 0.5)
+            )
+            if not success and score > 0.0:
+                raise HTTPException(status_code=403, detail=f"Security verification failed (score: {score}). Please try again.")
+
+    login_id = data.email.strip()
+    if not login_id:
+        return generic
+    user = await _find_reset_account(login_id)
+
+    email = (user or {}).get("email") or ""
+    if not user or "@" not in email or email.lower().endswith("@panel.local"):
+        logger.info(f"Password reset requested for '{login_id}': no single account with a real email address")
+        return generic
+    if user.get("role") != "user":
+        # Admin/staff passwords are reset from the server, not by email
+        logger.warning(f"Password reset requested for {user.get('role')} account {email}: refused")
+        return generic
+
+    now = datetime.utcnow()
+    last_request = user.get("password_reset_requested_at")
+    if last_request and now - last_request < PASSWORD_RESET_COOLDOWN:
+        logger.info(f"Password reset for {email} skipped: requested again within cooldown")
+        return generic
+
+    reset_token = secrets.token_urlsafe(32)
+    await users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "password_reset_token_hash": _hash_reset_token(reset_token),
+            "password_reset_expires": now + PASSWORD_RESET_TTL,
+            "password_reset_requested_at": now
+        }}
+    )
+
+    reset_link = f"{os.getenv('SITE_URL', os.getenv('BACKEND_PUBLIC_URL', 'http://localhost:8001'))}/reset-password?token={reset_token}"
+    try:
+        email_service = await get_configured_email_service()
+        if email_service and email_service.enabled:
+            sent = await email_service.send_password_reset(
+                customer_email=email,
+                customer_name=user.get("name") or user.get("panel_username") or "",
+                reset_link=reset_link,
+                customer_id=str(user["_id"]),
+                account_label=user.get("panel_username") or email
+            )
+            if sent:
+                logger.info(f"Password reset email sent to {email}")
+            else:
+                logger.error(f"Password reset email failed to send to {email} (returned False)")
+        else:
+            logger.warning(f"Email not configured - password reset email NOT sent to {email}")
+    except Exception as e:
+        logger.error(f"Error sending password reset email to {email}: {e}")
+
+    return generic
+
+async def _find_user_by_reset_token(token: str):
+    return await users_collection.find_one({
+        "password_reset_token_hash": _hash_reset_token(token.strip()),
+        "password_reset_expires": {"$gt": datetime.utcnow()},
+        "role": "user"
+    })
+
+@app.get("/api/auth/reset-password/check")
+async def check_reset_token(token: str):
+    """Tell the reset page which account the link is for, so the customer can confirm it's theirs"""
+    user = await _find_user_by_reset_token(token)
+    if not user:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired. Please request a new one.")
+    return {"email": _mask_email(user["email"]), "username": user.get("panel_username") or None}
+
+@app.post("/api/auth/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """Set a new password using the token from a password reset email"""
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    user = await _find_user_by_reset_token(data.token)
+    if not user:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired. Please request a new one.")
+
+    # The token belongs to this one account: the update matches its _id AND the token, so a link that was
+    # replaced by a newer one (or already used) can't change anything
+    result = await users_collection.update_one(
+        {"_id": user["_id"], "password_reset_token_hash": user["password_reset_token_hash"]},
+        {
+            "$set": {
+                "password": get_password_hash(data.new_password),
+                "password_changed_at": datetime.utcnow(),
+                # The link was opened from their inbox, which proves they own the address
+                "email_verified": True,
+                "verification_token": None
+            },
+            "$unset": {"password_reset_token_hash": "", "password_reset_expires": "", "password_reset_requested_at": ""}
+        }
+    )
+    if result.modified_count != 1:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired. Please request a new one.")
+    logger.info(f"Password reset completed for {user.get('email')}")
+
+    # Tell the customer, so a reset they didn't make doesn't go unnoticed
+    try:
+        email_service = await get_configured_email_service()
+        if email_service and email_service.enabled:
+            await email_service.send_password_changed(
+                customer_email=user["email"],
+                customer_name=user.get("name") or user.get("panel_username") or "",
+                customer_id=str(user["_id"]),
+                account_label=user.get("panel_username") or user["email"]
+            )
+    except Exception as e:
+        logger.error(f"Error sending password changed email to {user.get('email')}: {e}")
+
+    return {"message": "Your password has been reset. You can now sign in with your new password."}
 
 @app.post("/api/auth/login")
 async def login(credentials: UserLogin):
@@ -1402,7 +1590,7 @@ async def login(credentials: UserLogin):
     # Step 2: Verify credentials (support both email and username login)
     login_id = credentials.email.strip()
     if "@" in login_id:
-        user = await users_collection.find_one({"email": login_id})
+        user = await find_user_by_email(login_id)
     else:
         # Username login — check panel_username field
         user = await users_collection.find_one({"panel_username": login_id})
@@ -1474,8 +1662,8 @@ async def link_email_to_account(data: dict, current_user: dict = Depends(get_cur
         raise HTTPException(status_code=400, detail="Valid email address required")
 
     # Check email not already used
-    existing = await users_collection.find_one({"email": email})
-    if existing and str(existing["_id"]) != current_user["sub"]:
+    existing = await email_in_use(email, exclude_user_id=current_user["sub"])
+    if existing:
         raise HTTPException(status_code=400, detail="Email already in use by another account")
 
     # Generate verification token
@@ -1750,7 +1938,28 @@ async def capture_paypal_order(data: dict, background_tasks: BackgroundTasks, cu
     
     if not paypal:
         raise HTTPException(status_code=500, detail="PayPal service not available")
-    
+
+    # CMTV local change 2026-09-24: both ids come from the browser, so before capturing make sure this PayPal
+    # order was created for THIS billing order, belongs to this customer, and is for the full amount.
+    # (Previously a cheap PayPal payment could be used to mark an expensive order paid.)
+    order = await orders_collection.find_one({"_id": str_to_objectid(order_id)}) if order_id else None
+    if not order or order.get("user_id") != current_user["sub"]:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("status") == "paid":
+        return {"success": True, "message": "Order already paid"}
+    pp = paypal.get_order(paypal_order_id) if paypal_order_id else {"success": False}
+    try:
+        pp_amount = float(pp.get("amount") or 0)
+    except (TypeError, ValueError):
+        pp_amount = 0.0
+    expected_currency = settings.get("currency", "USD")
+    if (not pp.get("success") or pp.get("reference_id") != order_id
+            or pp_amount + 0.01 < float(order.get("total") or 0)
+            or (pp.get("currency") or "").upper() != str(expected_currency).upper()):
+        logger.error(f"PayPal capture refused for order {order_id}: PayPal order {paypal_order_id} is for "
+                     f"{pp.get('reference_id')!r} {pp.get('amount')} {pp.get('currency')} (expected {order.get('total')} {expected_currency})")
+        raise HTTPException(status_code=400, detail="This PayPal payment does not match the order")
+
     # Capture payment
     result = paypal.capture_order(paypal_order_id)
     
@@ -1866,6 +2075,29 @@ async def paypal_webhook(request: Request, background_tasks: BackgroundTasks):
             if not order and paypal_id:
                 order = await orders_collection.find_one({"payment_id": paypal_id})
             
+            # CMTV local change 2026-09-24: the webhook body is not authenticated, so confirm with PayPal itself
+            # that this capture is COMPLETED, belongs to this order and covers its total before marking it paid.
+            if order and order.get("status") != "paid":
+                verified = False
+                if event_type == "PAYMENT.CAPTURE.COMPLETED" and paypal_id:
+                    from paypal_service import get_paypal_service
+                    wh_settings = await get_settings()
+                    pp = get_paypal_service(wh_settings.get("paypal", {}))
+                    cap = pp.get_capture(paypal_id) if pp else {"success": False}
+                    belongs = cap.get("custom_id") == str(order["_id"])
+                    if not belongs and pp and cap.get("paypal_order_id"):
+                        belongs = pp.get_order(cap["paypal_order_id"]).get("reference_id") == str(order["_id"])
+                    try:
+                        cap_amount = float(cap.get("amount") or 0)
+                    except (TypeError, ValueError):
+                        cap_amount = 0.0
+                    verified = (cap.get("success") and cap.get("status") == "COMPLETED" and belongs
+                                and cap_amount + 0.01 >= float(order.get("total") or 0)
+                                and (cap.get("currency") or "").upper() == str(wh_settings.get("currency", "USD")).upper())
+                if not verified:
+                    logger.warning(f"PayPal webhook NOT trusted for order {order.get('_id')}: {event_type} {paypal_id} could not be verified with PayPal")
+                    return {"status": "received"}
+
             if order and order.get("status") != "paid":
                 order_id = str(order["_id"])
                 logger.info(f"PayPal webhook: Marking order {order_id} as paid")
@@ -2661,6 +2893,24 @@ async def ghostpay_webhook(request: Request, background_tasks: BackgroundTasks):
                     order = await orders_collection.find_one({"_id": str_to_objectid(tx["order_id"])})
                     external_id = tx["order_id"]
             
+            # CMTV local change 2026-09-24: GhostPay webhooks are not signed, so never trust the body. Look up the
+            # invoice billing created for this order and ask GhostPay itself whether it is PAID/OVERPAID in full.
+            if order and order["status"] != "paid":
+                gp_tx = await db.payment_transactions.find_one(
+                    {"gateway": "ghostpay", "order_id": str(order["_id"])}, sort=[("created_at", -1)])
+                from ghostpay_service import get_ghostpay_service
+                gp_verify = get_ghostpay_service(await get_settings())
+                inv = await gp_verify.check_invoice(gp_tx["invoice_id"]) if (gp_verify and gp_tx and gp_tx.get("invoice_id")) else {"success": False}
+                try:
+                    inv_fiat = float(inv.get("amount_fiat") or 0)
+                except (TypeError, ValueError):
+                    inv_fiat = 0.0
+                if not (inv.get("success") and inv.get("status") in ("PAID", "OVERPAID")
+                        and inv_fiat + 0.01 >= float(order.get("total") or 0)):
+                    logger.warning(f"GhostPay webhook NOT trusted for order {order['_id']}: invoice "
+                                   f"{gp_tx and gp_tx.get('invoice_id')} status={inv.get('status')} amount_fiat={inv.get('amount_fiat')}")
+                    return {"status": "ok"}
+
             if order and order["status"] != "paid":
                 logger.info(f"GhostPay webhook: marking order {external_id} as paid")
                 await orders_collection.update_one(
@@ -2920,15 +3170,21 @@ async def blockonomics_webhook(request: Request, background_tasks: BackgroundTas
     Blockonomics sends: status (0=unconfirmed, 1=partially confirmed, 2=confirmed), addr, value, txid
     """
     try:
+        # CMTV local change 2026-09-24: this callback is unauthenticated and trusts the amount it is sent,
+        # so ignore it completely while Blockonomics is disabled (otherwise anyone could mark orders paid).
+        if not (await get_settings()).get("blockonomics", {}).get("enabled"):
+            logger.warning("Blockonomics webhook ignored: Blockonomics is disabled")
+            return {"status": "ignored", "message": "Blockonomics is disabled"}
+
         # Get webhook data (can be form data or JSON)
         content_type = request.headers.get("content-type", "")
-        
+
         if "application/json" in content_type:
             payload = await request.json()
         else:
             form = await request.form()
             payload = dict(form)
-        
+
         btc_address = payload.get("addr")
         status_code = int(payload.get("status", -1))
         txid = payload.get("txid")
@@ -3090,22 +3346,21 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
                 )
     
     # Calculate pricing — validate item prices against actual product prices
+    # CMTV local change 2026-09-24: always charge the product's own price. The browser's price was trusted
+    # unless it was <= 0, so a modified request could buy any plan for $0.01. Each product holds one price.
     actual_total = 0.0
     for item in order_data.items:
         product = await products_collection.find_one({"_id": str_to_objectid(item.product_id)})
-        if product:
-            product_prices = product.get("prices", {})
-            actual_price = 0
-            if product_prices:
-                # Get the first available price
-                first_price = list(product_prices.values())[0] if product_prices else 0
-                actual_price = float(first_price)
-            if item.price <= 0 and actual_price > 0:
-                item.price = actual_price
-                logger.warning(f"Order item {item.product_name} had price $0, corrected to ${actual_price}")
-            actual_total += item.price
-    
-    subtotal = actual_total if actual_total > 0 else order_data.total
+        if not product:
+            raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}")
+        product_prices = product.get("prices", {}) or {}
+        actual_price = float(list(product_prices.values())[0]) if product_prices else 0.0
+        if abs(float(item.price or 0) - actual_price) > 0.009:
+            logger.warning(f"Order item {item.product_name}: client price ${item.price} replaced by product price ${actual_price}")
+        item.price = actual_price
+        actual_total += item.price
+
+    subtotal = actual_total
     discount_amount = 0.0
     credits_used = 0.0
     
@@ -3809,7 +4064,7 @@ async def create_staff_account(data: dict, current_user: dict = Depends(get_curr
     if not email or not password or not name:
         raise HTTPException(status_code=400, detail="Email, name, and password required")
 
-    existing = await users_collection.find_one({"email": email})
+    existing = await email_in_use(email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already in use")
 
@@ -3866,7 +4121,7 @@ async def create_customer(data: CreateCustomerRequest, current_user: dict = Depe
     """Create a new customer account"""
     
     # Check if email already exists
-    existing_user = await users_collection.find_one({"email": data.email.lower()})
+    existing_user = await email_in_use(data.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -3985,7 +4240,7 @@ async def update_customer(customer_id: str, update_data: dict, current_user: dic
         update_fields["name"] = update_data["name"]
     if "email" in update_data:
         # Check if new email already exists
-        existing = await users_collection.find_one({"email": update_data["email"], "_id": {"$ne": str_to_objectid(customer_id)}})
+        existing = await email_in_use(update_data["email"], exclude_user_id=customer_id)
         if existing:
             raise HTTPException(status_code=400, detail="Email already in use")
         update_fields["email"] = update_data["email"]
@@ -4173,6 +4428,14 @@ async def cancel_order(order_id: str, current_user: dict = Depends(get_current_a
         {"_id": str_to_objectid(order_id)},
         {"$set": {"status": "cancelled", "cancelled_at": datetime.utcnow()}}
     )
+    
+    # CMTV local change 2026-09-24: credits are deducted when the order is created, so give them back on cancel
+    if (order.get("credits_used") or 0) > 0:
+        await credit_service.add_credits(
+            user_id=order["user_id"], amount=float(order["credits_used"]),
+            transaction_type="order_cancelled_refund", description=f"Credits returned: order {order_id} cancelled",
+            order_id=order_id, bypass_enabled_check=True
+        )
     
     # Update invoice status
     await invoices_collection.update_one(
@@ -4474,13 +4737,17 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
         # === Referral completion check (covers ALL payment paths) ===
         if user.get("referred_by") and referral_service:
             try:
-                first_order_count = await orders_collection.count_documents({
-                    "user_id": order["user_id"],
-                    "status": "paid"
-                })
-                if first_order_count <= 1:
+                # CMTV local change 2026-09-24: enforce the referral minimum purchase (was ignored, so $0 trials paid out).
+                # Any paid order worth at least the minimum completes a still-pending referral; complete_referral only
+                # acts on pending referrals, so the reward is paid once.
+                ref_settings = await referral_service.get_referral_settings()
+                minimum = float(ref_settings.get("minimum_purchase") or 0)
+                order_value = float(order.get("total") or 0) + float(order.get("credits_used") or 0)
+                if order_value > 0 and order_value >= minimum:
                     await referral_service.complete_referral(order["user_id"], order_id)
                     logger.info(f"Referral completed for user {order['user_id']}")
+                else:
+                    logger.info(f"Referral not completed for user {order['user_id']}: order value ${order_value:.2f} below minimum ${minimum:.2f}")
             except Exception as e:
                 logger.error(f"Referral completion error for order {order_id}: {e}")
         
@@ -8675,6 +8942,8 @@ async def send_mass_email(request: MassEmailRequest, background_tasks: Backgroun
     
     # Get recipients based on filter
     query = {"role": "user"}
+    # CMTV local change 2026-09-23: skip placeholder addresses of panel-imported accounts (they can't receive mail)
+    query["email"] = {"$not": {"$regex": r"@panel\.local$", "$options": "i"}}
     
     if request.recipient_filter == "active":
         # Users with active services

@@ -773,6 +773,86 @@ class EmailService:
             logger.error(traceback.format_exc())
             return False
     
+    async def send_password_reset(
+        self,
+        customer_email: str,
+        customer_name: str,
+        reset_link: str,
+        customer_id: str = None,
+        account_label: str = ""
+    ):
+        """Send password reset link (CMTV local change 2026-09-24) - hardcoded clean template like email verification"""
+        if not self.enabled:
+            logger.error(f"send_password_reset: email not enabled, aborting")
+            return False
+
+        from html import escape
+        name, account = escape(customer_name or ""), escape(account_label or customer_email)
+        greeting = f"Hi {name}," if name else "Hi,"
+        content = f"""<p>{greeting}</p>
+<p>We received a request to reset the password for your account <strong>{account}</strong> on our billing website. Click the link below to choose a new password:</p>
+<p><a href="{reset_link}">Reset my password</a></p>
+<p>Or copy this link into your browser:<br>{reset_link}</p>
+<p>This link expires in 1 hour and can only be used once. It changes the password you use to sign in to our website only; your TV line / app login does not change.</p>
+<p>If you didn't ask to reset your password, you can ignore this email; your password won't change.</p>"""
+        plain = (f"{'Hi ' + customer_name + ',' if customer_name else 'Hi,'}\n\n"
+                 f"To reset the password for your account {account_label or customer_email} on our billing website, visit:\n\n{reset_link}\n\n"
+                 "This link expires in 1 hour and can only be used once. Your TV line / app login does not change.\n"
+                 "If you didn't ask for this, ignore this email.")
+
+        try:
+            return await self.send_email(
+                to_email=customer_email,
+                subject="Reset your password",
+                html_content=self._wrap_email(content, "", customer_email, "transactional"),
+                text_content=plain,
+                email_type="transactional",
+                template_type="password_reset",
+                customer_id=customer_id,
+                recipient_name=customer_name
+            )
+        except Exception as e:
+            logger.error(f"send_password_reset: EXCEPTION in send_email: {e}")
+            return False
+
+    async def send_password_changed(
+        self,
+        customer_email: str,
+        customer_name: str,
+        customer_id: str = None,
+        account_label: str = ""
+    ):
+        """Confirm a completed password reset (CMTV local change 2026-09-24), so an unexpected reset gets noticed"""
+        if not self.enabled:
+            return False
+
+        from html import escape
+        name, account = escape(customer_name or ""), escape(account_label or customer_email)
+        greeting = f"Hi {name}," if name else "Hi,"
+        content = f"""<p>{greeting}</p>
+<p>The password for your account <strong>{account}</strong> on our billing website was just changed using a password reset link.</p>
+<p>If this was you, there's nothing else to do.</p>
+<p>If you did <strong>not</strong> do this, please contact support straight away.</p>"""
+        plain = (f"{'Hi ' + customer_name + ',' if customer_name else 'Hi,'}\n\n"
+                 f"The password for your account {account_label or customer_email} on our billing website was just changed "
+                 "using a password reset link.\n\nIf this was you, there's nothing else to do. "
+                 "If you did NOT do this, please contact support straight away.")
+
+        try:
+            return await self.send_email(
+                to_email=customer_email,
+                subject="Your password was changed",
+                html_content=self._wrap_email(content, "", customer_email, "transactional"),
+                text_content=plain,
+                email_type="transactional",
+                template_type="password_reset",
+                customer_id=customer_id,
+                recipient_name=customer_name
+            )
+        except Exception as e:
+            logger.error(f"send_password_changed: EXCEPTION in send_email: {e}")
+            return False
+
     async def send_welcome_email(
         self,
         customer_email: str,

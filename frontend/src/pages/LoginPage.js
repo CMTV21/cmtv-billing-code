@@ -40,6 +40,8 @@ export default function LoginPage() {
       setSuccessMessage('✅ Email verified successfully! You can now log in.');
     } else if (params.get('registered') === 'true') {
       setSuccessMessage('📧 Registration successful! Please check your email to verify your account.');
+    } else if (params.get('message') === 'password_reset') {
+      setSuccessMessage('✅ Password reset! You can now sign in with your new password.');
     } else if (params.get('error') === 'invalid_token') {
       setError('Invalid or expired verification link. Please request a new one.');
     }
@@ -218,9 +220,14 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Password
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Password
+                  </label>
+                  <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                    Forgot password?
+                  </Link>
+                </div>
                 <input
                   type="password"
                   required

@@ -1103,6 +1103,7 @@ export default function AdminImportedUsers() {
 
 // Create User Modal Component
 function CreateUserModal({ panels, onClose, onSuccess }) {
+  const timezone = useTimezone(); // CMTV local fix 2026-09-24: was undefined here, blank screen
   const [formData, setFormData] = useState({
     panel_type: 'xtream',
     panel_index: 0,
@@ -1538,6 +1539,7 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
 
 // Extend User Modal Component
 function ExtendUserModal({ user, onClose, onSuccess }) {
+  const timezone = useTimezone(); // CMTV local fix 2026-09-24: was undefined here, blank screen
   const [selectedPackageId, setSelectedPackageId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState(null);
