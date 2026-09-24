@@ -61,6 +61,7 @@ from onestream_service import OneStreamService, get_onestream_service
 from nxtdash_service import NxtDashService, get_nxtdash_service
 from aether_service import AetherService, get_aether_service
 from email_service import get_email_service
+import cockpit_service  # CMTV local change 2026-09-24: Stremio / CMTVpn accounts in the Cockpit panel
 from email_logger import EmailLogger
 from unsubscribe_manager import UnsubscribeManager
 from invoice_service import get_invoice_generator
@@ -4865,7 +4866,9 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                     bp_item = {**item, "product_id": bp_id, "product_name": f"{item['product_name']} — {bp.get('name', '')}"}
                     bp_panel_type = safe_panel_type(bp.get("panel_type"))
                     logger.info(f"  Provisioning bundle item: {bp.get('name')} (Panel: {bp_panel_type})")
-                    if bp_panel_type == "manual":
+                    if bp_panel_type == "manual" and bp.get("cockpit_module"):
+                        await run_item(bp_item["product_name"], bp_item, provision_cockpit_service(order_id, order, user, bp_item, bp, settings, email_service))
+                    elif bp_panel_type == "manual":
                         svc = {"user_id": order["user_id"], "order_id": order_id, "product_id": bp_id, "product_name": bp_item["product_name"], "account_type": "manual", "term_months": item.get("term_months", 1), "status": "active", "panel_type": "manual", "setup_instructions": bp.get("setup_instructions", ""), "start_date": datetime.utcnow(), "created_at": datetime.utcnow()}
                         await services_collection.insert_one(svc)
                     elif bp_panel_type == "xuione":
@@ -4889,7 +4892,10 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
             logger.info(f"Provisioning service for product: {product.get('name')} (Panel: {panel_type}, Index: {panel_index})")
             
             # Route to correct panel type
-            if panel_type == "manual":
+            if panel_type == "manual" and product.get("cockpit_module"):
+                # CMTV local change 2026-09-24: manual product linked to Cockpit -> create/renew the account automatically
+                await run_item(item["product_name"], item, provision_cockpit_service(order_id, order, user, item, product, settings, email_service))
+            elif panel_type == "manual":
                 # Manual product - create service record without panel provisioning
                 service_dict = {
                     "user_id": order["user_id"],
@@ -4960,6 +4966,90 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 await _alert_provisioning_failure(order_id, order, user, failures)
             except Exception as e:
                 logger.error(f"Provisioning alert failed for order {order_id}: {e}")
+
+async def provision_cockpit_service(order_id: str, order: dict, user: dict, item: dict, product: dict, settings: dict, email_service):
+    """CMTV local change 2026-09-24: create or renew the customer's account in the Cockpit panel (Stremio / CMTVpn).
+    Like the other provision_*_service functions it logs an error and returns on failure; provision_order_services
+    then flags the order "Not provisioned" and alerts the admin."""
+    module = product.get("cockpit_module")
+    label = cockpit_service.MODULES.get(module, str(module))
+    if product.get("is_trial"):
+        amount, unit = int(product.get("trial_duration") or 1), (product.get("trial_duration_unit") or "days")
+        months, days = (amount, 0) if unit.startswith("month") else (0, max(1, amount if unit.startswith("day") else 1))
+    else:
+        months, days = max(1, int(item.get("term_months") or 1)), 0
+
+    renewal_service_id = item.get("renewal_service_id")
+    if renewal_service_id and item.get("action_type", "create_new") in ("renew", "extend"):
+        existing = await services_collection.find_one({"_id": str_to_objectid(renewal_service_id), "user_id": order["user_id"]})
+        if not existing:
+            logger.error(f"Cockpit {label} renewal: service {renewal_service_id} not found")
+            return
+        if existing.get("cockpit_module") != module or not existing.get("username"):
+            logger.error(f"Cockpit {label} renewal: this service isn't linked to a Cockpit {label} account "
+                         f"(it was set up by hand), so extend it in Cockpit by hand")
+            return
+        result = await cockpit_service.extend_account(module, existing["username"], months=months, days=days)
+        if not result.get("success"):
+            logger.error(f"Cockpit {label} renew failed for {existing['username']}: {result.get('error')}")
+            return
+        new_expiry = cockpit_service.expiry_datetime(result["expires"])
+        await services_collection.update_one(
+            {"_id": existing["_id"]},
+            {"$set": {"expiry_date": new_expiry, "status": "active", "updated_at": datetime.utcnow()}}
+        )
+        logger.info(f"Cockpit {label} account renewed: {existing['username']} -> {result['expires']}")
+        if email_service:
+            try:
+                await email_service.send_service_renewed(
+                    customer_email=user["email"], customer_name=user.get("name", "Customer"),
+                    service_name=existing.get("product_name", product.get("name", label)),
+                    username=existing["username"], new_expiry_date=result["expires"], customer_id=order["user_id"]
+                )
+            except Exception as email_err:
+                logger.warning(f"Cockpit {label} renewal email failed: {email_err}")
+        return
+
+    result = await cockpit_service.create_account(module, months=months, days=days)
+    if not result.get("success"):
+        logger.error(f"Cockpit {label} account creation failed: {result.get('error')}")
+        return
+    expiry = cockpit_service.expiry_datetime(result["expires"])
+    service_doc = {
+        "user_id": order["user_id"],
+        "order_id": order_id,
+        "product_id": str(product.get("_id", item.get("product_id", ""))),
+        "product_name": product.get("name", label),
+        "account_type": "subscriber",       # shows login, expiry and the Renew button on My Services
+        "panel_type": "manual",
+        "panel_name": f"Cockpit ({label})",
+        "cockpit_module": module,
+        "cockpit_account_id": result.get("id"),
+        "username": result["username"],
+        "password": result["password"],
+        "xtream_username": result["username"],
+        "xtream_password": result["password"],
+        "term_months": months,
+        "max_connections": product.get("max_connections") or 0,
+        "is_trial": product.get("is_trial", False),
+        "setup_instructions": product.get("setup_instructions", ""),
+        "start_date": datetime.utcnow(),
+        "expiry_date": expiry,
+        "status": "active",
+        "created_at": datetime.utcnow(),
+    }
+    await services_collection.insert_one(service_doc)
+    logger.info(f"Cockpit {label} account created: {result['username']} (id {result.get('id')}, until {result['expires']})")
+    if email_service:
+        try:
+            await email_service.send_cockpit_account(
+                customer_email=user["email"], customer_name=user.get("name", ""),
+                service_name=product.get("name", label), username=result["username"], password=result["password"],
+                expiry_date=result["expires"], setup_instructions=product.get("setup_instructions", ""),
+                customer_id=order["user_id"]
+            )
+        except Exception as email_err:
+            logger.warning(f"Cockpit {label} login email failed: {email_err}")
 
 async def provision_xtream_service(order_id: str, order: dict, user: dict, item: dict, product: dict, settings: dict, email_service):
     """Provision XtreamUI service"""

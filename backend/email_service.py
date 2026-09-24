@@ -815,6 +815,48 @@ class EmailService:
             logger.error(f"send_password_reset: EXCEPTION in send_email: {e}")
             return False
 
+    async def send_cockpit_account(
+        self,
+        customer_email: str,
+        customer_name: str,
+        service_name: str,
+        username: str,
+        password: str,
+        expiry_date: str,
+        setup_instructions: str = "",
+        customer_id: str = None
+    ):
+        """Login details for a new Cockpit account (Stremio / CMTVpn) (CMTV local change 2026-09-24)"""
+        if not self.enabled:
+            return False
+
+        from html import escape
+        greeting = f"Hi {escape(customer_name)}," if customer_name else "Hi,"
+        steps = escape(setup_instructions or "").replace("\n", "<br>")
+        content = f"""<p>{greeting}</p>
+<p>Your <strong>{escape(service_name)}</strong> account is ready. Here are your login details:</p>
+<p>Username: <strong>{escape(username)}</strong><br>Password: <strong>{escape(password)}</strong><br>Valid until: {escape(expiry_date)}</p>
+{f'<p><strong>How to set it up:</strong><br>{steps}</p>' if steps else ''}
+<p>You can find these details any time under <strong>My Services</strong> on our website.</p>"""
+        plain = (f"{'Hi ' + customer_name + ',' if customer_name else 'Hi,'}\n\n"
+                 f"Your {service_name} account is ready.\n\nUsername: {username}\nPassword: {password}\nValid until: {expiry_date}\n"
+                 + (f"\nHow to set it up:\n{setup_instructions}\n" if setup_instructions else "")
+                 + "\nYou can find these details any time under My Services on our website.")
+        try:
+            return await self.send_email(
+                to_email=customer_email,
+                subject=f"Your {service_name} login details",
+                html_content=self._wrap_email(content, "", customer_email, "transactional"),
+                text_content=plain,
+                email_type="transactional",
+                template_type="service_activated",
+                customer_id=customer_id,
+                recipient_name=customer_name
+            )
+        except Exception as e:
+            logger.error(f"send_cockpit_account: EXCEPTION in send_email: {e}")
+            return False
+
     async def send_password_changed(
         self,
         customer_email: str,

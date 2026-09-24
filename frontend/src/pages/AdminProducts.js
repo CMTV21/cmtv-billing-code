@@ -334,9 +334,10 @@ export default function AdminProducts() {
         {/* Manual Product Modal */}
         {showManualModal && (
           <ManualProductModal
-            onClose={() => setShowManualModal(false)}
+            onClose={() => { setShowManualModal(false); setEditingProduct(null); }}
             onSuccess={() => {
               setShowManualModal(false);
+              setEditingProduct(null);
               queryClient.invalidateQueries(['admin-products']);
             }}
             editingProduct={editingProduct}
@@ -1567,12 +1568,22 @@ function ResellerPackageModal({ onClose, onSuccess, panels, xtreamPanels, xuione
 }
 
 
-function ManualProductModal({ onClose, onSuccess }) {
+// CMTV local change 2026-09-24: the modal could only create (Edit opened a blank form); it now edits too, and a
+// manual product can be linked to Cockpit so paid orders create/renew the customer's account automatically.
+const COCKPIT_MODULES = [
+  { value: '', label: 'No, I fulfil orders by hand' },
+  { value: 'nuvio', label: 'Yes: Stremio (Cockpit Nuvio)' },
+  { value: 'vpn', label: 'Yes: CMTVpn (Cockpit IPVanish)' },
+];
+
+function ManualProductModal({ onClose, onSuccess, editingProduct }) {
+  const isEditing = !!editingProduct;
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    setup_instructions: '',
+    name: editingProduct?.name || '',
+    description: editingProduct?.description || '',
+    price: editingProduct?.prices ? String(Object.values(editingProduct.prices)[0] ?? '') : '',
+    setup_instructions: editingProduct?.setup_instructions || '',
+    cockpit_module: editingProduct?.cockpit_module || '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -1584,19 +1595,32 @@ function ManualProductModal({ onClose, onSuccess }) {
     }
     setSaving(true);
     try {
-      await adminAPI.createProduct({
+      const fields = {
         name: formData.name,
         description: formData.description,
-        account_type: 'manual',
-        panel_type: 'manual',
-        panel_index: 0,
-        prices: { '1': parseFloat(formData.price) },
-        max_connections: 0,
-        bouquets: [],
-        xtream_package_id: null,
-        is_trial: false,
         setup_instructions: formData.setup_instructions,
-      });
+        cockpit_module: formData.cockpit_module || null,
+      };
+      if (isEditing) {
+        // Saving replaces the whole product, so send its current values back and change only the edited fields
+        const { id, _id, created_at, ...current } = editingProduct;
+        const priceKey = Object.keys(editingProduct.prices || {})[0] || '1';
+        await adminAPI.updateProduct(editingProduct.id, {
+          ...current, ...fields, prices: { [priceKey]: parseFloat(formData.price) },
+        });
+      } else {
+        await adminAPI.createProduct({
+          ...fields,
+          account_type: 'manual',
+          panel_type: 'manual',
+          panel_index: 0,
+          prices: { '1': parseFloat(formData.price) },
+          max_connections: 0,
+          bouquets: [],
+          xtream_package_id: null,
+          is_trial: false,
+        });
+      }
       onSuccess();
     } catch (err) {
       toast.error('Failed to create: ' + (err.response?.data?.detail?.[0]?.msg || err.response?.data?.detail || err.message));
@@ -1608,14 +1632,24 @@ function ManualProductModal({ onClose, onSuccess }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-lg w-full">
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Add Manual Product</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">{isEditing ? 'Edit Manual Product' : 'Add Manual Product'}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X className="w-6 h-6" />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-sm text-gray-600 dark:text-gray-400">
-            Manual products are not linked to any IPTV panel. Orders require manual fulfillment by the admin.
+            {formData.cockpit_module
+              ? 'When an order is paid, the customer\'s account is created (or renewed) in Cockpit automatically and they are emailed their login and the setup instructions below.'
+              : 'Manual products are not linked to any IPTV panel. Orders require manual fulfillment by the admin.'}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Create accounts automatically in Cockpit?</label>
+            <select value={formData.cockpit_module}
+              onChange={(e) => setFormData({ ...formData, cockpit_module: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+              {COCKPIT_MODULES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product Name *</label>
@@ -1655,7 +1689,7 @@ function ManualProductModal({ onClose, onSuccess }) {
             </button>
             <button type="submit" disabled={saving}
               className="flex-1 px-4 py-2.5 bg-gray-700 text-white rounded-lg hover:bg-gray-800 font-semibold disabled:opacity-50">
-              {saving ? 'Creating...' : 'Create Product'}
+              {saving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Product'}
             </button>
           </div>
         </form>

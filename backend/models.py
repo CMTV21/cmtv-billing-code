@@ -104,6 +104,7 @@ class ProductCreate(BaseModel):
     duration_unit: Optional[str] = 'months'  # Duration unit: months, days, years
     show_channels: Optional[bool] = True  # Show "View Channels" button on storefront
     ghostsurf_plan_id: Optional[str] = None  # GhostSurf VPN plan ID
+    cockpit_module: Optional[str] = None  # CMTV local change 2026-09-24: manual product auto-creates a Cockpit account: 'nuvio' (Stremio) / 'vpn' (CMTVpn)
 
 class Product(ProductCreate):
     id: Optional[str] = None
