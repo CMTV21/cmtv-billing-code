@@ -14,6 +14,8 @@ import random
 import string
 import secrets
 import hashlib
+import contextvars
+from html import escape as html_escape
 import asyncio
 import re
 import shutil
@@ -2453,7 +2455,9 @@ async def verify_helcim_payment(order_id: str, data: dict, background_tasks: Bac
     logger.info(f"Helcim payment verified for order {order_id}, txn={transaction_id}")
 
     # Provision services in background
-    background_tasks.add_task(provision_order_services, order_id, user_id)
+    # CMTV local change 2026-09-24: this passed (order_id, user_id), which fails before provisioning even starts
+    user = await users_collection.find_one({"_id": str_to_objectid(user_id)})
+    background_tasks.add_task(provision_order_services, order_id, order, user)
 
     return {"success": True, "message": "Payment verified, services being provisioned"}
 
@@ -4718,8 +4722,91 @@ async def customer_download_invoice_pdf(invoice_id: str, current_user: dict = De
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
+# CMTV local change 2026-09-24 (bug report 2.3): a paid order was always marked "provisioned", even when nothing
+# happened on the panel (product deleted, panel not configured, panel API error): the provision_*_service functions
+# log the error and return, and the caller couldn't tell. Now each item is checked by what actually changed
+# (a non-failed service saved for this order, or the renewed line's expiry moved), the order records
+# provisioning_status / provisioning_errors, and the admin is alerted.
+_provision_log = contextvars.ContextVar("provision_log", default=None)
+
+class _ProvisionErrorCollector(logging.Handler):
+    """Collects the ERROR messages logged while an order is being provisioned, so the alert can say why"""
+    def emit(self, record):
+        log = _provision_log.get()
+        if log is None or record.levelno < logging.ERROR:
+            return
+        try:
+            msg = record.getMessage().strip()
+        except Exception:
+            return
+        if msg and not msg.startswith("Traceback"):
+            log.append(msg.splitlines()[0][:300])
+
+logging.getLogger().addHandler(_ProvisionErrorCollector())
+
+async def _provision_snapshot(order_id: str, item: dict):
+    """What provisioning this item can change: working services saved for the order, and the renewed line's expiry"""
+    created = await services_collection.count_documents({"order_id": order_id, "status": {"$ne": "failed"}})
+    renewed = None
+    renewal_id = str(item.get("renewal_service_id") or "")
+    if ObjectId.is_valid(renewal_id):
+        svc = await services_collection.find_one({"_id": ObjectId(renewal_id)}, {"expiry_date": 1, "updated_at": 1})
+        renewed = ((svc or {}).get("expiry_date"), (svc or {}).get("updated_at"))
+    return created, renewed
+
+async def _alert_provisioning_failure(order_id: str, order: dict, user: dict, failures: list):
+    """Tell the admin that a paid order was not (fully) provisioned. Always sent: not tied to a notification switch."""
+    paid = float(order.get("total") or 0) + float(order.get("credits_used") or 0)
+    text = (f"⚠️ PAID ORDER NOT PROVISIONED\n\n"
+            f"Order {order_id} (${paid:.2f}, {order.get('payment_method') or 'payment'})\n"
+            f"Customer: {user.get('name', '')} <{user.get('email', '')}>\n\n"
+            + "\n".join(f"• {f}" for f in failures) +
+            "\n\nThe customer has paid, but the line was NOT created or extended on the panel. "
+            "Fix it on the panel, then let the customer know. The order shows 'Not provisioned' in Admin > Orders.")
+    settings = await get_settings()
+    tg = settings.get("notifications", {}).get("telegram", {})
+    if tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"):
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                await client.post(f"https://api.telegram.org/bot{tg['bot_token']}/sendMessage",
+                                  json={"chat_id": tg["chat_id"], "text": text[:4000]}, timeout=10.0)
+        except Exception as e:
+            logger.warning(f"Provisioning alert: Telegram failed: {e}")
+    em = settings.get("notifications", {}).get("email", {})
+    if em.get("enabled") and em.get("recipient_email"):
+        try:
+            email_service = await get_configured_email_service()
+            if email_service and email_service.enabled:
+                await email_service.send_email(to_email=em["recipient_email"], subject="Paid order NOT provisioned",
+                                               html_content=f"<pre>{html_escape(text)}</pre>", text_content=text,
+                                               email_type="transactional")
+        except Exception as e:
+            logger.warning(f"Provisioning alert: email failed: {e}")
+
 async def provision_order_services(order_id: str, order: dict, user: dict):
     """Provision services (XtreamUI or XuiOne) for paid order"""
+    acquired = False
+    failures = []   # CMTV: "<item>: <why>" for each item that wasn't provisioned
+    units = 0
+    errors = []
+    log_token = _provision_log.set(errors)
+
+    async def run_item(label: str, item: dict, call):
+        """Run one provision_*_service call and check that it actually created or extended something"""
+        nonlocal units
+        units += 1
+        mark = len(errors)
+        before = await _provision_snapshot(order_id, item)
+        try:
+            await call
+        except Exception as e:
+            errors.append(f"{type(e).__name__}: {e}"[:300])
+        after = await _provision_snapshot(order_id, item)
+        if after == before:
+            why = "; ".join(dict.fromkeys(errors[mark:])) or "the panel made no change (no line created or extended)"
+            failures.append(f"{label}: {why}")
+
     try:
         # Atomic provisioning lock — prevents duplicate provisioning from concurrent calls
         lock_result = await orders_collection.update_one(
@@ -4729,7 +4816,8 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
         if lock_result.modified_count == 0:
             logger.info(f"Order {order_id} already being provisioned, skipping")
             return
-        
+        acquired = True
+
         logger.info(f"Provisioning order {order_id} — lock acquired")
         
         settings = await get_settings()
@@ -4760,8 +4848,10 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
             
             if not product:
                 logger.error(f"Product {item['product_id']} not found")
+                units += 1
+                failures.append(f"{item.get('product_name', item['product_id'])}: the product no longer exists (deleted?), so nothing was provisioned")
                 continue
-            
+
             # Bundle product - provision each included product separately
             if product.get("is_bundle") and product.get("bundle_product_ids"):
                 logger.info(f"Provisioning bundle: {product.get('name')} ({len(product['bundle_product_ids'])} products)")
@@ -4769,6 +4859,8 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                     bp = await products_collection.find_one({"_id": str_to_objectid(bp_id)})
                     if not bp:
                         logger.error(f"Bundle sub-product {bp_id} not found, skipping")
+                        units += 1
+                        failures.append(f"{item.get('product_name', '')} (bundle part {bp_id}): the product no longer exists, so it was skipped")
                         continue
                     bp_item = {**item, "product_id": bp_id, "product_name": f"{item['product_name']} — {bp.get('name', '')}"}
                     bp_panel_type = safe_panel_type(bp.get("panel_type"))
@@ -4777,17 +4869,17 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                         svc = {"user_id": order["user_id"], "order_id": order_id, "product_id": bp_id, "product_name": bp_item["product_name"], "account_type": "manual", "term_months": item.get("term_months", 1), "status": "active", "panel_type": "manual", "setup_instructions": bp.get("setup_instructions", ""), "start_date": datetime.utcnow(), "created_at": datetime.utcnow()}
                         await services_collection.insert_one(svc)
                     elif bp_panel_type == "xuione":
-                        await provision_xuione_service(order_id, order, user, bp_item, bp, settings, email_service)
+                        await run_item(bp_item["product_name"], bp_item, provision_xuione_service(order_id, order, user, bp_item, bp, settings, email_service))
                     elif bp_panel_type == "onestream":
-                        await provision_onestream_service(order_id, order, user, bp_item, bp, settings, email_service)
+                        await run_item(bp_item["product_name"], bp_item, provision_onestream_service(order_id, order, user, bp_item, bp, settings, email_service))
                     elif bp_panel_type == "nxtdash":
-                        await provision_nxtdash_service(order_id, order, user, bp_item, bp, settings, email_service)
+                        await run_item(bp_item["product_name"], bp_item, provision_nxtdash_service(order_id, order, user, bp_item, bp, settings, email_service))
                     elif bp_panel_type == "ghostsurf":
-                        await provision_ghostsurf_service(order_id, order, user, bp_item, bp, settings, email_service)
+                        await run_item(bp_item["product_name"], bp_item, provision_ghostsurf_service(order_id, order, user, bp_item, bp, settings, email_service))
                     elif bp_panel_type == "aether":
-                        await provision_aether_service(order_id, order, user, bp_item, bp, settings, email_service)
+                        await run_item(bp_item["product_name"], bp_item, provision_aether_service(order_id, order, user, bp_item, bp, settings, email_service))
                     else:
-                        await provision_xtream_service(order_id, order, user, bp_item, bp, settings, email_service)
+                        await run_item(bp_item["product_name"], bp_item, provision_xtream_service(order_id, order, user, bp_item, bp, settings, email_service))
                 continue
             
             # Get panel type and index from product
@@ -4831,28 +4923,43 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                     except Exception:
                         pass
             elif panel_type == "xuione":
-                await provision_xuione_service(order_id, order, user, item, product, settings, email_service)
+                await run_item(item["product_name"], item, provision_xuione_service(order_id, order, user, item, product, settings, email_service))
             elif panel_type == "onestream":
-                await provision_onestream_service(order_id, order, user, item, product, settings, email_service)
+                await run_item(item["product_name"], item, provision_onestream_service(order_id, order, user, item, product, settings, email_service))
             elif panel_type == "nxtdash":
-                await provision_nxtdash_service(order_id, order, user, item, product, settings, email_service)
+                await run_item(item["product_name"], item, provision_nxtdash_service(order_id, order, user, item, product, settings, email_service))
             elif panel_type == "ghostsurf":
-                await provision_ghostsurf_service(order_id, order, user, item, product, settings, email_service)
+                await run_item(item["product_name"], item, provision_ghostsurf_service(order_id, order, user, item, product, settings, email_service))
             elif panel_type == "aether":
-                await provision_aether_service(order_id, order, user, item, product, settings, email_service)
+                await run_item(item["product_name"], item, provision_aether_service(order_id, order, user, item, product, settings, email_service))
             else:
-                await provision_xtream_service(order_id, order, user, item, product, settings, email_service)
-                
+                await run_item(item["product_name"], item, provision_xtream_service(order_id, order, user, item, product, settings, email_service))
+
     except Exception as e:
         logger.error(f"Provisioning error: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
+        failures.append(f"provisioning stopped with an error: {e}"[:300])
     finally:
+        _provision_log.reset(log_token)
         # Mark provisioning complete (release lock but keep flag for idempotency)
+        update = {"provisioned": True, "provisioned_at": datetime.utcnow()}
+        if acquired:
+            if not failures:
+                update["provisioning_status"] = "ok"
+            else:
+                update["provisioning_status"] = "failed" if len(failures) >= max(units, 1) else "partial"
+            update["provisioning_errors"] = failures
         await orders_collection.update_one(
             {"_id": str_to_objectid(order_id)},
-            {"$set": {"provisioned": True, "provisioned_at": datetime.utcnow()}}
+            {"$set": update}
         )
+        if acquired and failures:
+            logger.error(f"PROVISIONING FAILED for order {order_id}: {failures}")
+            try:
+                await _alert_provisioning_failure(order_id, order, user, failures)
+            except Exception as e:
+                logger.error(f"Provisioning alert failed for order {order_id}: {e}")
 
 async def provision_xtream_service(order_id: str, order: dict, user: dict, item: dict, product: dict, settings: dict, email_service):
     """Provision XtreamUI service"""

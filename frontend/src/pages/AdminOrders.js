@@ -424,6 +424,15 @@ export default function AdminOrders() {
                           }`}>
                             {order.status}
                           </span>
+                          {/* CMTV local change 2026-09-24: paid but the panel line wasn't created/extended (bug report 2.3) */}
+                          {order.status === 'paid' && ['failed', 'partial'].includes(order.provisioning_status) && (
+                            <span
+                              title={(order.provisioning_errors || []).join('\n')}
+                              className="ml-2 px-2 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 cursor-help"
+                            >
+                              ⚠ {order.provisioning_status === 'partial' ? 'Partly provisioned' : 'Not provisioned'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
                           {formatDate(order.created_at)}
