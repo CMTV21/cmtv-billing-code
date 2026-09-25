@@ -10,6 +10,7 @@ import { Toaster } from 'sonner';
 
 // Pages
 import HomePage from './pages/HomePage';
+import CmtvHomePage from './pages/cmtv/CmtvHomePage'; // CMTV local change 2026-09-25: CMTV storefront on "/"
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import LinkEmailPage from './pages/LinkEmailPage';
@@ -197,7 +198,8 @@ function App() {
             <div className="min-h-screen bg-gray-50">
           <Routes>
             {/* Public routes */}
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<CmtvHomePage />} />
+            <Route path="/classic" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
