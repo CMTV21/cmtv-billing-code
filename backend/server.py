@@ -96,6 +96,12 @@ cmtv_autorenew.D["get_current_user"] = get_current_user
 cmtv_autorenew.init_routes()
 app.include_router(cmtv_autorenew.router)
 
+# CMTV local change 2026-09-25: Admin > Finances ledger (cmtv_finance.py)
+import cmtv_finance
+cmtv_finance.D["get_current_admin_user"] = get_current_admin_user
+cmtv_finance.init_routes()
+app.include_router(cmtv_finance.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -640,6 +646,11 @@ async def startup_event():
                         invoices=invoices_collection, settings_collection=settings_collection,
                         provision_order_services=provision_order_services)
     await cmtv_autorenew.ensure_indexes()
+
+    # CMTV local change 2026-09-25: finances ledger (also starts the 10-minute billing-orders sync)
+    cmtv_finance.init(db=db, get_settings=get_settings, orders=orders_collection, services=services_collection,
+                      users=users_collection, products=products_collection)
+    await cmtv_finance.startup()
     
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()

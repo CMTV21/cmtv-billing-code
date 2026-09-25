@@ -1,0 +1,65 @@
+/* CMTV local addition 2026-09-25: Admin > Finances. Everything is scoped under .cmtv-fin */
+.cmtv-fin {
+  --navy: #0f1728; --surface: #141d33; --surface-2: #1a2542; --line: #27345a; --row: #202b4a;
+  --text: #e9edf8; --muted: #9aa6c6; --faint: #6b7799; --cyan: #22e6f2;
+  --profit: #1596b3; --cost: #8b5cf6; --good: #4ade80; --bad: #f87171; --warn: #fbbf24;
+  --display: "Exo 2", "Arial Narrow", system-ui, sans-serif; --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  min-height: 100vh; background: var(--navy); color: var(--text); font: 14px/1.55 var(--body); padding: 20px 16px 48px;
+}
+.cmtv-fin .wrap { max-width: 1160px; margin: 0 auto; }
+.cmtv-fin a { color: inherit; }
+.cmtv-fin .top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
+.cmtv-fin .top h1 { font: italic 800 26px/1.1 var(--display); margin: 0 auto 0 0; display: flex; align-items: center; gap: 12px; }
+.cmtv-fin .top h1 small { display: block; font: 500 13px var(--body); color: var(--muted); font-style: normal; margin-top: 4px; }
+.cmtv-fin .btn { font: 600 13px var(--body); border-radius: 999px; padding: 8px 16px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.cmtv-fin .btn:hover { border-color: #3a4a7a; }
+.cmtv-fin .btn:disabled { opacity: .5; cursor: default; }
+.cmtv-fin .btn.primary { color: #081022; background: linear-gradient(135deg, #22e6f2, #2e8bff 45%, #8b5cf6); border-color: transparent; }
+.cmtv-fin .btn.small { padding: 4px 10px; font-size: 12px; }
+.cmtv-fin .btn.danger { color: var(--bad); border-color: rgba(248,113,113,.4); }
+.cmtv-fin button:focus-visible, .cmtv-fin input:focus-visible, .cmtv-fin select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.cmtv-fin .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; }
+.cmtv-fin .seg button { font: 600 12px var(--body); color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.cmtv-fin .seg button[aria-pressed="true"] { background: var(--text); color: #081022; }
+.cmtv-fin .monthnav { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cmtv-fin .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.cmtv-fin .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.cmtv-fin .tile .lab { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.cmtv-fin .tile .val { font: 700 28px/1.2 var(--display); font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
+.cmtv-fin .tile .sub { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cmtv-fin .up { color: var(--good); } .cmtv-fin .down { color: var(--bad); }
+.cmtv-fin .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; }
+.cmtv-fin .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+.cmtv-fin .panel h2 { font: 700 17px var(--display); margin: 0; }
+.cmtv-fin .hint { color: var(--muted); font-size: 12.5px; margin: 2px 0 12px; }
+.cmtv-fin .grid2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; }
+@media (max-width: 880px) { .cmtv-fin .grid2 { grid-template-columns: 1fr; } }
+.cmtv-fin .legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.cmtv-fin .chart { position: relative; }
+.cmtv-fin .chart svg { display: block; width: 100%; height: auto; }
+.cmtv-fin .tip { position: absolute; pointer-events: none; background: #0a1020; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; min-width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,.4); font-variant-numeric: tabular-nums; z-index: 2; }
+.cmtv-fin .tip .r { display: flex; justify-content: space-between; gap: 14px; }
+.cmtv-fin table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cmtv-fin th { font: 600 11px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); text-align: left; padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.cmtv-fin td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--row); vertical-align: middle; }
+.cmtv-fin tr:last-child td { border-bottom: 0; }
+.cmtv-fin .n { text-align: right; }
+.cmtv-fin .bar { height: 8px; border-radius: 0 4px 4px 0; background: var(--profit); display: block; }
+.cmtv-fin .barcell { width: 32%; }
+.cmtv-fin .pill { font: 600 11px var(--body); border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.cmtv-fin .pill.bad { color: var(--bad); border-color: rgba(248,113,113,.45); }
+.cmtv-fin .pill.bill { color: var(--cyan); border-color: rgba(34,230,242,.4); }
+.cmtv-fin .pill.warn { color: var(--warn); border-color: rgba(251,191,36,.45); }
+.cmtv-fin .scroll { overflow-x: auto; }
+.cmtv-fin .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.cmtv-fin .form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.cmtv-fin .form input, .cmtv-fin .form select, .cmtv-fin .filters input, .cmtv-fin .filters select { font: 500 13.5px var(--body); color: var(--text); background: #0f1728; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color-scheme: dark; }
+.cmtv-fin .calc { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 18px; font-size: 13px; color: var(--muted); padding-top: 8px; border-top: 1px dashed var(--line); font-variant-numeric: tabular-nums; }
+.cmtv-fin .calc b { color: var(--text); }
+.cmtv-fin .calc .btn { margin-left: auto; }
+.cmtv-fin .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.cmtv-fin .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.cmtv-fin .err { color: var(--bad); font-size: 13px; }
+.cmtv-fin .spinner { width: 36px; height: 36px; margin: 60px auto; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--cyan); animation: cmtvfin-spin 1s linear infinite; }
+@keyframes cmtvfin-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cmtv-fin * { animation: none !important; } }
