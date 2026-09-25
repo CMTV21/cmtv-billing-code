@@ -13,6 +13,7 @@ import HomePage from './pages/HomePage';
 import CmtvHomePage from './pages/cmtv/CmtvHomePage'; // CMTV local change 2026-09-25: CMTV storefront on "/"
 import FinancesPage from './pages/cmtv/FinancesPage'; // CMTV local change 2026-09-25: Admin > Finances
 import AdminReferralsPage from './pages/cmtv/AdminReferralsPage'; // CMTV local change 2026-09-25: Admin > Referrals
+import AdminAudiobooksPage from './pages/cmtv/AdminAudiobooksPage'; // CMTV local change 2026-09-25: Admin > Audiobooks
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import LinkEmailPage from './pages/LinkEmailPage';
@@ -436,6 +437,10 @@ function App() {
             <Route
               path="/admin/referrals"
               element={<ProtectedRoute><AdminRoute><AdminReferralsPage /></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/audiobooks"
+              element={<ProtectedRoute><AdminRoute><AdminAudiobooksPage /></AdminRoute></ProtectedRoute>}
             />
           </Routes>
         </div>

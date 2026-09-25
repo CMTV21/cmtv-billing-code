@@ -52,6 +52,7 @@ export default function AdminDashboard() {
     { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/admin' },
     { id: 'analytics', label: 'Analytics', icon: BarChart3, path: '/admin/analytics' },
     { id: 'finances', label: 'Finances', icon: DollarSign, path: '/admin/finances' }, // CMTV local change 2026-09-25
+    { id: 'audiobooks', label: 'Audiobooks', icon: BookOpen, path: '/admin/audiobooks' }, // CMTV local change 2026-09-25
     { id: 'launcher', label: 'Launcher', icon: Smartphone, path: '/admin/launcher' },
     { 
       id: 'customers', 

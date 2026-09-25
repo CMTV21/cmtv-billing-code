@@ -106,6 +106,12 @@ app.include_router(cmtv_finance.router)
 import cmtv_payments
 from fastapi import Body
 
+# CMTV local change 2026-09-25: Admin > Audiobooks (cmtv_audiobooks.py, through abadmin on the Asus server)
+import cmtv_audiobooks
+cmtv_audiobooks.D["get_current_admin_user"] = get_current_admin_user
+cmtv_audiobooks.init_routes()
+app.include_router(cmtv_audiobooks.router)
+
 # CMTV local change 2026-09-25: referral tiers, past referrals and admin credit (cmtv_referral.py)
 import cmtv_referral
 cmtv_referral.D["get_current_user"] = get_current_user
@@ -668,6 +674,10 @@ async def startup_event():
                        referrals=referrals_collection, credit_transactions=db.credit_transactions,
                        credit_service=credit_service)
     await cmtv_referral.startup()
+
+    # CMTV local change 2026-09-25: Admin > Audiobooks
+    cmtv_audiobooks.init(services=services_collection, users=users_collection, products=products_collection,
+                         get_email_service=get_configured_email_service)
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
