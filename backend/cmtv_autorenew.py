@@ -375,8 +375,16 @@ def init_routes():
     async def start_for_service(data: dict, current_user: dict = Depends(get_user)):
         """Begin auto-renew for an existing service; returns the PayPal approval link"""
         svc = await _own_service(data.get("service_id"), current_user["sub"])
-        if (svc.get("auto_renew") or {}).get("status") in ("ACTIVE", "APPROVAL_PENDING", "APPROVED"):
+        prev = svc.get("auto_renew") or {}
+        if prev.get("status") in ("ACTIVE", "APPROVED"):
             raise HTTPException(status_code=400, detail="Auto-renew is already on for this service")
+        if prev.get("status") == "APPROVAL_PENDING" and prev.get("subscription_id"):
+            # A previous attempt wasn't finished in PayPal. If it was approved after all, keep it; otherwise start fresh.
+            s_status, old = await pp_request("GET", f"/v1/billing/subscriptions/{prev['subscription_id']}")
+            if s_status == 200 and old.get("status") in ("ACTIVE", "APPROVED"):
+                await _set_service_autorenew(str(svc["_id"]), prev["subscription_id"], old["status"],
+                                             await D["plans"].find_one({"plan_id": old.get("plan_id")}))
+                raise HTTPException(status_code=400, detail="Auto-renew is already on for this service")
         if svc.get("status") not in ("active", "expired", "suspended"):
             raise HTTPException(status_code=400, detail="This service can't auto-renew")
         product = await D["products"].find_one({"_id": _oid(svc.get("product_id"))})
