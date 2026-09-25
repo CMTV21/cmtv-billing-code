@@ -18,6 +18,8 @@ export const BRAND = {
     'CMTV Audiobooks': 'Any device, requests welcome',
     'Stremio': 'Works with the Nuvio app',
   },
+  // Add-ons offered at checkout ("Complete your setup", components/cmtv/CheckoutAddons.js), bundle first
+  addons: ['CMTV+', 'Stremio', 'CMTVpn', 'CMTV Audiobooks'],
   // Bundles: the card shows the saving against buying these products separately
   bundles: {
     'CMTV+': ['Stremio', 'CMTVpn', 'CMTV Audiobooks'],
