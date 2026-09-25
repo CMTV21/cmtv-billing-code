@@ -1,3 +1,4 @@
+import FormattedText from '../components/cmtv/FormattedText'; // CMTV local change 2026-09-24
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -33,7 +34,7 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">{/* CMTV local change 2026-09-24: dark background (headings were white on light grey) */}
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -114,7 +115,7 @@ function ProductCard({ product, onAddToCart }) {
     <div className={`bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-hidden ${isReseller ? 'border-2 border-purple-200 dark:border-purple-700' : ''}`}>
       <div className={`${isReseller ? 'bg-gradient-to-r from-purple-600 to-purple-700' : 'bg-gradient-to-r from-blue-600 to-blue-700'} p-6 text-white`}>
         <h3 className="text-2xl font-bold mb-2">{product.name}</h3>
-        <p className={isReseller ? 'text-purple-100' : 'text-blue-100'}>{product.description}</p>
+        <FormattedText text={product.description} className={isReseller ? 'text-purple-100' : 'text-blue-100'} />
       </div>
       <div className="p-6">
         {product.account_type === 'subscriber' && (

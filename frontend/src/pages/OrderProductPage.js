@@ -1,3 +1,4 @@
+import FormattedText from '../components/cmtv/FormattedText'; // CMTV local change 2026-09-24
 import React, { useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -86,7 +87,7 @@ export default function OrderProductPage() {
   const isReseller = product.account_type === 'reseller';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">{/* CMTV local change 2026-09-24: dark background */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
@@ -115,7 +116,7 @@ export default function OrderProductPage() {
               </span>
             </div>
             <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
-            <p className={`${isReseller ? 'text-purple-100' : 'text-blue-100'} text-lg`}>{product.description}</p>
+            <FormattedText text={product.description} className={`${isReseller ? 'text-purple-100' : 'text-blue-100'} text-lg`} />
           </div>
 
           {/* Details */}

@@ -8,6 +8,8 @@ import { useCurrencyStore } from '../store/currency';
 import { ShoppingCart, LogIn, UserPlus, Server, Users, Info, X, Filter, Grid, Package } from 'lucide-react';
 import { getPanelGradient, getPanelColor } from '../utils/panelColors';
 import CurrencySwitcher from '../components/CurrencySwitcher';
+import ServiceComparison from '../components/cmtv/ServiceComparison'; // CMTV local change 2026-09-24
+import FormattedText from '../components/cmtv/FormattedText'; // CMTV local change 2026-09-24
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
@@ -412,8 +414,12 @@ export default function HomePage() {
             <div className="lg:col-span-3">
               {orderedProducts.length > 0 ? (
                 <div className="space-y-10">
-                  {orderedProducts.map((group) => (
+                  {orderedProducts.map((group, groupIndex) => (
                     <div key={group.id || 'ungrouped'}>
+                      {/* CMTV local change 2026-09-24: CCTV vs Imperium comparison, once, above the first of those groups */}
+                      {groupIndex === orderedProducts.findIndex(g => /^(cctv|imperium)$/i.test((g.name || '').trim())) && (
+                        <div className="mb-8"><ServiceComparison /></div>
+                      )}
                       {group.name && (
                         <div className="flex items-center gap-4 mb-4">
                           <div className="h-px flex-1 bg-gray-300 dark:bg-gray-600"></div>
@@ -576,6 +582,7 @@ function GroupedProductCard({ products, connections }) {
 }
 
 function GroupCard({ group, allProducts }) {
+  const [showDetails, setShowDetails] = React.useState(false); // CMTV local change 2026-09-24: "What's included"
   const { user } = useAuthStore();
   const { addItem } = useCartStore();
   const { branding } = useBrandingStore();
@@ -658,12 +665,28 @@ function GroupCard({ group, allProducts }) {
                 </div>
               );
             })}
-            {/* View Channels */}
-            {firstProduct?.account_type === 'subscriber' && firstProduct?.show_channels !== false && (
-              <button onClick={handleShowChannels}
-                className="w-full flex items-center justify-center gap-2 px-5 py-2.5 text-xs text-gray-500 hover:text-blue-600 transition">
-                <Info className="w-3.5 h-3.5" /> View Channels
-              </button>
+            {/* CMTV local change 2026-09-24: the plan description, which customers otherwise never see before checkout */}
+            {showDetails && firstProduct?.description && (
+              <div className="px-5 py-4 text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60">
+                <FormattedText text={firstProduct.description} />
+              </div>
+            )}
+            {(firstProduct?.description || (firstProduct?.account_type === 'subscriber' && firstProduct?.show_channels !== false)) && (
+              <div className="flex divide-x divide-gray-100 dark:divide-gray-800">
+                {firstProduct?.description && (
+                  <button onClick={() => setShowDetails(v => !v)} aria-expanded={showDetails}
+                    className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-xs text-gray-500 hover:text-blue-600 transition">
+                    <Package className="w-3.5 h-3.5" /> {showDetails ? 'Hide details' : "What's included"}
+                  </button>
+                )}
+                {/* View Channels */}
+                {firstProduct?.account_type === 'subscriber' && firstProduct?.show_channels !== false && (
+                  <button onClick={handleShowChannels}
+                    className="flex-1 flex items-center justify-center gap-2 px-5 py-2.5 text-xs text-gray-500 hover:text-blue-600 transition">
+                    <Info className="w-3.5 h-3.5" /> View Channels
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
