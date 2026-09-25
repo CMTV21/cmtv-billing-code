@@ -17,14 +17,58 @@ from dateutil.relativedelta import relativedelta
 logger = logging.getLogger(__name__)
 
 HELPER = "/opt/backend/cockpit_helper.py"
-MODULES = {"nuvio": "Stremio", "vpn": "CMTVpn"}
+MODULES = {"nuvio": "Stremio", "vpn": "CMTVpn", "audiobooks": "Audiobooks"}
+# CMTV local change 2026-09-25: "audiobooks" isn't Cockpit. It goes to abadmin on the Asus server
+# (https://abadmin.cmtv.info/api/billing/..., token in .env as ABADMIN_TOKEN), which creates the Audiobookshelf and
+# ReadMeABook users and switches them off after their expiry date. Same request/answer shapes as the Cockpit helper.
 # No look-alike characters (0/O, 1/l/I), since customers type these on TV remotes
 _USER_CHARS = "abcdefghjkmnpqrstuvwxyz23456789"
 _PASS_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
 
 
+async def _abadmin(request: dict) -> dict:
+    """The Cockpit helper's actions (get / create / extend) for audiobooks, through abadmin's billing API"""
+    import os
+    import httpx
+    base, token = os.environ.get("ABADMIN_URL", "").rstrip("/"), os.environ.get("ABADMIN_TOKEN", "")
+    if not base or not token:
+        return {"success": False, "error": "abadmin isn't set up in billing (ABADMIN_URL / ABADMIN_TOKEN in .env)"}
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": "cmtv-billing"}
+    user, action = request.get("username", ""), request.get("action")
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            if action == "get":
+                r = await c.get(f"{base}/api/billing/users/{user}", headers=headers)
+            elif action == "create":
+                r = await c.post(f"{base}/api/billing/users", headers=headers, json={
+                    "username": user, "password": request["password"], "expiry_date": request["expires"],
+                    "notes": request.get("notes") or "Created by billing"})
+            elif action == "extend":
+                r = await c.post(f"{base}/api/billing/users/{user}/extend", headers=headers, json={
+                    "expiry_date": request["expires"], "password": request.get("password") or ""})
+            else:
+                return {"success": False, "error": f"unknown action {action!r}"}
+    except httpx.HTTPError as e:
+        return {"success": False, "error": f"couldn't reach abadmin: {type(e).__name__}"}
+    try:
+        body = r.json()
+    except ValueError:
+        body = {}
+    if r.status_code == 409:
+        return {"success": False, "error": "already exists"}
+    if r.status_code >= 400:
+        return {"success": False, "error": f"abadmin {r.status_code}: {body.get('detail') or r.text[:200]}"}
+    if body.get("warning"):
+        logger.warning(f"abadmin {action} {user}: {body['warning']}")
+    if action == "get":
+        return {"success": True, "exists": bool(body.get("exists")), "expires": body.get("expiry_date") or ""}
+    return {"success": True, "expires": body.get("expiry_date") or request.get("expires"), "warning": body.get("warning", "")}
+
+
 async def _call(request: dict) -> dict:
     """Run cockpit_helper.py as www-data with one JSON request; always returns a dict with 'success'"""
+    if request.get("module") == "audiobooks":
+        return await _abadmin(request)
     try:
         proc = await asyncio.create_subprocess_exec(
             "runuser", "-u", "www-data", "--", "/usr/bin/python3", HELPER, stdin=PIPE, stdout=PIPE, stderr=PIPE)
@@ -70,8 +114,9 @@ async def create_account(module: str, months: int = 1, days: int = 0) -> dict:
     return {"success": False, "error": "couldn't find a free username after 5 tries"}
 
 
-async def extend_account(module: str, username: str, months: int = 1, days: int = 0) -> dict:
-    """Add the term to an existing Cockpit account, counted from its current expiry (or today, if already expired)"""
+async def extend_account(module: str, username: str, months: int = 1, days: int = 0, password: str = "") -> dict:
+    """Add the term to an existing Cockpit account, counted from its current expiry (or today, if already expired).
+    password: only used for audiobooks, to re-create a lapsed requests-app login (2026-09-25)."""
     if module not in MODULES:
         return {"success": False, "error": f"unknown Cockpit module {module!r}"}
     current = await _call({"module": module, "action": "get", "username": username})
@@ -85,4 +130,4 @@ async def extend_account(module: str, username: str, months: int = 1, days: int 
     except ValueError:
         base = today
     expires = _add_term(base, months, days).strftime("%Y-%m-%d")
-    return await _call({"module": module, "action": "extend", "username": username, "expires": expires})
+    return await _call({"module": module, "action": "extend", "username": username, "expires": expires, "password": password})

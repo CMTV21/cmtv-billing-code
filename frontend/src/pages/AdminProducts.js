@@ -1574,6 +1574,7 @@ const COCKPIT_MODULES = [
   { value: '', label: 'No, I fulfil orders by hand' },
   { value: 'nuvio', label: 'Yes: Stremio (Cockpit Nuvio)' },
   { value: 'vpn', label: 'Yes: CMTVpn (Cockpit IPVanish)' },
+  { value: 'audiobooks', label: 'Yes: Audiobooks (abadmin on the Asus server)' }, // CMTV local change 2026-09-25
 ];
 
 function ManualProductModal({ onClose, onSuccess, editingProduct }) {
@@ -1640,7 +1641,7 @@ function ManualProductModal({ onClose, onSuccess, editingProduct }) {
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-sm text-gray-600 dark:text-gray-400">
             {formData.cockpit_module
-              ? 'When an order is paid, the customer\'s account is created (or renewed) in Cockpit automatically and they are emailed their login and the setup instructions below.'
+              ? `When an order is paid, the customer's account is created (or renewed) in ${formData.cockpit_module === 'audiobooks' ? 'Audiobookshelf and the requests app (through abadmin)' : 'Cockpit'} automatically and they are emailed their login and the setup instructions below.`
               : 'Manual products are not linked to any IPTV panel. Orders require manual fulfillment by the admin.'}
           </div>
           <div>

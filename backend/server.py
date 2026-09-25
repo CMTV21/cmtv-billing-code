@@ -5078,7 +5078,8 @@ async def provision_cockpit_service(order_id: str, order: dict, user: dict, item
             logger.error(f"Cockpit {label} renewal: this service isn't linked to a Cockpit {label} account "
                          f"(it was set up by hand), so extend it in Cockpit by hand")
             return
-        result = await cockpit_service.extend_account(module, existing["username"], months=months, days=days)
+        result = await cockpit_service.extend_account(module, existing["username"], months=months, days=days,
+                                                      password=existing.get("password", ""))  # CMTV 2026-09-25: audiobooks
         if not result.get("success"):
             logger.error(f"Cockpit {label} renew failed for {existing['username']}: {result.get('error')}")
             return
@@ -5111,7 +5112,7 @@ async def provision_cockpit_service(order_id: str, order: dict, user: dict, item
         "product_name": product.get("name", label),
         "account_type": "subscriber",       # shows login, expiry and the Renew button on My Services
         "panel_type": "manual",
-        "panel_name": f"Cockpit ({label})",
+        "panel_name": "abadmin (Audiobooks)" if module == "audiobooks" else f"Cockpit ({label})",  # CMTV 2026-09-25
         "cockpit_module": module,
         "cockpit_account_id": result.get("id"),
         "username": result["username"],
