@@ -592,7 +592,8 @@ class EmailService:
         user_email: str,
         user_name: str,
         order_id: str,
-        total: float
+        total: float,
+        payment_method: str = "Manual"  # CMTV local change 2026-09-25: the real method (was always "Manual")
     ):
         """Send payment received email using template"""
         if self.db is None:
@@ -642,7 +643,7 @@ class EmailService:
         content = content.replace("{{customer_name}}", user_name)
         content = content.replace("{{amount}}", f"{total:.2f}")
         content = content.replace("{{order_id}}", order_id)
-        content = content.replace("{{payment_method}}", "Manual")
+        content = content.replace("{{payment_method}}", payment_method or "Manual")
         content = content.replace("{{payment_date}}", datetime.utcnow().strftime("%Y-%m-%d %H:%M"))
         
         wrapped_content = self._wrap_email(content, template["name"], user_email, "transactional")

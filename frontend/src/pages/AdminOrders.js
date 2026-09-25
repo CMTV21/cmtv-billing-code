@@ -2,7 +2,8 @@ import { formatDate } from "../utils/timezone";
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminAPI } from '../api/api';
+import api, { adminAPI } from '../api/api';
+import { PaymentBadge, PAYMENT_LABELS, ADMIN_PAID_BY } from '../components/cmtv/paymentMethod'; // CMTV local change 2026-09-25
 import axios from 'axios';
 import { ArrowLeft, Check, Search, Filter, ChevronLeft, ChevronRight, X, CheckSquare, Square, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -82,8 +83,12 @@ export default function AdminOrders() {
     return order?.status === 'pending';
   });
 
+  // CMTV local change 2026-09-25: "Paid by" choice per pending order (defaults to what the customer picked)
+  const [paidBy, setPaidBy] = useState({});
   const markPaidMutation = useMutation({
-    mutationFn: (orderId) => adminAPI.markOrderPaid(orderId),
+    mutationFn: (orderId) => (paidBy[orderId]
+      ? api.post(`/api/admin/orders/${orderId}/mark-paid`, { payment_method: paidBy[orderId] })
+      : adminAPI.markOrderPaid(orderId)),
     onSuccess: () => {
       queryClient.invalidateQueries(['admin-orders']);
     },
@@ -109,7 +114,9 @@ export default function AdminOrders() {
   });
 
   const handleMarkPaid = (orderId) => {
-    if (window.confirm('Mark this order as paid and provision services?')) {
+    const o = orders?.find((x) => x.id === orderId);
+    const by = PAYMENT_LABELS[paidBy[orderId] || o?.payment_method] || 'Manual';
+    if (window.confirm(`Mark this order as paid (${by}) and provision services?`)) {
       markPaidMutation.mutate(orderId);
     }
   };
@@ -364,6 +371,7 @@ export default function AdminOrders() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Customer</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Items</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Total</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Payment</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
@@ -372,7 +380,7 @@ export default function AdminOrders() {
                 <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
                   {paginatedOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan="9" className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                         No orders found matching your filters
                       </td>
                     </tr>
@@ -414,6 +422,24 @@ export default function AdminOrders() {
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
                           ${order.total?.toFixed(2)}
+                        </td>
+                        {/* CMTV local change 2026-09-25: how it was (or will be) paid; pending orders can be corrected */}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {order.status === 'pending' ? (
+                            <select
+                              value={paidBy[order.id] || order.payment_method || 'manual'}
+                              onChange={(e) => setPaidBy({ ...paidBy, [order.id]: e.target.value })}
+                              title="How the customer paid (used when you click Paid)"
+                              className="text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-2 py-1"
+                              data-testid={`paid-by-${order.id}`}
+                            >
+                              {[...new Set([order.payment_method || 'manual', ...ADMIN_PAID_BY])].map((m) => (
+                                <option key={m} value={m}>{PAYMENT_LABELS[m] || m}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <PaymentBadge order={order} />
+                          )}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${

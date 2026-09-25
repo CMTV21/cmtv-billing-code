@@ -133,9 +133,12 @@ def _method_for(order):
     m = str(order.get("payment_method") or "").lower()
     if m.startswith("paypal"):
         return "PayPal"
-    if m in ("manual", "emt", "e-transfer", "etransfer", "interac"):
+    if m in ("emt", "e-transfer", "etransfer", "interac"):
         return "e-Transfer"
-    return "Other"
+    if m == "manual" and not order.get("payment_method_recorded"):
+        return "e-Transfer"   # before 2026-09-25 every non-PayPal order said "manual"; nearly all were e-Transfers
+    import cmtv_payments   # the recorded method's name (GhostPay, Manual, Cash, ...) - 2026-09-25
+    return cmtv_payments.order_label(order)
 
 
 async def sync_billing_orders():

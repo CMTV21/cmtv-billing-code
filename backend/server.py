@@ -102,6 +102,10 @@ cmtv_finance.D["get_current_admin_user"] = get_current_admin_user
 cmtv_finance.init_routes()
 app.include_router(cmtv_finance.router)
 
+# CMTV local change 2026-09-25: record how each order is paid (cmtv_payments.py)
+import cmtv_payments
+from fastapi import Body
+
 # CMTV local change 2026-09-25: referral tiers, past referrals and admin credit (cmtv_referral.py)
 import cmtv_referral
 cmtv_referral.D["get_current_user"] = get_current_user
@@ -3453,7 +3457,13 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
     
     # Final total
     final_total = max(0, total_after_discount - credits_used)
-    
+
+    # CMTV local change 2026-09-25: record the payment option the customer chose (was always "manual")
+    chosen_method = str(getattr(order_data, "payment_method", None) or "").lower()
+    payment_method = chosen_method if chosen_method in cmtv_payments.CHECKOUT else "manual"
+    if final_total == 0:
+        payment_method = "credits" if credits_used > 0 else "free"
+
     # Create order
     order_dict = {
         "user_id": user_id,
@@ -3468,7 +3478,8 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         "total": final_total,
         "reseller_credentials": order_data.reseller_credentials,  # Save custom credentials
         "status": "pending",
-        "payment_method": "manual",
+        "payment_method": payment_method,
+        "payment_method_recorded": True,  # CMTV local change 2026-09-25
         "created_at": datetime.utcnow(),
         "paid_at": None
     }
@@ -3526,7 +3537,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
     order_items_text = "\n".join([f"- {item.product_name} (${item.price})" for item in order_data.items])
     await send_telegram_notification(
         "new_order",
-        f"🛒 *New Order Created*\n\nCustomer: {user.get('name', 'Unknown')}\nEmail: {user.get('email', 'N/A')}\nTotal: ${final_total:.2f}\n\nItems:\n{order_items_text}"
+        f"🛒 *New Order Created*\n\nCustomer: {user.get('name', 'Unknown')}\nEmail: {user.get('email', 'N/A')}\nTotal: ${final_total:.2f}\nPayment: {cmtv_payments.label(payment_method)}\n\nItems:\n{order_items_text}"
     )
     await send_email_notification(
         "new_order",
@@ -4422,20 +4433,28 @@ async def get_payment_config():
     }
 
 @app.post("/api/admin/orders/{order_id}/mark-paid")
-async def mark_order_paid(order_id: str, background_tasks: BackgroundTasks, 
-                          current_user: dict = Depends(get_current_admin_user)):
+async def mark_order_paid(order_id: str, background_tasks: BackgroundTasks,
+                          current_user: dict = Depends(get_current_admin_user),
+                          data: Optional[dict] = Body(default=None)):
     """Mark order as paid and provision services"""
     order = await orders_collection.find_one({"_id": str_to_objectid(order_id)})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
+
     if order["status"] == "paid":
         raise HTTPException(status_code=400, detail="Order already paid")
-    
+
     # Update order status
+    # CMTV local change 2026-09-25: the admin can confirm or correct how the customer actually paid
+    paid_set = {"status": "paid", "paid_at": datetime.utcnow()}
+    chosen = str((data or {}).get("payment_method") or "").lower()
+    if chosen in cmtv_payments.ADMIN:
+        paid_set.update({"payment_method": chosen, "payment_method_recorded": True})
+        order.update(paid_set)
+    method_label = cmtv_payments.order_label(order)
     await orders_collection.update_one(
         {"_id": str_to_objectid(order_id)},
-        {"$set": {"status": "paid", "paid_at": datetime.utcnow()}}
+        {"$set": paid_set}
     )
     
     # Update invoice status
@@ -4454,14 +4473,15 @@ async def mark_order_paid(order_id: str, background_tasks: BackgroundTasks,
             user_email=user["email"],
             user_name=user["name"],
             order_id=order_id,
-            total=order["total"]
+            total=order["total"],
+            payment_method=method_label  # CMTV local change 2026-09-25 (the email always said "Manual")
         )
-    
+
     # Send "Payment Received" Telegram notification
     order_items_text = "\n".join([f"- {item['product_name']}" for item in order.get('items', [])])
     await send_telegram_notification(
         "payment_received",
-        f"💰 *Payment Received*\n\nCustomer: {user.get('name', 'Unknown')}\nEmail: {user.get('email', 'N/A')}\nAmount: ${order['total']:.2f}\n\nItems:\n{order_items_text}"
+        f"💰 *Payment Received*\n\nCustomer: {user.get('name', 'Unknown')}\nEmail: {user.get('email', 'N/A')}\nAmount: ${order['total']:.2f}\nPayment: {method_label}\n\nItems:\n{order_items_text}"
     )
     await send_email_notification(
         "payment_received",

@@ -135,8 +135,11 @@ export default function CheckoutPage() {
     if (first) setPaymentMethod(first);
   }, [settings, paymentMethod]);
 
+  // CMTV local change 2026-09-25: every order says which payment option was picked (it was always saved as "manual")
+  const createOrder = (data) => ordersAPI.create({ ...data, payment_method: data.payment_method || paymentMethod });
+
   const createOrderMutation = useMutation({
-    mutationFn: (data) => ordersAPI.create(data),
+    mutationFn: (data) => createOrder(data),
     onSuccess: (response) => {
       const orderId = response.data.order_id;
       setCurrentOrderId(orderId);
@@ -222,7 +225,7 @@ export default function CheckoutPage() {
             add_credits_to_existing: resellerAddCredits
           } : null
         };
-        const orderResponse = await ordersAPI.create(orderData);
+        const orderResponse = await createOrder(orderData);
         const orderId = orderResponse.data.order_id || orderResponse.data.id;
         setCurrentOrderId(orderId);
         
@@ -291,7 +294,7 @@ export default function CheckoutPage() {
           add_credits_to_existing: resellerAddCredits
         } : null
       };
-      const orderResponse = await ordersAPI.create(orderData);
+      const orderResponse = await createOrder(orderData);
       const orderId = orderResponse.data.order_id || orderResponse.data.id;
       setCurrentOrderId(orderId);
       
@@ -348,7 +351,7 @@ export default function CheckoutPage() {
       
       // Create order first
       const orderData = { items: items, total: getTotal() };
-      const orderResponse = await ordersAPI.create(orderData);
+      const orderResponse = await createOrder(orderData);
       const orderId = orderResponse.data.order_id;
       setCurrentOrderId(orderId);
       console.log('Order created:', orderId);
@@ -441,7 +444,7 @@ export default function CheckoutPage() {
         } : null
       };
 
-      const orderResponse = await ordersAPI.create(orderData);
+      const orderResponse = await createOrder(orderData);
       const orderId = orderResponse.data.order_id || orderResponse.data.id;
       setCurrentOrderId(orderId);
 
@@ -1529,12 +1532,15 @@ export default function CheckoutPage() {
                           // Create order first
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
                             items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id })),
-                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied
+                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
+                            payment_method: 'ghostpay' // CMTV local change 2026-09-25
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
                           const orderId = orderRes.data.order_id || orderRes.data.id;
                           // Redirect to GhostPay hosted checkout
                           const gpApiKey = settings?.ghostpay?.api_key || '';
-                          const amount = getTotal().toFixed(2);
+                          // CMTV local change 2026-09-25: charge the order's total (after coupon, credits and member
+                          // discount), not the full cart price
+                          const amount = Number(orderRes.data.total ?? getTotal()).toFixed(2);
                           const siteUrl = window.location.origin;
                           const fiat = typeof settings?.currency === 'string' ? settings.currency : settings?.currency?.code || 'USD';
                           const callbackUrl = encodeURIComponent(`${API_URL}/api/webhooks/ghostpay`);
@@ -1583,7 +1589,8 @@ export default function CheckoutPage() {
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
                             items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id })),
                             total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
-                            reseller_credentials: hasNewResellerProduct ? { username: resellerUsername, password: resellerPassword, add_credits_to_existing: resellerAddCredits } : null
+                            reseller_credentials: hasNewResellerProduct ? { username: resellerUsername, password: resellerPassword, add_credits_to_existing: resellerAddCredits } : null,
+                            payment_method: 'tagadapay' // CMTV local change 2026-09-25
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
                           const orderId = orderRes.data.order_id || orderRes.data.id;
                           

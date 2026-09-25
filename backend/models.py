@@ -134,6 +134,7 @@ class OrderCreate(BaseModel):
     coupon_code: Optional[str] = None
     use_credits: float = 0.0
     reseller_credentials: Optional[dict] = None  # For custom reseller username/password
+    payment_method: Optional[str] = None  # CMTV local change 2026-09-25: the option chosen at checkout
 
 class Order(BaseModel):
     id: Optional[str] = None

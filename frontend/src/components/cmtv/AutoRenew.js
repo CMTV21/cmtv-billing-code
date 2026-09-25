@@ -137,7 +137,7 @@ export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null
     const { data } = await ordersAPI.create({
       items: [{ product_id: item.product_id, product_name: item.product_name, term_months: item.term_months, price: item.price,
                 account_type: item.account_type, action_type: item.action_type, renewal_service_id: item.renewal_service_id }],
-      total, coupon_code: null, use_credits: 0, reseller_credentials: null,
+      total, coupon_code: null, use_credits: 0, reseller_credentials: null, payment_method: 'paypal',
     });
     const id = data.order_id || data.id;
     setOrderId(id);
