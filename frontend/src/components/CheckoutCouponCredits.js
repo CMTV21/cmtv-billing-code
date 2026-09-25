@@ -172,7 +172,7 @@ const CheckoutCouponCredits = ({ subtotal, onDiscountChange, onCreditsChange }) 
           </div>
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            You don't have any credits yet. Refer friends to earn $10 credits!
+            You don't have any credits yet. Refer friends to earn credits!{/* CMTV local change 2026-09-25: was a hard-coded $10 */}
           </p>
         )}
       </div>

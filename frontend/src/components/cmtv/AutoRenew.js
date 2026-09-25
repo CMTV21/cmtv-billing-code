@@ -122,13 +122,14 @@ export function AutoRenewReturn() {
 
 // ---------------- Checkout: "Renew automatically" option for PayPal ----------------
 // Shown only for a single, full-price plan (no coupon or credits). Otherwise the normal PayPal buttons show unchanged.
-export function CheckoutAutoRenew({ items, total, discounted, clientId, onDone, onError, children }) {
+// memberPrice: the referral-tier price when the tier discount applies (2026-09-25); it renews at that price.
+export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null, clientId, onDone, onError, children }) {
   const { data: cfg } = useAutoRenewConfig();
   const [auto, setAuto] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const item = items?.length === 1 ? items[0] : null;
   const eligible = cfg?.enabled && item && item.account_type !== 'reseller' && Number(item.price) > 0
-    && !discounted && Math.abs(Number(total) - Number(item.price)) < 0.01;
+    && !discounted && memberPrice !== 0 && Math.abs(Number(total) - Number(item.price)) < 0.01;
   if (!eligible) return children;
 
   const ensureOrder = async () => {
@@ -149,7 +150,8 @@ export function CheckoutAutoRenew({ items, total, discounted, clientId, onDone, 
         <input type="checkbox" className="mt-1" checked={auto} onChange={(e) => setAuto(e.target.checked)} id="cmtv-autorenew" />
         <span className="text-sm text-blue-900 dark:text-blue-200">
           <span className="font-semibold">Renew automatically with PayPal</span><br />
-          {cfg.currency} ${Number(item.price).toFixed(2)} {every(Number(item.term_months) || 1)}. Turn it off any time in My Services.
+          {cfg.currency} ${Number(memberPrice ?? item.price).toFixed(2)} {every(Number(item.term_months) || 1)}
+          {memberPrice != null ? ' (your member price)' : ''}. Turn it off any time in My Services.
         </span>
       </label>
       {!auto ? children : (

@@ -102,6 +102,13 @@ cmtv_finance.D["get_current_admin_user"] = get_current_admin_user
 cmtv_finance.init_routes()
 app.include_router(cmtv_finance.router)
 
+# CMTV local change 2026-09-25: referral tiers, past referrals and admin credit (cmtv_referral.py)
+import cmtv_referral
+cmtv_referral.D["get_current_user"] = get_current_user
+cmtv_referral.D["get_current_admin_user"] = get_current_admin_user
+cmtv_referral.init_routes()
+app.include_router(cmtv_referral.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -651,7 +658,13 @@ async def startup_event():
     cmtv_finance.init(db=db, get_settings=get_settings, orders=orders_collection, services=services_collection,
                       users=users_collection, products=products_collection)
     await cmtv_finance.startup()
-    
+
+    # CMTV local change 2026-09-25: referral tiers
+    cmtv_referral.init(db=db, users=users_collection, services=services_collection, products=products_collection,
+                       referrals=referrals_collection, credit_transactions=db.credit_transactions,
+                       credit_service=credit_service)
+    await cmtv_referral.startup()
+
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
     logger.info(f"Current domain detected: {current_domain}")
@@ -3412,7 +3425,16 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             raise HTTPException(status_code=400, detail=coupon_result["error"])
         
         discount_amount = coupon_result["discount"]
-    
+
+    # CMTV local change 2026-09-25: referral tier discount (cmtv_referral.py). The bigger of the coupon and the
+    # tier discount applies, never both; a coupon that loses isn't used up.
+    discount_source = "coupon" if discount_amount > 0 else None
+    tier_discount = await cmtv_referral.order_discount(user_id, order_data.items)
+    if tier_discount["amount"] > discount_amount + 0.009:
+        discount_amount = min(tier_discount["amount"], subtotal)
+        discount_source = "tier"
+        order_data.coupon_code = None
+
     # Calculate total after discount
     total_after_discount = subtotal - discount_amount
     
@@ -3434,6 +3456,9 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         "subtotal": subtotal,
         "discount_amount": discount_amount,
         "coupon_code": order_data.coupon_code.upper() if order_data.coupon_code else None,
+        "discount_source": discount_source,  # CMTV local change 2026-09-25: "coupon" or "tier"
+        "referral_tier": tier_discount["tier"] if discount_source == "tier" else None,
+        "tier_discount_lines": tier_discount["lines"] if discount_source == "tier" else None,
         "credits_used": credits_used,
         "total": final_total,
         "reseller_credentials": order_data.reseller_credentials,  # Save custom credentials
@@ -4868,6 +4893,7 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 if order_value > 0 and order_value >= minimum:
                     await referral_service.complete_referral(order["user_id"], order_id)
                     logger.info(f"Referral completed for user {order['user_id']}")
+                    await cmtv_referral.on_order_referral(order["user_id"])  # CMTV local change 2026-09-25: tier check
                 else:
                     logger.info(f"Referral not completed for user {order['user_id']}: order value ${order_value:.2f} below minimum ${minimum:.2f}")
             except Exception as e:
@@ -13501,10 +13527,17 @@ async def get_my_referral_code(current_user: dict = Depends(get_current_user)):
     }
 
 @app.get("/api/referral/leaderboard")
-async def get_referral_leaderboard():
-    """Public leaderboard of top referrers"""
+async def get_referral_leaderboard(current_user: dict = Depends(get_current_user)):
+    """Leaderboard of top referrers"""
+    # CMTV local change 2026-09-25: this was public and returned every top referrer's full name and email address.
+    # Now it needs a login and shows first name + last initial only.
     leaderboard = await referral_service.get_leaderboard(limit=10)
-    return leaderboard
+    out = []
+    for e in leaderboard:
+        parts = str(e.get("name") or "").split()
+        short = (parts[0] + (f" {parts[-1][0]}." if len(parts) > 1 else "")) if parts else "Member"
+        out.append({"name": short, "total_referrals": e.get("total_referrals", 0), "total_rewards": e.get("total_rewards", 0)})
+    return out
 
 @app.post("/api/admin/referral/award/{referral_id}")
 async def manually_award_referral(referral_id: str, current_user: dict = Depends(get_current_admin_user)):

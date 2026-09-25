@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/api';
 import { ArrowLeft, Users, Eye, Edit, Trash2, X, Mail, Calendar, ShoppingBag, Server as ServiceIcon, Search, ChevronLeft, ChevronRight, Plus, RefreshCw, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdminCustomerReferrals } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25
 
 export default function AdminCustomers() {
   const queryClient = useQueryClient();
@@ -397,6 +398,9 @@ function CustomerDetailsModal({ customer, onClose }) {
                 </button>
               </div>
             </div>
+
+            {/* CMTV local change 2026-09-25: referral tier, past referrals and credit */}
+            <AdminCustomerReferrals customerId={customer.id} />
 
             {/* Services */}
             <div>

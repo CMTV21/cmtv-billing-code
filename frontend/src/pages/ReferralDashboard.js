@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/api';
 import { Gift, Users, TrendingUp, Copy, Check, ArrowLeft } from 'lucide-react';
+import { TierCard } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 
 export default function ReferralDashboard() {
   const [copied, setCopied] = React.useState(false);
@@ -94,6 +95,8 @@ export default function ReferralDashboard() {
             </div>
           </div>
         </div>
+
+        <TierCard />
 
         {/* Stats Grid */}
         <div className="grid md:grid-cols-3 gap-6">

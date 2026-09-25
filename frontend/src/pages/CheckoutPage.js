@@ -6,6 +6,7 @@ import { useCartStore, useAuthStore } from '../store/store';
 import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { CheckoutAutoRenew } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25
+import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { QRCodeSVG } from 'qrcode.react';
@@ -30,7 +31,15 @@ export default function CheckoutPage() {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [appliedCouponCode, setAppliedCouponCode] = useState(null);
   const [creditsUsed, setCreditsUsed] = useState(0);
-  
+
+  // CMTV local change 2026-09-25: referral tier discount. Same rule as the server: the bigger of the tier discount
+  // and the coupon applies, never both. The server works it out again when the order is created.
+  const tierQuote = useTierQuote(items);
+  const tierWins = tierQuote.amount > discountAmount + 0.009;
+  const effectiveDiscount = tierWins ? tierQuote.amount : discountAmount;
+  const creditsApplied = Math.min(creditsUsed, Math.max(0, getTotal() - effectiveDiscount));
+  const payTotal = Math.max(0, Math.round((getTotal() - effectiveDiscount - creditsApplied) * 100) / 100);
+
   // Reseller credentials state
   const [resellerUsername, setResellerUsername] = useState('');
   const [resellerPassword, setResellerPassword] = useState('');
@@ -126,14 +135,14 @@ export default function CheckoutPage() {
       const orderId = response.data.order_id;
       setCurrentOrderId(orderId);
       
-      if (['manual', 'emt', 'zelle', 'cashapp', 'venmo', 'wise'].includes(paymentMethod)) {
+      if (['manual', 'emt', 'zelle', 'cashapp', 'venmo', 'wise'].includes(paymentMethod) && Number(response.data.total) > 0) { // CMTV 2026-09-25: not for $0 orders
         clearCart();
         navigate('/orders');
         toast.success(paymentMethod === 'manual' ? 'Order placed! Please wait for admin to confirm payment.' : `Order placed! Please send your ${paymentMethod.toUpperCase()} payment now. Include your Order ID.`);
       }
       
       // Free trial / fully paid with credits
-      const finalTotal = Math.max(0, getTotal() - discountAmount - creditsUsed);
+      const finalTotal = Number(response.data.total ?? payTotal); // CMTV local change 2026-09-25: the server's total
       if (finalTotal === 0) {
         clearCart();
         toast.success('Order placed! Your service is being provisioned.');
@@ -177,13 +186,11 @@ export default function CheckoutPage() {
       return;
     }
     
-    const finalTotal = Math.max(0, getTotal() - discountAmount - creditsUsed);
-    
     createOrderMutation.mutate({
       items: items,
       total: getTotal(),
       coupon_code: appliedCouponCode,
-      use_credits: creditsUsed,
+      use_credits: creditsApplied,
       reseller_credentials: hasNewResellerProduct ? {
         username: resellerUsername,
         password: resellerPassword,
@@ -203,7 +210,7 @@ export default function CheckoutPage() {
           })),
           total: getTotal(),
           coupon_code: appliedCouponCode,
-          use_credits: creditsUsed,
+          use_credits: creditsApplied,
           reseller_credentials: hasNewResellerProduct ? {
             username: resellerUsername, password: resellerPassword,
             add_credits_to_existing: resellerAddCredits
@@ -272,7 +279,7 @@ export default function CheckoutPage() {
         })),
         total: getTotal(),
         coupon_code: appliedCouponCode,
-        use_credits: creditsUsed,
+        use_credits: creditsApplied,
         reseller_credentials: hasNewResellerProduct ? {
           username: resellerUsername, password: resellerPassword,
           add_credits_to_existing: resellerAddCredits
@@ -421,7 +428,7 @@ export default function CheckoutPage() {
         })),
         total: getTotal(),
         coupon_code: appliedCouponCode,
-        use_credits: creditsUsed,
+        use_credits: creditsApplied,
         reseller_credentials: hasNewResellerProduct ? {
           username: resellerUsername, password: resellerPassword,
           add_credits_to_existing: resellerAddCredits
@@ -840,23 +847,36 @@ export default function CheckoutPage() {
                   <span className="font-semibold text-gray-900 dark:text-white">{currencySymbol}{convertPrice(getTotal()).toFixed(2)}</span>
                 </div>
                 
-                {discountAmount > 0 && (
+                {discountAmount > 0 && !tierWins && (
                   <div className="flex justify-between text-green-600">
                     <span>Discount ({appliedCouponCode})</span>
                     <span>-${discountAmount.toFixed(2)}</span>
                   </div>
                 )}
-                
-                {creditsUsed > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Credits Applied</span>
-                    <span>-${creditsUsed.toFixed(2)}</span>
+
+                {/* CMTV local change 2026-09-25: referral tier discount */}
+                {tierWins && (
+                  <div className="flex justify-between text-green-600" data-testid="tier-discount-row">
+                    <span>{tierQuote.tier} discount{tierQuote.lines.some((l) => l.free) ? ' (includes free CMTV+)' : ` (${tierQuote.pct}%)`}</span>
+                    <span>-${tierQuote.amount.toFixed(2)}</span>
                   </div>
                 )}
-                
+                {tierWins && appliedCouponCode && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Your {tierQuote.tier} discount is bigger than coupon {appliedCouponCode}, so it's used instead (they don't combine).
+                  </p>
+                )}
+
+                {creditsApplied > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Credits Applied</span>
+                    <span>-${creditsApplied.toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between text-lg font-bold border-t pt-4">
                   <span className="text-gray-900 dark:text-white">Total</span>
-                  <span className="text-blue-600">{currencySymbol}{convertPrice(Math.max(0, getTotal() - discountAmount - creditsUsed)).toFixed(2)}</span>
+                  <span className="text-blue-600">{currencySymbol}{convertPrice(payTotal).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -1178,7 +1198,22 @@ export default function CheckoutPage() {
                 </div>
 
                 {/* Payment Button/PayPal/Stripe/Square/EMT */}
-                {paymentMethod === 'manual' ? (
+                {/* CMTV local change 2026-09-25: nothing to pay (a member's free CMTV+, or credits cover it): one button, no payment */}
+                {tierWins && payTotal === 0 ? (
+                  <div>
+                    <button
+                      onClick={handleCheckout}
+                      disabled={createOrderMutation.isPending}
+                      className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50"
+                      data-testid="free-order-btn"
+                    >
+                      {createOrderMutation.isPending ? 'Processing...' : 'Complete order ($0.00)'}
+                    </button>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-3 text-center">
+                      Covered by your {tierQuote.tier} benefits. Nothing to pay.
+                    </p>
+                  </div>
+                ) : paymentMethod === 'manual' ? (
                   <div>
                     <button
                       onClick={handleCheckout}
@@ -1203,7 +1238,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-700">
                         <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(payTotal).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1230,7 +1265,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700">
                         <p className="text-sm font-medium text-purple-900 dark:text-purple-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(payTotal).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1254,7 +1289,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
                         <p className="text-sm font-medium text-green-900 dark:text-green-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(payTotal).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1278,7 +1313,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
                         <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(payTotal).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1302,7 +1337,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
                         <p className="text-sm font-medium text-green-900 dark:text-green-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(payTotal).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1329,7 +1364,8 @@ export default function CheckoutPage() {
                   </button>
                 ) : paymentMethod === 'paypal' && settings?.paypal?.client_id ? (
                   /* CMTV local change 2026-09-25: optional "Renew automatically" (PayPal subscription) around the normal buttons */
-                  <CheckoutAutoRenew items={items} total={getTotal()} discounted={!!appliedCouponCode || creditsUsed > 0}
+                  <CheckoutAutoRenew items={items} total={getTotal()} discounted={(!!appliedCouponCode && !tierWins) || creditsApplied > 0}
+                    memberPrice={tierWins ? payTotal : null}
                     clientId={settings.paypal.client_id} onDone={() => { clearCart(); navigate('/orders'); }} onError={setError}>
                   <PayPalScriptProvider options={{ "client-id": settings.paypal.client_id, currency: settings?.currency?.code || "USD" }}>
                     <PayPalButtons
@@ -1483,7 +1519,7 @@ export default function CheckoutPage() {
                           // Create order first
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
                             items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id })),
-                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsUsed
+                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
                           const orderId = orderRes.data.order_id || orderRes.data.id;
                           // Redirect to GhostPay hosted checkout
@@ -1536,7 +1572,7 @@ export default function CheckoutPage() {
                           const authToken = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
                             items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id })),
-                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsUsed,
+                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
                             reseller_credentials: hasNewResellerProduct ? { username: resellerUsername, password: resellerPassword, add_credits_to_existing: resellerAddCredits } : null
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
                           const orderId = orderRes.data.order_id || orderRes.data.id;

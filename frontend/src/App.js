@@ -12,6 +12,7 @@ import { Toaster } from 'sonner';
 import HomePage from './pages/HomePage';
 import CmtvHomePage from './pages/cmtv/CmtvHomePage'; // CMTV local change 2026-09-25: CMTV storefront on "/"
 import FinancesPage from './pages/cmtv/FinancesPage'; // CMTV local change 2026-09-25: Admin > Finances
+import AdminReferralsPage from './pages/cmtv/AdminReferralsPage'; // CMTV local change 2026-09-25: Admin > Referrals
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import LinkEmailPage from './pages/LinkEmailPage';
@@ -431,6 +432,10 @@ function App() {
             <Route
               path="/admin/finances"
               element={<ProtectedRoute><AdminRoute><FinancesPage /></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/referrals"
+              element={<ProtectedRoute><AdminRoute><AdminReferralsPage /></AdminRoute></ProtectedRoute>}
             />
           </Routes>
         </div>

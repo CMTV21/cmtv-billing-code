@@ -98,11 +98,13 @@ def eligible(product):
     return price > 0 and 1 <= term <= 12
 
 
-async def get_plan(product):
-    """PayPal plan for this product's current price and term (created on first use)"""
+async def get_plan(product, price=None):
+    """PayPal plan for this product's current price and term (created on first use).
+    price: a referral-tier member price instead of the list price (2026-09-25); each price gets its own plan."""
     settings = await D["get_settings"]()
     currency = str(settings.get("currency") or "USD").upper()
-    term, price = _first_price(product)
+    term, list_price = _first_price(product)
+    price = round(float(price), 2) if price is not None else list_price
     key = f"{product['_id']}|{term}|{price:.2f}|{currency}"
     cached = await D["plans"].find_one({"key": key})
     if cached:
@@ -118,7 +120,7 @@ async def get_plan(product):
         await D["settings_collection"].update_one({}, {"$set": {"cmtv_paypal_product_id": catalog}})
     status, body = await pp_request("POST", "/v1/billing/plans", json={
         "product_id": catalog,
-        "name": f"{product.get('name', 'Plan')}"[:127],
+        "name": f"{product.get('name', 'Plan')}{' (member price)' if price < list_price else ''}"[:127],
         "description": f"{product.get('name', 'Plan')}, renews every {term} month{'s' if term > 1 else ''}"[:127],
         "status": "ACTIVE",
         "billing_cycles": [{
@@ -417,7 +419,12 @@ def init_routes():
         product = await D["products"].find_one({"_id": _oid(svc.get("product_id"))})
         if not eligible(product):
             raise HTTPException(status_code=400, detail="This plan can't auto-renew. Please renew it as usual.")
-        plan = await get_plan(product)
+        import cmtv_referral   # referral tier price (2026-09-25)
+        price = await cmtv_referral.member_price(current_user["sub"], product, renewal_service_id=str(svc["_id"]))
+        if price <= 0:
+            raise HTTPException(status_code=400, detail="This plan is free for you as an Ambassador, so there's nothing to "
+                                                        "auto-renew. Renew it at $0 from My Services when it's due.")
+        plan = await get_plan(product, price=price)
         expiry = _to_dt(svc.get("expiry_date"))
         start_at = max(datetime.utcnow() + timedelta(minutes=15), (expiry - timedelta(days=1)) if expiry else datetime.utcnow())
         origin = str(data.get("origin") or "").rstrip("/") or "https://billing.cmtv.info"
@@ -470,7 +477,11 @@ def init_routes():
         product = await D["products"].find_one({"_id": _oid(order["items"][0].get("product_id"))})
         if not eligible(product):
             raise HTTPException(status_code=400, detail="This plan can't renew automatically")
-        plan = await get_plan(product)
+        # A referral-tier discount renews at the same member price; a coupon or credits don't carry over
+        tier_only = order.get("discount_source") == "tier" and not float(order.get("credits_used") or 0)
+        if tier_only and float(order.get("total") or 0) <= 0:
+            raise HTTPException(status_code=400, detail="This plan is free for you, so there's nothing to renew automatically")
+        plan = await get_plan(product, price=float(order["total"]) if tier_only else None)
         if abs(float(order.get("total") or 0) - plan["price"]) > 0.009:
             raise HTTPException(status_code=400, detail="Auto-renew isn't available with a coupon or credits")
         return {"plan_id": plan["plan_id"], "custom_id": f"ord:{order['_id']}"}
