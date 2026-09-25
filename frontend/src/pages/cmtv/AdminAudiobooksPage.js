@@ -389,6 +389,7 @@ export default function AdminAudiobooksPage() {
                   </div>
                   <div className="flex-1 min-w-[160px]">
                     <p className="font-semibold text-gray-900 dark:text-white">{u.username}</p>
+                    {u.abs_missing && <p className="text-xs text-red-600">Deleted in Audiobookshelf (only abadmin still lists it)</p>}
                     {u.customer ? (
                       <p className="text-xs text-gray-500 dark:text-gray-400">{u.customer.name} · {u.customer.email}</p>
                     ) : (
