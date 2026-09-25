@@ -4,6 +4,7 @@
 export const BRAND = {
   siteLogo: '/cmtv/cmtv-logo.png',
   imperiumLogo: '/cmtv/imperium.png',
+  cctvLogo: '/cmtv/cctv.png',
   // Logo shown on an add-on's card (product name -> image). Products without one get a gradient play tile.
   logos: {
     'CMTV+': '/cmtv/cmtv-plus.png',

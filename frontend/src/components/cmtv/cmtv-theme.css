@@ -64,8 +64,12 @@
 .cmtv .side small { opacity: .8; }
 .cmtv .side .conn { margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.25); font-size: 13px; }
 .cmtv .badge { align-self: flex-start; font: 700 10px var(--body); letter-spacing: .12em; text-transform: uppercase; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35); padding: 2px 8px; border-radius: 999px; margin-bottom: 8px; }
-.cmtv .card-cctv .side, .cmtv .card-other .side { background: linear-gradient(140deg, #16c8e0 0%, #1f6fff 100%); }
+.cmtv .card-other .side { background: linear-gradient(140deg, #16c8e0 0%, #1f6fff 100%); }
 .cmtv .card-cctv .price, .cmtv .card-other .price { color: var(--cyan); }
+.cmtv .card-cctv { border-color: rgba(34,230,242,.28); }
+.cmtv .card-cctv .side { background: #0b1020; border-right: 1px solid rgba(34,230,242,.25); color: var(--text); align-items: center; text-align: center; }
+.cmtv .card-cctv .side img { width: 150px; height: 150px; max-width: 100%; border-radius: 12px; margin: -4px auto 6px; }
+.cmtv .card-cctv .side .conn { border-top-color: rgba(34,230,242,.2); width: 100%; }
 .cmtv .card-imperium { border-color: rgba(216,179,90,.35); }
 .cmtv .card-imperium .side { background: linear-gradient(160deg, #0b0b10 0%, #17130b 100%); border-right: 1px solid rgba(216,179,90,.3); color: var(--gold-hi); align-items: center; text-align: center; }
 .cmtv .card-imperium .side img { width: 100%; max-width: 170px; margin: -6px auto 2px; }
@@ -116,7 +120,7 @@
 @media (max-width: 640px) {
   .cmtv .card { flex-direction: column; }
   .cmtv .side { width: auto; }
-  .cmtv .card-imperium .side, .cmtv .card-addons .side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .cmtv .card-imperium .side, .cmtv .card-addons .side, .cmtv .card-cctv .side { border-right: 0; border-bottom: 1px solid var(--line); }
   .cmtv .bar .hide-sm { display: none; }
   .cmtv .hero .inner { padding-block: 44px 40px; }
 }

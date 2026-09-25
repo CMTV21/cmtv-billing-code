@@ -246,6 +246,7 @@ function PlanCard({ card, family, grouped, allProducts }) {
   return (
     <div className={`card card-${family}`}>
       <div className="side">
+        {family === 'cctv' && <img src={BRAND.cctvLogo} alt="CCTV" />}
         {family === 'imperium' && <img src={BRAND.imperiumLogo} alt="Imperium" />}
         {family === 'imperium' && <span className="badge">Premium</span>}
         {family === 'trials' && <span className="badge">Trial</span>}
