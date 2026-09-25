@@ -90,6 +90,12 @@ app.add_middleware(
 from launcher_api import router as launcher_router, init_launcher_api
 app.include_router(launcher_router)
 
+# CMTV local change 2026-09-25: PayPal auto-renew (cmtv_autorenew.py). Database and helpers are connected at startup.
+import cmtv_autorenew
+cmtv_autorenew.D["get_current_user"] = get_current_user
+cmtv_autorenew.init_routes()
+app.include_router(cmtv_autorenew.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -627,6 +633,13 @@ async def startup_event():
     # Initialize Launcher API
     init_launcher_api(db, get_settings, provision_order_services)
     logger.info("Launcher API initialized")
+
+    # CMTV local change 2026-09-25: PayPal auto-renew
+    cmtv_autorenew.init(db=db, get_current_user=get_current_user, get_settings=get_settings, orders=orders_collection,
+                        services=services_collection, users=users_collection, products=products_collection,
+                        invoices=invoices_collection, settings_collection=settings_collection,
+                        provision_order_services=provision_order_services)
+    await cmtv_autorenew.ensure_indexes()
     
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
@@ -2050,7 +2063,13 @@ async def paypal_webhook(request: Request, background_tasks: BackgroundTasks):
         data = await request.json()
         event_type = data.get("event_type", "")
         logger.info(f"PayPal webhook received: {event_type}")
-        
+
+        # CMTV local change 2026-09-25: auto-renew (subscription) events go to their own handler, which re-reads
+        # everything from PayPal's API instead of trusting this body
+        if cmtv_autorenew.is_subscription_event(data):
+            background_tasks.add_task(cmtv_autorenew.handle_webhook, data)
+            return {"status": "received"}
+
         # Handle payment completion events
         if event_type in ["PAYMENT.CAPTURE.COMPLETED", "PAYMENT.SALE.COMPLETED"]:
             resource = data.get("resource", {})

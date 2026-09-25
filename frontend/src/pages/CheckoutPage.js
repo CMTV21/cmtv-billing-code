@@ -5,6 +5,7 @@ import { ordersAPI, servicesAPI } from '../api/api';
 import { useCartStore, useAuthStore } from '../store/store';
 import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { CheckoutAutoRenew } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { QRCodeSVG } from 'qrcode.react';
@@ -1327,6 +1328,9 @@ export default function CheckoutPage() {
                     )}
                   </button>
                 ) : paymentMethod === 'paypal' && settings?.paypal?.client_id ? (
+                  /* CMTV local change 2026-09-25: optional "Renew automatically" (PayPal subscription) around the normal buttons */
+                  <CheckoutAutoRenew items={items} total={getTotal()} discounted={!!appliedCouponCode || creditsUsed > 0}
+                    clientId={settings.paypal.client_id} onDone={() => { clearCart(); navigate('/orders'); }} onError={setError}>
                   <PayPalScriptProvider options={{ "client-id": settings.paypal.client_id, currency: settings?.currency?.code || "USD" }}>
                     <PayPalButtons
                       style={{ layout: "vertical", color: "blue" }}
@@ -1335,6 +1339,7 @@ export default function CheckoutPage() {
                       onError={(err) => setError('PayPal payment failed')}
                     />
                   </PayPalScriptProvider>
+                  </CheckoutAutoRenew>
                 ) : paymentMethod === 'stripe' && settings?.stripe?.enabled ? (
                   <button
                     onClick={handleStripePay}

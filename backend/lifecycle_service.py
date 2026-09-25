@@ -200,7 +200,9 @@ class ServiceLifecycleManager:
                 "$gte": start_of_target_day,
                 "$lte": end_of_target_day
             },
-            "user_id": {"$exists": True, "$nin": ["", None]}
+            "user_id": {"$exists": True, "$nin": ["", None]},
+            # CMTV local change 2026-09-25: no "expiring" warning when PayPal auto-renew will renew it
+            "auto_renew.status": {"$ne": "ACTIVE"}
         }):
             # Check if already warned for this period
             recent_warning = await self.lifecycle_logs.find_one({

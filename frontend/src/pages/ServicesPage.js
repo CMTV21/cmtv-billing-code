@@ -6,6 +6,7 @@ import { servicesAPI, productsAPI } from '../api/api';
 import { useCartStore } from '../store/store';
 import { ArrowLeft, Tv, Copy, Check, Eye, EyeOff, Package, X, Link2, Monitor, Radio, FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import { AutoRenewControl, AutoRenewReturn } from '../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25
 
 export default function ServicesPage() {
   const navigate = useNavigate();
@@ -45,6 +46,7 @@ export default function ServicesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-800">
+      <AutoRenewReturn />{/* CMTV local change 2026-09-25: finishes auto-renew after PayPal approval */}
       <header className="bg-white dark:bg-gray-900 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <Link to="/dashboard" className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400">
@@ -357,6 +359,9 @@ function ServiceCard({ service, navigate, products, refundsEnabled }) {
           </div>
         )}
         
+        {/* CMTV local change 2026-09-25: PayPal auto-renew */}
+        {service.account_type === 'subscriber' && <AutoRenewControl service={service} products={products} />}
+
         {/* Refunded status message */}
         {service.status === 'refunded' && (
           <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
