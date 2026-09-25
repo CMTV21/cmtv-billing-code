@@ -24,7 +24,10 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pymongo.errors import DuplicateKeyError
 
 logger = logging.getLogger(__name__)
+# httpx logs every request URL at INFO, and Telegram URLs contain the bot token; keep only warnings and errors
+logging.getLogger("httpx").setLevel(logging.WARNING)
 router = APIRouter(prefix="/api/cmtv/autorenew", tags=["cmtv-autorenew"])
+NETWORK_ERROR = 599   # pp_request's status when PayPal couldn't be reached
 D = {}  # dependencies from server.py (see init)
 SUB_EVENTS = ("BILLING.SUBSCRIPTION.",)
 _token = {"value": None, "expires": 0.0}
@@ -66,9 +69,14 @@ async def _pp():
 
 
 async def pp_request(method, path, json=None, params=None):
-    base, headers, _ = await _pp()
-    async with httpx.AsyncClient(timeout=25) as c:
-        r = await c.request(method, f"{base}{path}", headers=headers, json=json, params=params)
+    """(status, body). Never raises for network trouble: returns NETWORK_ERROR so callers can answer cleanly or retry."""
+    try:
+        base, headers, _ = await _pp()
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.request(method, f"{base}{path}", headers=headers, json=json, params=params)
+    except httpx.HTTPError as e:
+        logger.error(f"PayPal {method} {path}: couldn't reach PayPal ({type(e).__name__})")
+        return NETWORK_ERROR, {}
     body = r.json() if r.content and r.headers.get("content-type", "").startswith("application/json") else {}
     if r.status_code >= 400:
         logger.error(f"PayPal {method} {path} -> {r.status_code}: {str(body)[:400]}")
@@ -189,6 +197,8 @@ async def _create_invoice(order_id, user_id, total, paid=True):
 async def process_payment(sub_id, sale_id=None):
     """Handle one PayPal charge for a subscription, verified with PayPal. Safe to call more than once per charge."""
     status, sub = await pp_request("GET", f"/v1/billing/subscriptions/{sub_id}")
+    if status == NETWORK_ERROR:
+        return {"ok": False, "why": "PayPal unreachable", "retry": True}
     if status != 200:
         return {"ok": False, "why": "subscription not found at PayPal"}
     plan = await D["plans"].find_one({"plan_id": sub.get("plan_id")})
@@ -202,6 +212,8 @@ async def process_payment(sub_id, sale_id=None):
     # Confirm the money actually arrived
     if sale_id:
         s_status, sale = await pp_request("GET", f"/v1/payments/sale/{sale_id}")
+        if s_status == NETWORK_ERROR:
+            return {"ok": False, "why": "PayPal unreachable", "retry": True}
         amount = ((sale.get("amount") or {}).get("total")) if s_status == 200 else None
         currency = ((sale.get("amount") or {}).get("currency")) if s_status == 200 else None
         good = s_status == 200 and str(sale.get("state", "")).lower() == "completed" and sale.get("billing_agreement_id") == sub_id
@@ -309,8 +321,17 @@ async def handle_webhook(event):
     res = event.get("resource") or {}
     try:
         if et == "PAYMENT.SALE.COMPLETED":
-            result = await process_payment(res.get("billing_agreement_id"), sale_id=res.get("id"))
+            import asyncio
+            result = {}
+            for attempt in range(5):   # a brief PayPal outage mustn't lose a renewal: ~0, 30s, 1m, 2m, 4m
+                result = await process_payment(res.get("billing_agreement_id"), sale_id=res.get("id"))
+                if not result.get("retry"):
+                    break
+                await asyncio.sleep(30 * (2 ** attempt) if attempt else 30)
             logger.info(f"auto-renew webhook {et}: {result}")
+            if result.get("retry"):
+                await _notify_admin(f"⚠️ PayPal auto-renew: couldn't reach PayPal to confirm payment {res.get('id')} for "
+                                    f"subscription {res.get('billing_agreement_id')} after 5 tries. Check it and extend by hand.")
             return
         sub_id = res.get("id") if et.startswith("BILLING.SUBSCRIPTION.") else res.get("billing_agreement_id")
         if not sub_id:
