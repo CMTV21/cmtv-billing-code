@@ -825,13 +825,26 @@ class EmailService:
         password: str,
         expiry_date: str,
         setup_instructions: str = "",
-        customer_id: str = None
+        customer_id: str = None,
+        is_trial: bool = False,
+        paid_product_name: str = ""
     ):
-        """Login details for a new Cockpit account (Stremio / CMTVpn) (CMTV local change 2026-09-24)"""
+        """Login details for a new Cockpit account (Stremio / CMTVpn) (CMTV local change 2026-09-24).
+        2026-09-25: uses the "cockpit_account" email template (house style, editable in Admin > Email Templates) when
+        it exists; the plain version below is the fallback."""
         if not self.enabled:
             return False
 
         from html import escape
+        if self.db is not None:
+            template = await self.db.email_templates.find_one({"template_type": "cockpit_account", "is_active": True})
+            if template:
+                try:
+                    return await self._send_cockpit_account_template(
+                        template, customer_email, customer_name, service_name, username, password, expiry_date,
+                        setup_instructions, customer_id, is_trial, paid_product_name)
+                except Exception as e:
+                    logger.error(f"send_cockpit_account: template failed ({e}); sending the plain version")
         greeting = f"Hi {escape(customer_name)}," if customer_name else "Hi,"
         steps = escape(setup_instructions or "").replace("\n", "<br>")
         content = f"""<p>{greeting}</p>
@@ -857,6 +870,77 @@ class EmailService:
         except Exception as e:
             logger.error(f"send_cockpit_account: EXCEPTION in send_email: {e}")
             return False
+
+    async def _send_cockpit_account_template(self, template, customer_email, customer_name, service_name, username,
+                                             password, expiry_date, setup_instructions, customer_id, is_trial,
+                                             paid_product_name):
+        """Fill the "cockpit_account" template (CMTV local change 2026-09-25). Setup instructions become numbered
+        steps (lines starting "1." etc.; other lines are shown as notes under them)."""
+        import re
+        from html import escape
+        try:
+            nice_date = datetime.strptime(str(expiry_date)[:10], "%Y-%m-%d").strftime("%B %-d, %Y")
+        except ValueError:
+            nice_date = str(expiry_date)
+        steps, notes = [], []
+        for line in str(setup_instructions or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            m = re.match(r"^(\d+)[.)]\s*(.*)$", line)
+            (steps if m else notes).append(escape(m.group(2) if m else line.lstrip("*").strip()))
+        badge = ('<span style="display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; '
+                 'background-color:#0a0e1a; border-radius:6px; color:#00e5ff; font-size:12px; font-weight:bold; '
+                 'font-family:Arial, Helvetica, sans-serif;">{n}</span>')
+        rows = "".join(
+            f'<tr><td width="28" valign="top" style="padding-top:1px;">{badge.format(n=i + 1)}</td>'
+            f'<td style="padding-bottom:14px; font-size:14px; line-height:1.6; color:#374151;">{s}</td></tr>'
+            for i, s in enumerate(steps))
+        setup_html = ""
+        if rows or notes:
+            setup_html = (
+                '<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:18px;"><tr>'
+                '<td width="4" style="background-color:#5533ff; border-radius:2px; font-size:1px; line-height:1px;">&nbsp;</td>'
+                '<td style="padding-left:12px; font-size:16px; font-weight:bold; color:#0a0e1a; line-height:1;">Getting started</td>'
+                '</tr></table>'
+                + (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">{rows}</table>' if rows else "")
+                + "".join(f'<p style="margin:0 0 10px; font-size:13px; line-height:1.6; color:#6b7280;">{n}</p>' for n in notes)
+                + '<div style="height:20px; line-height:20px; font-size:1px;">&nbsp;</div>')
+        name, svc, user_e = escape(customer_name or "there"), escape(service_name), escape(username)
+        if is_trial:
+            keep = escape(paid_product_name or "the full version")
+            heading = f"Your {svc} is ready"
+            intro = (f"Your free trial is set up. Enjoy it until <strong style=\"color:#0a0e1a;\">{escape(nice_date)}</strong>.")
+            callout = (f"<li>Your trial ends on {escape(nice_date)}</li>"
+                       f"<li>To keep it, buy <strong>{keep}</strong> from the Add-ons tab and choose "
+                       f"<strong>Extend: {user_e}</strong> at checkout. Your login stays the same.</li>"
+                       "<li>Please keep your login details private</li>")
+        else:
+            heading = f"Your {svc} account is ready"
+            intro = "Thanks for choosing CMTV. Your account is set up and ready to use."
+            callout = (f"<li>Your subscription is active until {escape(nice_date)}</li>"
+                       "<li>You can find these details any time under My Services on our website</li>"
+                       "<li>Please keep your login details private</li>")
+        values = {
+            "customer_name": name, "service_name": svc, "username": user_e, "password": escape(password),
+            "expiry_date": escape(nice_date), "dashboard_link": f"{self.backend_url}/services",
+            "heading": heading, "intro": intro, "setup_steps": setup_html, "notes": callout,
+        }
+        subject, content = template.get("subject") or "Your {{service_name}} login details", template["html_content"]
+        for k, v in values.items():
+            content = content.replace("{{" + k + "}}", v)
+            subject = subject.replace("{{" + k + "}}", re.sub(r"<[^>]+>", "", v))
+        plain = (f"Hi {customer_name or 'there'},\n\n{re.sub(r'<[^>]+>', '', intro)}\n\n"
+                 f"Service: {service_name}\nUsername: {username}\nPassword: {password}\nValid until: {nice_date}\n"
+                 + (f"\nGetting started:\n{setup_instructions}\n" if setup_instructions else "")
+                 + (f"\nTo keep it, buy {paid_product_name or 'the full version'} from the Add-ons tab and choose "
+                    f"Extend: {username} at checkout.\n" if is_trial else "")
+                 + "\nYou can find these details any time under My Services on our website.")
+        return await self.send_email(
+            to_email=customer_email, subject=subject,
+            html_content=self._wrap_email(content, template.get("name", ""), customer_email, "transactional"),
+            text_content=plain, email_type="transactional", template_type="cockpit_account",
+            customer_id=customer_id, recipient_name=customer_name)
 
     async def send_password_changed(
         self,

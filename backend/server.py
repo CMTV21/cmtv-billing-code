@@ -5131,11 +5131,16 @@ async def provision_cockpit_service(order_id: str, order: dict, user: dict, item
     logger.info(f"Cockpit {label} account created: {result['username']} (id {result.get('id')}, until {result['expires']})")
     if email_service:
         try:
+            # CMTV local change 2026-09-25: trials say when they end and how to keep the same login
+            paid_name = ""
+            if product.get("is_trial") and product.get("cmtv_trial_of"):
+                paid = await products_collection.find_one({"_id": str_to_objectid(product["cmtv_trial_of"])}, {"name": 1})
+                paid_name = (paid or {}).get("name", "")
             await email_service.send_cockpit_account(
                 customer_email=user["email"], customer_name=user.get("name", ""),
                 service_name=product.get("name", label), username=result["username"], password=result["password"],
                 expiry_date=result["expires"], setup_instructions=product.get("setup_instructions", ""),
-                customer_id=order["user_id"]
+                customer_id=order["user_id"], is_trial=bool(product.get("is_trial")), paid_product_name=paid_name
             )
         except Exception as email_err:
             logger.warning(f"Cockpit {label} login email failed: {email_err}")
