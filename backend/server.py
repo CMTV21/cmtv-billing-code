@@ -4789,8 +4789,11 @@ async def _alert_provisioning_failure(order_id: str, order: dict, user: dict, fa
         try:
             import httpx
             async with httpx.AsyncClient() as client:
-                await client.post(f"https://api.telegram.org/bot{tg['bot_token']}/sendMessage",
-                                  json={"chat_id": tg["chat_id"], "text": text[:4000]}, timeout=10.0)
+                msg = {"chat_id": tg["chat_id"], "text": text[:4000]}
+                topic = (settings.get("cmtv_telegram_topics") or {}).get("critical")   # CMTV 2026-09-25: Ops group topic
+                if topic:
+                    msg["message_thread_id"] = int(topic)
+                await client.post(f"https://api.telegram.org/bot{tg['bot_token']}/sendMessage", json=msg, timeout=10.0)
         except Exception as e:
             logger.warning(f"Provisioning alert: Telegram failed: {e}")
     em = settings.get("notifications", {}).get("email", {})

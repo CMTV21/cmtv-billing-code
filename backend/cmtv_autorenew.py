@@ -155,13 +155,19 @@ def _to_dt(v):
         return None
 
 
-async def _notify_admin(text):
-    """Telegram through the billing panel's own notification settings (always sent, not tied to an event switch)"""
+async def _notify_admin(text, kind="critical"):
+    """Telegram through the billing panel's own notification settings (always sent, not tied to an event switch).
+    kind: "critical" (problems) or "billing" (routine), mapped to Ops group topics by settings.cmtv_telegram_topics."""
     try:
-        tg = ((await D["get_settings"]()).get("notifications", {}) or {}).get("telegram", {}) or {}
+        settings = await D["get_settings"]()
+        tg = (settings.get("notifications", {}) or {}).get("telegram", {}) or {}
         if tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"):
+            msg = {"chat_id": tg["chat_id"], "text": text[:4000]}
+            topic = (settings.get("cmtv_telegram_topics") or {}).get(kind)
+            if topic:
+                msg["message_thread_id"] = int(topic)
             async with httpx.AsyncClient(timeout=10) as c:
-                await c.post(f"https://api.telegram.org/bot{tg['bot_token']}/sendMessage", json={"chat_id": tg["chat_id"], "text": text[:4000]})
+                await c.post(f"https://api.telegram.org/bot{tg['bot_token']}/sendMessage", json=msg)
     except Exception as e:
         logger.warning(f"auto-renew admin alert failed: {e}")
 
@@ -303,7 +309,7 @@ async def _renew_service(service, sub_id, sale_id, plan, amount, cycle):
     after = await D["orders"].find_one({"_id": res.inserted_id})
     if after.get("provisioning_status") == "ok":
         await _notify_admin(f"🔁 Auto-renewed with PayPal: {order_doc['items'][0]['product_name']} for "
-                            f"{(user or {}).get('name', '')} <{(user or {}).get('email', '')}>, {amount:.2f} {plan['currency']}.")
+                            f"{(user or {}).get('name', '')} <{(user or {}).get('email', '')}>, {amount:.2f} {plan['currency']}.", kind="billing")
     return {"ok": True, "renewal_order": order_id}
 
 
@@ -352,7 +358,7 @@ async def handle_webhook(event):
                                 f"the customer's reminders keep going out.")
         elif real in ("CANCELLED", "SUSPENDED", "EXPIRED") and et in (
                 "BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.SUSPENDED", "BILLING.SUBSCRIPTION.EXPIRED"):
-            await _notify_admin(f"ℹ️ PayPal auto-renew {real.lower()}: {who or sub_id}.")
+            await _notify_admin(f"ℹ️ PayPal auto-renew {real.lower()}: {who or sub_id}.", kind="billing")
         elif et == "BILLING.SUBSCRIPTION.ACTIVATED":
             kind, _, ref = str(sub.get("custom_id") or "").partition(":")
             if kind == "svc" and not svc:
