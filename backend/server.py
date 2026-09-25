@@ -3369,16 +3369,21 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if product and product.get("is_trial"):
             panel_type = product.get("panel_type", "xtream")
             panel_index = product.get("panel_index", 0)
-            existing_trial = await services_collection.find_one({
-                "user_id": user_id,
-                "panel_type": panel_type,
-                "panel_index": panel_index,
-                "account_type": "subscriber",
-                "$or": [
-                    {"is_trial": True},
-                    {"product_name": {"$regex": "trial", "$options": "i"}}
-                ]
-            })
+            if panel_type == "manual":
+                # CMTV local change 2026-09-25: manual products (Stremio, CMTVpn, Audiobooks) all share the "manual"
+                # panel, so the panel-wide check below let a customer have only one of their trials. One per product.
+                existing_trial = await services_collection.find_one({"user_id": user_id, "product_id": item.product_id})
+            else:
+                existing_trial = await services_collection.find_one({
+                    "user_id": user_id,
+                    "panel_type": panel_type,
+                    "panel_index": panel_index,
+                    "account_type": "subscriber",
+                    "$or": [
+                        {"is_trial": True},
+                        {"product_name": {"$regex": "trial", "$options": "i"}}
+                    ]
+                })
             if not existing_trial:
                 existing_trial_order = await orders_collection.find_one({
                     "user_id": user_id,
@@ -4969,6 +4974,11 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                     "start_date": datetime.utcnow(),
                     "created_at": datetime.utcnow()
                 }
+                if product.get("is_trial"):
+                    # CMTV local change 2026-09-25: a manual trial (e.g. Audiobooks) gets its end date, so it shows and expires
+                    amount, unit = int(product.get("trial_duration") or 1), str(product.get("trial_duration_unit") or "days").lower()
+                    span = timedelta(hours=amount) if unit.startswith("hour") else timedelta(days=amount * (30 if unit.startswith("month") else 1))
+                    service_dict.update({"is_trial": True, "expiry_date": datetime.utcnow() + span})
                 await services_collection.insert_one(service_dict)
                 logger.info(f"Manual product provisioned: {product.get('name')}")
                 

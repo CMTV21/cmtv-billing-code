@@ -27,10 +27,25 @@ export function useAddonProducts() {
     .sort((a, b) => names.indexOf(norm(a.name)) - names.indexOf(norm(b.name)));
 }
 
-// Which of the customer's services an item may extend
-export function extendChoices(item, services, addonIds) {
+// Trial product id -> the paid product it's a trial of (products carry `cmtv_trial_of`)
+export function useTrialOf() {
+  const { data } = useQuery({
+    queryKey: ['cmtv-products-all'],
+    queryFn: async () => (await productsAPI.getAll()).data || [],
+    staleTime: 300000,
+  });
+  const map = {};
+  (data || []).forEach((p) => { if (p.cmtv_trial_of) map[p.id] = p.cmtv_trial_of; });
+  return map;
+}
+
+// Which of the customer's services an item may extend. An add-on extends the same add-on or its trial
+// (so buying Stremio after the trial keeps the same login); a TV plan never extends an add-on.
+export function extendChoices(item, services, addonIds, trialOf = {}) {
   const isAddon = addonIds.has(item.product_id);
-  return (services || []).filter((s) => (isAddon ? s.product_id === item.product_id : !addonIds.has(s.product_id)));
+  return (services || []).filter((s) => (isAddon
+    ? s.product_id === item.product_id || trialOf[s.product_id] === item.product_id
+    : !addonIds.has(s.product_id) && !trialOf[s.product_id]));
 }
 
 const DISMISS_KEY = 'cmtv-addons-dismissed';

@@ -103,7 +103,13 @@ async def _free_allowed(user_id, product_id, renewal_service_id, seen):
         return False
     if renewal_service_id:
         svc = await D["services"].find_one({"_id": _oid(renewal_service_id), "user_id": str(user_id)})
-        return bool(svc) and str(svc.get("product_id")) == product_id
+        if not svc:
+            return False
+        if str(svc.get("product_id")) == product_id:
+            return True
+        # extending their trial of this product (the trial product has cmtv_trial_of = this product) - 2026-09-25
+        trial = await D["products"].find_one({"_id": _oid(svc.get("product_id"))}, {"cmtv_trial_of": 1})
+        return bool(trial) and trial.get("cmtv_trial_of") == product_id
     have = await D["services"].find_one({"user_id": str(user_id), "product_id": product_id, "status": {"$nin": list(ENDED)}})
     return not have
 

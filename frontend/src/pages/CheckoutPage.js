@@ -7,7 +7,7 @@ import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { CheckoutAutoRenew } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25
 import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
-import CheckoutAddons, { useAddonProducts, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
+import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { QRCodeSVG } from 'qrcode.react';
@@ -24,6 +24,7 @@ export default function CheckoutPage() {
   const { items, addItem, removeItem, clearCart, getTotal, updateItemAction } = useCartStore();
   // CMTV local change 2026-09-25: add-ons only offer to extend the same add-on; TV plans never offer to extend an add-on
   const addonIds = new Set(useAddonProducts().map((p) => p.id));
+  const trialOf = useTrialOf();
   const { symbol: currencySymbol, convertPrice, code: currencyCode } = useCurrencyStore();
   const [error, setError] = React.useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -80,7 +81,9 @@ export default function CheckoutPage() {
   );
   
   // Check if cart has subscriber products (for extend/create option)
-  const hasSubscriberProduct = items.some(item => item.account_type === 'subscriber');
+  // CMTV local change 2026-09-25: add-ons (account_type "manual") can extend too (e.g. Stremio after its trial)
+  const canExtend = (item) => item.account_type === 'subscriber' || addonIds.has(item.product_id);
+  const hasSubscriberProduct = items.some(canExtend);
 
   // Fetch user's existing services to show extend option
   const { data: userServices } = useQuery({
@@ -671,7 +674,7 @@ export default function CheckoutPage() {
                     </div>
                     
                     {/* Extend/Create Option for Subscriber Products */}
-                    {item.account_type === 'subscriber' && extendChoices(item, userServices, addonIds).length > 0 && (
+                    {canExtend(item) && extendChoices(item, userServices, addonIds, trialOf).length > 0 && (
                       <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
                         <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-3">
                           What would you like to do?
@@ -696,7 +699,7 @@ export default function CheckoutPage() {
                           
                           <p className="text-xs text-blue-700 dark:text-blue-300 px-2">Or extend one of your existing services:</p>
                           
-                          {extendChoices(item, userServices, addonIds).map((service) => (
+                          {extendChoices(item, userServices, addonIds, trialOf).map((service) => (
                             <label 
                               key={service.id} 
                               className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-2 border-transparent has-[:checked]:border-blue-500"

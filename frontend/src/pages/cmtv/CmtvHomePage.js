@@ -115,8 +115,9 @@ export default function CmtvHomePage() {
   // What the selected tab shows. Trials follow their service (a CCTV trial shows under CCTV).
   const visible = groups.map((g) => {
     if (tab === 'all') return g;
-    if (g.family === 'trials' && (tab === 'cctv' || tab === 'imperium')) {
-      const cards = g.cards.filter((c) => new RegExp(tab, 'i').test(c.name));
+    if (g.family === 'trials' && (tab === 'cctv' || tab === 'imperium' || tab === 'addons')) {
+      // CMTV local change 2026-09-25: add-on trials (Stremio, CMTVpn, Audiobooks) show under Add-ons
+      const cards = g.cards.filter((c) => new RegExp(tab === 'addons' ? 'stremio|vpn|audiobook' : tab, 'i').test(c.name));
       return cards.length ? { ...g, cards } : null;
     }
     return g.family === tab ? g : null;
@@ -254,7 +255,7 @@ function PlanCard({ card, family, grouped, allProducts }) {
         {!(family === 'addons' && logo) && <h4 style={family === 'imperium' ? { marginTop: 8 } : undefined}>{titleCase(card.name)}</h4>}
         {family === 'addons' && lookup(BRAND.taglines, first?.name) && <div className="tag">{lookup(BRAND.taglines, first.name)}</div>}
         {products.length > 1 && <small>{products.length} plans available</small>}
-        {(family === 'cctv' || family === 'trials' || family === 'other') && first?.account_type !== 'reseller' && (
+        {(family === 'cctv' || family === 'trials' || family === 'other') && first?.account_type !== 'reseller' && first?.panel_type !== 'manual' && (
           <div className="conn">{conns} connection{conns !== 1 ? 's' : ''}</div>
         )}
         {family === 'resellers' && first?.reseller_credits > 0 && <div className="conn">{first.reseller_credits} credits</div>}
