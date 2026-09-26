@@ -150,7 +150,7 @@ async def send_offer(user, trial, cfg):
     code = await _new_code()
     until = now + timedelta(days=cfg["valid_days"])
     coupon = {
-        "code": code, "coupon_type": "percentage", "value": float(cfg["percent"]), "min_purchase": 0, "max_uses": 1,
+        "code": code, "active": True, "coupon_type": "percentage", "value": float(cfg["percent"]), "min_purchase": 0, "max_uses": 1,
         "used_count": 0, "valid_from": now, "valid_until": until, "applies_to": "all", "product_ids": [],
         "created_at": now, "created_by": "cmtv-trial-winback",
         "cmtv_user_id": uid, "cmtv_first_order_only": True, "cmtv_kind": KIND,

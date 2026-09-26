@@ -110,14 +110,26 @@ export default function AdminCoupons() {
                       {coupon.code}
                     </code>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                    coupon.active 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {coupon.active ? 'Active' : 'Inactive'}
-                  </span>
+                  {/* CMTV local change 2026-09-26: same rules as checkout (a coupon without the "active" field works),
+                      plus Expired / Used up */}
+                  {(() => {
+                    const used = coupon.usage_count || coupon.used_count || 0;
+                    const status = coupon.active === false ? 'Inactive'
+                      : coupon.valid_until && new Date(coupon.valid_until) < new Date() ? 'Expired'
+                      : coupon.max_uses && used >= coupon.max_uses ? 'Used up' : 'Active';
+                    return (
+                      <span className={`px-2 py-1 rounded text-xs font-semibold ${status === 'Active'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800'}`}>
+                        {status}
+                      </span>
+                    );
+                  })()}
                 </div>
+                {coupon.cmtv_user_id && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 mb-3">
+                    Personal code (trial come-back offer){coupon.cmtv_note ? `: ${coupon.cmtv_note.replace(/^Trial come-back offer for /, '')}` : ''}. Only works for that customer's first order.
+                  </p>
+                )}
 
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center justify-between text-sm">
