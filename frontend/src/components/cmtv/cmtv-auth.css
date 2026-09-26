@@ -1,0 +1,108 @@
+/* CMTV local addition 2026-09-26: sign in / sign up / forgot / reset password (components/cmtv/AuthShell.js). Scoped to .cmtv-auth. */
+.cmtv-auth {
+  --navy: #0f1728; --deep: #0a1020; --surface: #141d33; --surface-2: #1a2542; --line: #27345a; --row-line: #202b4a;
+  --text: #e9edf8; --muted: #9aa6c6; --faint: #6b7799;
+  --cyan: #22e6f2; --blue: #2e8bff; --violet: #8b5cf6;
+  --good: #34d399; --warn: #fbbf24; --crit: #f87171;
+  --ring: linear-gradient(135deg, #22e6f2 0%, #2e8bff 40%, #8b5cf6 75%, #d946ef 100%);
+  --display: "Exo 2", "Arial Narrow", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+  min-height: 100vh; background: var(--navy); color: var(--text); font: 15px/1.5 var(--body);
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+.cmtv-auth * { box-sizing: border-box; }
+.cmtv-auth a { color: var(--cyan); text-decoration: none; font-weight: 600; }
+.cmtv-auth a:hover { text-decoration: underline; }
+.cmtv-auth :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+/* brand side */
+.cmtv-auth .ab-brand {
+  position: relative; overflow: hidden; padding: 40px 48px; display: flex; flex-direction: column; gap: 28px;
+  background:
+    radial-gradient(600px 400px at 10% 0%, rgba(34,230,242,.16), transparent 60%),
+    radial-gradient(500px 420px at 90% 100%, rgba(139,92,246,.22), transparent 60%),
+    var(--deep);
+  border-right: 1px solid var(--row-line);
+}
+.cmtv-auth .ab-logo { display: inline-flex; align-items: center; gap: 12px; color: var(--text); }
+.cmtv-auth .ab-logo:hover { text-decoration: none; }
+.cmtv-auth .ab-logo img { height: 40px; }
+.cmtv-auth .ab-logo span { font: italic 800 24px var(--display); letter-spacing: .04em; }
+.cmtv-auth .ab-pitch { margin-top: auto; }
+.cmtv-auth .ab-pitch h1 { font: italic 800 clamp(30px, 3.6vw, 44px)/1.1 var(--display); margin: 0 0 12px; letter-spacing: .01em; text-wrap: balance; }
+.cmtv-auth .ab-pitch h1 em { font-style: italic; background: var(--ring); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cmtv-auth .ab-pitch p { color: var(--muted); margin: 0; max-width: 34em; }
+.cmtv-auth .ab-perks { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.cmtv-auth .ab-perks li { display: flex; gap: 12px; align-items: flex-start; }
+.cmtv-auth .ab-perks .tick { flex: none; width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center;
+  background: rgba(34,230,242,.12); color: var(--cyan); font-weight: 800; font-size: 13px; }
+.cmtv-auth .ab-perks b { display: block; font-weight: 700; }
+.cmtv-auth .ab-perks small { color: var(--muted); font-size: 13.5px; }
+.cmtv-auth .ab-logos { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; }
+.cmtv-auth .ab-logos img { height: 38px; width: auto; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); padding: 5px 8px; }
+
+/* form side */
+.cmtv-auth .ab-main { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+.cmtv-auth .ab-card { width: 100%; max-width: 430px; }
+.cmtv-auth .ab-card h2 { font: italic 800 30px/1.15 var(--display); margin: 0 0 6px; letter-spacing: .02em; }
+.cmtv-auth .ab-card .sub { color: var(--muted); margin: 0 0 26px; }
+.cmtv-auth .ab-field { margin-bottom: 18px; }
+.cmtv-auth .ab-field label, .cmtv-auth .ab-labelrow { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; font-weight: 600; color: var(--muted); margin-bottom: 7px; }
+.cmtv-auth .ab-labelrow a { font-size: 13px; }
+.cmtv-auth .ab-input { position: relative; }
+.cmtv-auth input[type="text"], .cmtv-auth input[type="email"], .cmtv-auth input[type="password"] {
+  width: 100%; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--deep); color: var(--text);
+  font: 15px var(--body); transition: border-color .15s, box-shadow .15s;
+}
+.cmtv-auth input::placeholder { color: var(--faint); }
+.cmtv-auth input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(34,230,242,.15); }
+.cmtv-auth .ab-input input { padding-right: 46px; }
+.cmtv-auth .ab-eye { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--faint); padding: 6px; cursor: pointer; border-radius: 8px; display: grid; }
+.cmtv-auth .ab-eye:hover { color: var(--text); }
+.cmtv-auth .hint { font-size: 12.5px; color: var(--faint); margin-top: 6px; }
+.cmtv-auth .ab-btn { width: 100%; border: 0; border-radius: 12px; padding: 14px; font: 700 15.5px var(--body); cursor: pointer;
+  background: var(--ring); color: #07101f; margin-top: 6px; transition: filter .15s, transform .15s; }
+.cmtv-auth .ab-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.cmtv-auth .ab-btn:disabled { opacity: .55; cursor: default; }
+.cmtv-auth .ab-btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+.cmtv-auth .ab-alt { text-align: center; color: var(--muted); margin: 22px 0 0; }
+.cmtv-auth .ab-legal { text-align: center; color: var(--faint); font-size: 12px; margin: 16px 0 0; }
+.cmtv-auth .ab-legal a { color: var(--faint); text-decoration: underline; font-weight: 400; }
+
+.cmtv-auth .ab-note { display: flex; gap: 10px; align-items: flex-start; border-radius: 12px; padding: 12px 14px; margin-bottom: 18px; font-size: 14px; border: 1px solid; }
+.cmtv-auth .ab-note svg { flex: none; margin-top: 2px; }
+.cmtv-auth .ab-note.ok { background: rgba(52,211,153,.1); border-color: rgba(52,211,153,.35); color: #a7f3d0; }
+.cmtv-auth .ab-note.err { background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.35); color: #fecaca; }
+.cmtv-auth .ab-note.info { background: rgba(34,230,242,.08); border-color: rgba(34,230,242,.3); color: #bdf7fb; }
+.cmtv-auth .ab-note.warn { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.35); color: #fde68a; display: block; }
+.cmtv-auth .ab-note a { color: inherit; text-decoration: underline; }
+.cmtv-auth .ab-note.warn h4 { margin: 0 0 6px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.cmtv-auth .ab-note.warn p { margin: 0 0 10px; }
+.cmtv-auth .ab-note.warn input { margin-bottom: 10px; }
+.cmtv-auth .ab-note.warn .ab-btn { background: var(--warn); margin-top: 0; }
+
+.cmtv-auth .ab-2fa { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 16px; margin-bottom: 18px; }
+.cmtv-auth .ab-2fa h3 { margin: 0 0 4px; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.cmtv-auth .ab-2fa p { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; }
+.cmtv-auth .ab-2fa input { text-align: center; font: 700 28px/1 ui-monospace, "Courier New", monospace !important; letter-spacing: .4em; }
+
+.cmtv-auth .ab-modal { position: fixed; inset: 0; background: rgba(5,9,20,.8); display: grid; place-items: center; padding: 16px; z-index: 50; }
+.cmtv-auth .ab-modal > div { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 30px; max-width: 420px; width: 100%; text-align: center; }
+.cmtv-auth .ab-modal .big-tick { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 14px; display: grid; place-items: center; background: rgba(52,211,153,.14); color: var(--good); font-size: 30px; }
+.cmtv-auth .ab-modal h3 { font: italic 800 24px var(--display); margin: 0 0 8px; }
+.cmtv-auth .ab-modal p { color: var(--muted); margin: 0 0 10px; }
+.cmtv-auth .ab-modal .email { color: var(--cyan); font-weight: 700; word-break: break-all; }
+
+.cmtv-auth .ab-account { border: 1px solid rgba(34,230,242,.3); background: rgba(34,230,242,.06); border-radius: 12px; padding: 14px; margin-bottom: 18px; font-size: 14px; }
+.cmtv-auth .ab-account p { margin: 0 0 4px; }
+.cmtv-auth .ab-account small { display: block; color: var(--muted); margin-top: 8px; font-size: 12.5px; }
+
+@media (max-width: 900px) {
+  .cmtv-auth { grid-template-columns: 1fr; }
+  .cmtv-auth .ab-brand { padding: 22px 20px; border-right: 0; border-bottom: 1px solid var(--row-line); gap: 14px; }
+  .cmtv-auth .ab-pitch h1 { font-size: 26px; }
+  .cmtv-auth .ab-perks, .cmtv-auth .ab-logos { display: none; }
+  .cmtv-auth .ab-main { padding: 28px 16px 48px; align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) { .cmtv-auth * { transition: none !important; } }

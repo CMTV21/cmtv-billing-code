@@ -15,8 +15,10 @@ import FinancesPage from './pages/cmtv/FinancesPage'; // CMTV local change 2026-
 import AdminReferralsPage from './pages/cmtv/AdminReferralsPage'; // CMTV local change 2026-09-25: Admin > Referrals
 import AdminAudiobooksPage from './pages/cmtv/AdminAudiobooksPage'; // CMTV local change 2026-09-25: Admin > Audiobooks
 import AdminAddonsPage from './pages/cmtv/AdminAddonsPage'; // CMTV local change 2026-09-26: Admin > Add-ons (Cockpit: Stremio, CMTVpn)
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
+import LoginPage from './pages/LoginPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvLoginPage
+import RegisterPage from './pages/RegisterPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvRegisterPage
+import CmtvLoginPage from './pages/cmtv/CmtvLoginPage'; // CMTV local change 2026-09-26: CMTV sign in page
+import CmtvRegisterPage from './pages/cmtv/CmtvRegisterPage'; // CMTV local change 2026-09-26: CMTV sign up page
 import LinkEmailPage from './pages/LinkEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -208,8 +210,8 @@ function App() {
             {/* Public routes */}
             <Route path="/" element={<CmtvHomePage />} />
             <Route path="/classic" element={<HomePage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/login" element={<CmtvLoginPage />} />
+            <Route path="/register" element={<CmtvRegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/link-email" element={<LinkEmailPage />} />

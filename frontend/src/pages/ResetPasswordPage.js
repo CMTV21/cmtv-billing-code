@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI } from '../api/api';
-import { useBrandingStore } from '../store/branding';
-import { KeyRound, Server, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
+import { AuthShell, Note, PasswordInput } from '../components/cmtv/AuthShell';
 
 // CMTV local change 2026-09-24: landing page for the link in the password reset email
+// CMTV local change 2026-09-26: CMTV look (AuthShell), same logic
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
-  const { branding } = useBrandingStore();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
   const [password, setPassword] = useState('');
@@ -47,110 +47,44 @@ export default function ResetPasswordPage() {
     setSaving(false);
   };
 
-  const inputClass = "w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500";
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-800 flex flex-col">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-900 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <Link to="/" className="flex items-center gap-2">
-            {branding.logo_url ? (
-              <img src={branding.logo_url} alt={branding.site_name} className="h-8" />
-            ) : (
-              <Server className="w-8 h-8" style={{ color: branding.primary_color }} />
-            )}
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{branding.site_name}</h1>
-          </Link>
+    <AuthShell variant="signin">
+      <h2>Choose a new password</h2>
+      <p className="sub">At least 6 characters. You'll use it to sign in to this website.</p>
+
+      {account && (
+        <div className="ab-account">
+          <p>You're resetting the password for:</p>
+          {account.username && <p><b>Username:</b> {account.username}</p>}
+          <p><b>Email:</b> {account.email}</p>
+          <small>This changes your sign-in for this website only. Your TV line / app login stays the same. Not your account? Don't continue; close this page.</small>
         </div>
-      </header>
+      )}
 
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="max-w-md w-full">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl p-8">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                <KeyRound className="w-8 h-8 text-blue-600" />
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Choose a New Password</h2>
-              <p className="text-gray-600 mt-2">Enter a new password for your account.</p>
-            </div>
+      {error && (
+        <Note kind="err"><AlertCircle size={18} />
+          <span>
+            {error}{' '}
+            {(error.includes('expired') || error.includes('missing')) && <Link to="/forgot-password">Request a new link</Link>}
+          </span>
+        </Note>
+      )}
 
-            {account && (
-              <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-900 dark:text-blue-200">
-                <p className="mb-1">You're resetting the password for:</p>
-                {account.username && <p><span className="font-semibold">Username:</span> {account.username}</p>}
-                <p><span className="font-semibold">Email:</span> {account.email}</p>
-                <p className="mt-2 text-xs text-blue-800 dark:text-blue-300">
-                  This changes your sign-in for this website only. Your TV line / app login stays the same.
-                  Not your account? Don't continue; close this page.
-                </p>
-              </div>
-            )}
-
-            {error && (
-              <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-800 dark:text-red-300">
-                  {error}{' '}
-                  {(error.includes('expired') || error.includes('missing')) && (
-                    <Link to="/forgot-password" className="underline font-semibold">Request a new link</Link>
-                  )}
-                </p>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  New Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={inputClass}
-                  placeholder="••••••••"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Confirm New Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className={inputClass}
-                  placeholder="••••••••"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={saving || !account}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                {saving ? 'Saving...' : 'Reset Password'}
-              </button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <Link to="/login" className="text-blue-600 hover:text-blue-700 font-semibold">
-                Back to sign in
-              </Link>
-            </div>
-          </div>
+      <form onSubmit={handleSubmit}>
+        <div className="ab-field">
+          <label htmlFor="rp-new">New password</label>
+          <PasswordInput id="rp-new" required minLength={6} autoComplete="new-password" value={password}
+            onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" />
         </div>
-      </div>
-    </div>
+        <div className="ab-field">
+          <label htmlFor="rp-confirm">Confirm new password</label>
+          <PasswordInput id="rp-confirm" required minLength={6} autoComplete="new-password" value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Type it again" />
+        </div>
+        <button type="submit" className="ab-btn" disabled={saving || !account}>{saving ? 'Saving…' : 'Save new password'}</button>
+      </form>
+
+      <p className="ab-alt"><Link to="/login">Back to sign in</Link></p>
+    </AuthShell>
   );
 }
