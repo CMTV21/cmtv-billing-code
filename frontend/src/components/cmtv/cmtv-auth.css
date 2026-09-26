@@ -99,8 +99,9 @@
 .cmtv-auth .ab-account small { display: block; color: var(--muted); margin-top: 8px; font-size: 12.5px; }
 
 @media (max-width: 900px) {
-  .cmtv-auth { grid-template-columns: 1fr; }
+  .cmtv-auth { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .cmtv-auth .ab-brand { padding: 22px 20px; border-right: 0; border-bottom: 1px solid var(--row-line); gap: 14px; }
+  .cmtv-auth .ab-pitch { margin-top: 0; }
   .cmtv-auth .ab-pitch h1 { font-size: 26px; }
   .cmtv-auth .ab-perks, .cmtv-auth .ab-logos { display: none; }
   .cmtv-auth .ab-main { padding: 28px 16px 48px; align-items: flex-start; }
