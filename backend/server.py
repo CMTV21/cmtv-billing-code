@@ -123,6 +123,12 @@ cmtv_referral.D["get_current_admin_user"] = get_current_admin_user
 cmtv_referral.init_routes()
 app.include_router(cmtv_referral.router)
 
+# CMTV local change 2026-09-26: admin home "command centre" (cmtv_admin_overview.py)
+import cmtv_admin_overview
+cmtv_admin_overview.D["get_current_admin_user"] = get_current_admin_user
+cmtv_admin_overview.init_routes()
+app.include_router(cmtv_admin_overview.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -686,6 +692,10 @@ async def startup_event():
     # CMTV local change 2026-09-25: Admin > Audiobooks
     cmtv_audiobooks.init(services=services_collection, users=users_collection, products=products_collection,
                          get_email_service=get_configured_email_service)
+
+    # CMTV local change 2026-09-26: admin home
+    cmtv_admin_overview.init(orders=orders_collection, services=services_collection, users=users_collection,
+                             tickets=tickets_collection, products=products_collection, get_settings=get_settings)
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()

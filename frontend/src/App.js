@@ -31,7 +31,8 @@ import InvoicesPage from './pages/InvoicesPage';
 import ReferralDashboard from './pages/ReferralDashboard';
 import LicenseActivationRequired from './pages/LicenseActivationRequired';
 import EmailVerificationPage from './pages/EmailVerificationPage';
-import AdminDashboard from './pages/AdminDashboard';
+import AdminDashboard from './pages/AdminDashboard'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: shown to staff by AdminHomePage
+import AdminHomePage from './pages/cmtv/AdminHomePage'; // CMTV local change 2026-09-26: admin home "command centre"
 import AdminCustomers from './pages/AdminCustomers';
 import AdminOrders from './pages/AdminOrders';
 import AdminInvoices from './pages/AdminInvoices';
@@ -288,7 +289,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminDashboard />
+                    <AdminHomePage />
                   </AdminRoute>
                 </ProtectedRoute>
               }

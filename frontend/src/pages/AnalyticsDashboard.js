@@ -95,7 +95,7 @@ export default function AnalyticsDashboard() {
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 mb-6">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={d.chart_data || []}>
+            <AreaChart data={d.chart_data || d.chart || []}>{/* CMTV local change 2026-09-26: the API returns "chart", so this chart was always empty */}
               <defs>
                 <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>

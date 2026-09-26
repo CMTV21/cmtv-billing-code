@@ -366,7 +366,7 @@ function StuckRequests() {
 }
 
 export default function AdminAudiobooksPage() {
-  const [view, setView] = useState('accounts');
+  const [view, setView] = useState(() => (new URLSearchParams(window.location.search).get('tab') === 'stuck' ? 'stuck' : 'accounts'));   // CMTV 2026-09-26: admin home links to ?tab=stuck
   const qc = useQueryClient();
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
