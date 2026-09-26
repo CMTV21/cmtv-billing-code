@@ -42,12 +42,12 @@ def _end_of_day(day: str) -> datetime:
     return datetime.strptime(day, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
 
 
-async def _ab(method: str, path: str, json=None, params=None):
+async def _ab(method: str, path: str, json=None, params=None, timeout: int = 40):
     base, token = os.environ.get("ABADMIN_URL", "").rstrip("/"), os.environ.get("ABADMIN_TOKEN", "")
     if not base or not token:
         raise HTTPException(503, "abadmin isn't set up (ABADMIN_URL / ABADMIN_TOKEN)")
     try:
-        async with httpx.AsyncClient(timeout=40) as c:
+        async with httpx.AsyncClient(timeout=timeout) as c:
             r = await c.request(method, f"{base}{path}", json=json, params=params,
                                 headers={"Authorization": f"Bearer {token}", "User-Agent": "cmtv-billing"})
     except httpx.HTTPError as e:
@@ -119,6 +119,27 @@ def init_routes():
                              "customer": {"id": str(cu["_id"]), "name": cu.get("name"), "email": cu.get("email")} if cu else None})
         return {"users": out, "unmanaged": data.get("unmanaged", []), "unlinked_services": unlinked,
                 "error": data.get("error", ""), "today": date.today().isoformat()}
+
+    # --- Stuck requests (2026-09-26): ReadMeABook requests no result scored 50/100 for. Searching and grabbing
+    # happen on the Asus server (abadmin); billing only sees titles, scores and warnings, never download links.
+    @router.get("/stuck")
+    async def stuck(current_user: dict = Depends(admin)):
+        return await _ab("GET", "/api/billing/rmab/stuck", timeout=90)
+
+    @router.post("/stuck/{rid}/search")
+    async def stuck_search(rid: str, data: dict, current_user: dict = Depends(admin)):
+        return await _ab("POST", f"/api/billing/rmab/requests/{rid}/search", timeout=200,
+                         json={"title": str(data.get("title") or "")[:200], "author": str(data.get("author") or "")[:200]})
+
+    @router.post("/stuck/{rid}/grab")
+    async def stuck_grab(rid: str, data: dict, current_user: dict = Depends(admin)):
+        res = await _ab("POST", f"/api/billing/rmab/requests/{rid}/grab", json={"index": data.get("index")}, timeout=120)
+        logger.info(f"Audiobooks: admin {current_user.get('sub')} grabbed {res.get('title')!r} for request {rid}")
+        return res
+
+    @router.post("/stuck/{rid}/terms")
+    async def stuck_terms(rid: str, data: dict, current_user: dict = Depends(admin)):
+        return await _ab("POST", f"/api/billing/rmab/requests/{rid}/terms", json={"terms": data.get("terms") or ""}, timeout=60)
 
     @router.get("/activity")
     async def activity(current_user: dict = Depends(admin)):

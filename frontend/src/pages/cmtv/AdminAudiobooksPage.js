@@ -243,7 +243,130 @@ function ActivityModal({ onClose }) {
   );
 }
 
+// ---- Stuck requests (2026-09-26): requests-app requests where no MAM result scored 50/100 ----
+const ago = (d) => {
+  const days = Math.floor((Date.now() - new Date(d).getTime()) / DAY);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+};
+
+function MatchBadge({ r }) {
+  if (r.author_ok && r.length_ok) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Looks right</span>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {!r.author_ok && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">Different author</span>}
+      {!r.length_ok && <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">Length doesn't fit</span>}
+    </span>
+  );
+}
+
+function StuckRow({ req, onGrabbed }) {
+  const [open, setOpen] = useState(false);
+  const [words, setWords] = useState(req.customSearchTerms || req.title || '');
+  const [results, setResults] = useState(null);
+  const [busy, setBusy] = useState('');
+  const search = async (title) => {
+    setBusy('search'); setResults(null);
+    try {
+      const { data } = await api.post(`/api/cmtv/audiobooks/stuck/${req.requestId}/search`, { title: title || '', author: req.author });
+      setResults(data.results || []);
+    } catch (e) { toast.error(errText(e, 'Search failed')); setResults([]); } finally { setBusy(''); }
+  };
+  const grab = async (r) => {
+    const warn = !r.author_ok || !r.length_ok;
+    if (warn && !window.confirm(`This result has a warning (${[!r.author_ok && 'different author', !r.length_ok && "length doesn't fit"].filter(Boolean).join(', ')}). Grab it anyway?`)) return;
+    setBusy(`grab-${r.index}`);
+    try { await api.post(`/api/cmtv/audiobooks/stuck/${req.requestId}/grab`, { index: r.index }); toast.success('Grabbed. It downloads and lands in the library by itself.'); onGrabbed(req.requestId); }
+    catch (e) { toast.error(errText(e, "Couldn't grab it")); } finally { setBusy(''); }
+  };
+  const saveWords = async () => {
+    setBusy('terms');
+    try { await api.post(`/api/cmtv/audiobooks/stuck/${req.requestId}/terms`, { terms: words }); toast.success('Saved. Automatic searches now use these words.'); }
+    catch (e) { toast.error(errText(e, "Couldn't save")); } finally { setBusy(''); }
+  };
+  return (
+    <li className="px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[200px]">
+          <p className="font-semibold text-gray-900 dark:text-white">{req.title}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{req.author} · asked by {req.user || 'someone'} · {ago(req.createdAt)}{req.customSearchTerms ? ` · searching as "${req.customSearchTerms}"` : ''}</p>
+        </div>
+        <button type="button" onClick={() => { setOpen(!open); if (!open && results === null) search(''); }}
+          className={`${btn} ${open ? 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+          {open ? 'Close' : 'Find matches'}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-3 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <input className={`${input} flex-1 min-w-[200px]`} value={words} onChange={(e) => setWords(e.target.value)} placeholder="Search words" />
+            <button type="button" disabled={!!busy} onClick={() => search(words)} className={`${btn} border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200`}><Search className="w-4 h-4" /> Search these words</button>
+            <button type="button" disabled={!!busy} onClick={saveWords} className={`${btn} border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200`} title="Use these words for this request's automatic searches too">Save for auto-search</button>
+          </div>
+          {busy === 'search' && <p className="text-sm text-gray-500">Searching MAM… (can take up to a minute)</p>}
+          {results && results.length === 0 && busy !== 'search' && (
+            <p className="text-sm text-gray-600 dark:text-gray-300">Nothing on MAM for this yet. New releases often take a while to appear; the app keeps checking by itself.</p>
+          )}
+          {results && results.length > 0 && (
+            <ul className="space-y-2">
+              {results.map((r) => (
+                <li key={r.index} className="bg-white dark:bg-gray-900 rounded-lg px-3 py-2 flex flex-wrap items-center gap-2">
+                  <div className="flex-1 min-w-[220px]">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{r.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {r.format || '?'} · {r.size_mb >= 1024 ? `${(r.size_mb / 1024).toFixed(1)} GB` : `${r.size_mb} MB`} · {r.seeders ?? '?'} seeders · score {r.score}/100
+                      {r.link && <> · <a href={r.link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">view on MAM</a></>}
+                    </p>
+                  </div>
+                  <MatchBadge r={r} />
+                  <button type="button" disabled={!!busy} onClick={() => grab(r)} className={`${btn} ${r.author_ok && r.length_ok ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200'}`}>
+                    {busy === `grab-${r.index}` ? 'Grabbing…' : 'Grab'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function StuckRequests() {
+  const [hidden, setHidden] = useState([]);
+  const [q, setQ] = useState('');
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: ['ab-stuck'],
+    queryFn: async () => (await api.get('/api/cmtv/audiobooks/stuck')).data,
+    staleTime: 60000,
+  });
+  const rows = (data?.requests || []).filter((r) => !hidden.includes(r.requestId))
+    .filter((r) => !q.trim() || `${r.title} ${r.author} ${r.user}`.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 p-4 text-sm text-blue-900 dark:text-blue-200">
+        These are requests where no MAM result scored 50 out of 100, so the requests app won't grab one by itself. Open one to see
+        what MAM has. <b>Looks right</b> means the author and the length both match; <b>Different author</b> or <b>Length doesn't fit</b> usually means a
+        different book with the same title. If nothing fits, it's probably not on MAM yet, and the app keeps checking by itself.
+      </div>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input className={`${input} w-full pl-9 py-2.5`} placeholder="Search stuck requests" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <button type="button" onClick={() => refetch()} className={`${btn} border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200`}><RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /></button>
+      </div>
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm overflow-hidden">
+        {error ? <p className="p-6 text-sm text-red-600">{errText(error, "Couldn't load the stuck requests")}</p>
+          : isLoading ? <p className="p-6 text-sm text-gray-500">Loading stuck requests…</p>
+          : rows.length === 0 ? <p className="p-6 text-sm text-gray-500 dark:text-gray-400">Nothing stuck.</p>
+          : <ul className="divide-y divide-gray-100 dark:divide-gray-800">{rows.map((r) => <StuckRow key={r.requestId} req={r} onGrabbed={(id) => setHidden((h) => [...h, id])} />)}</ul>}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminAudiobooksPage() {
+  const [view, setView] = useState('accounts');
   const qc = useQueryClient();
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
@@ -308,6 +431,15 @@ export default function AdminAudiobooksPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-5">
+        <div className="inline-flex rounded-lg bg-gray-200 dark:bg-gray-800 p-1">
+          {[['accounts', 'Accounts'], ['stuck', 'Stuck requests']].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setView(k)}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold ${view === k ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === 'stuck' ? <StuckRequests /> : (<>
         {error && <div className="rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-4 text-sm">{errText(error, "Couldn't load the audiobook accounts")}</div>}
         {data?.error && <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 p-3 text-sm">{data.error}</div>}
 
@@ -426,6 +558,7 @@ export default function AdminAudiobooksPage() {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Accounts are switched off automatically the day after their end date (00:05, Asus server). Changes here update the customer's My Services too.
         </p>
+        </>)}
       </main>
 
       {modal?.type === 'new' && <NewUserModal onClose={() => setModal(null)} onDone={refresh} />}
