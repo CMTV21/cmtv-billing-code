@@ -170,6 +170,20 @@ def init_routes():
         await _sync_services(username, status="active")
         return res
 
+    @router.post("/users/{username}/delete")
+    async def delete(username: str, current_user: dict = Depends(admin)):
+        """Delete for good (2026-09-26): Audiobookshelf user (with their listening progress), requests login and
+        abadmin's record. A copy of the record is kept in cmtv_deleted_accounts; the billing service is marked terminated."""
+        linked = await _linked(username)
+        res = await _ab("POST", f"/api/billing/users/{username}/delete")
+        await D["db"].cmtv_deleted_accounts.insert_one({
+            "kind": "audiobooks", "module": MODULE, "username": (res.get("deleted") or {}).get("username") or username,
+            "row": res.get("deleted") or {}, "password": (linked[0].get("password") if linked else "") or "",
+            "billing_services": [str(s["_id"]) for s in linked], "deleted_at": datetime.utcnow(), "by": current_user.get("sub")})
+        await _sync_services(username, status="terminated", cockpit_deleted_at=datetime.utcnow())
+        logger.info(f"Audiobooks: admin {current_user.get('sub')} deleted {username}")
+        return {"success": True, "warning": res.get("warning", "")}
+
     @router.post("/users/{username}/password")
     async def password(username: str, data: dict, current_user: dict = Depends(admin)):
         pw = str(data.get("password") or "") or _rand(_PASS_CHARS, 10)

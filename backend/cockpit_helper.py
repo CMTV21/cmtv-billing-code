@@ -103,6 +103,25 @@ def handle(req):
             con.commit()
             return {"id": row["id"]}
 
+        if action == "delete":
+            # CMTV local change 2026-09-26: delete a user; returns every removed row so billing keeps a copy
+            con.execute("BEGIN IMMEDIATE")
+            row = find(con, mod, username)
+            if not row:
+                raise RuntimeError(f"username {username!r} not found in Cockpit ({module})")
+            related = {}
+            if module == "nuvio":
+                for table in ("nuvio_user_mappings", "nuvio_user_addons"):
+                    try:
+                        rows = [dict(r) for r in con.execute(f'SELECT * FROM "{table}" WHERE user_id = ?', (row["id"],))]
+                        con.execute(f'DELETE FROM "{table}" WHERE user_id = ?', (row["id"],))
+                        related[table] = rows
+                    except sqlite3.OperationalError:
+                        pass
+            con.execute(f'DELETE FROM "{mod["table"]}" WHERE id = ?', (row["id"],))
+            con.commit()
+            return {"deleted": dict(row), "related": related}
+
         if action == "get":
             row = find(con, mod, username)
             return {"exists": bool(row), **({"id": row["id"], "status": row["status"], "expires": expiry_of(module, row)} if row else {})}

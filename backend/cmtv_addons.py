@@ -201,6 +201,22 @@ def init_routes():
         await _sync(module, username, password=pw, xtream_password=pw)
         return {"success": True, "password": pw}
 
+    @router.post("/{module}/users/{username}/delete")
+    async def delete(module: str, username: str, current_user: dict = Depends(admin)):
+        """Delete from Cockpit for good (2026-09-26). A full copy is kept in cmtv_deleted_accounts, and the linked
+        billing service is marked terminated (kept, so order history stays)."""
+        _module(module)
+        res = await _cockpit({"module": module, "action": "delete", "username": username})
+        await D["db"].cmtv_deleted_accounts.insert_one({
+            "kind": "cockpit", "module": module, "username": res["deleted"].get("username") or username,
+            "row": res["deleted"], "related": res.get("related") or {},
+            "billing_services": [str(s["_id"]) for s in await _linked(module, username)],
+            "deleted_at": datetime.utcnow(), "by": current_user.get("sub")})
+        await D["db"].cmtv_cockpit_paused.delete_one({"_id": _key(module, username)})
+        await _sync(module, username, status="terminated", cockpit_deleted_at=datetime.utcnow())
+        logger.info(f"Add-ons: admin {current_user.get('sub')} deleted {module} {username}")
+        return {"success": True}
+
     @router.get("/customers")
     async def customers(q: str = "", current_user: dict = Depends(admin)):
         q = (q or "").strip()[:80]

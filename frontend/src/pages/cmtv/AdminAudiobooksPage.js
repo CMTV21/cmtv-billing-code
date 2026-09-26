@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, ArrowLeft, BookOpen, Check, Clock, Copy, History, KeyRound, Link2, Plus, Power, RefreshCw, Search, X,
+  AlertTriangle, ArrowLeft, BookOpen, Check, Clock, Copy, History, KeyRound, Link2, Plus, Power, RefreshCw, Search, Trash2, X,
 } from 'lucide-react';
 import api from '../../api/api';
 
@@ -549,6 +549,15 @@ export default function AdminAudiobooksPage() {
                         onClick={() => window.confirm(`Switch off ${u.username}? They lose access to audiobooks and requests until switched on or extended.`)
                           && act(`off-${u.username}`, () => api.post(`/api/cmtv/audiobooks/users/${encodeURIComponent(u.username)}/disable`), `${u.username} switched off`)}><Power className="w-4 h-4" /></button>
                     )}
+                    {/* CMTV 2026-09-26: delete for good (type the username to confirm) */}
+                    <button type="button" title="Delete" disabled={busy === `del-${u.username}`} className={`${btn} border border-gray-300 dark:border-gray-600 text-gray-500 hover:text-red-600`}
+                      onClick={() => {
+                        const typed = window.prompt(`Delete ${u.username} for good?\n\nThis removes them from Audiobookshelf (with their listening progress and bookmarks) and the requests app.`
+                          + `${u.customer ? ` ${u.customer.name}'s service in billing is marked ended.` : ''}\n\nType the username to confirm:`);
+                        if (typed === null) return;
+                        if (typed.trim().toLowerCase() !== u.username.toLowerCase()) { toast.error("The username didn't match, so nothing was deleted"); return; }
+                        act(`del-${u.username}`, () => api.post(`/api/cmtv/audiobooks/users/${encodeURIComponent(u.username)}/delete`), `${u.username} deleted`);
+                      }}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </li>
               ))}

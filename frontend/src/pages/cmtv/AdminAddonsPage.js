@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, Check, Clock, Copy, Eye, EyeOff, KeyRound, Link2, Plus, Power, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, Clock, Copy, Eye, EyeOff, KeyRound, Link2, Plus, Power, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import api from '../../api/api';
 
 const SOON_DAYS = 14;
@@ -380,6 +380,14 @@ export default function AdminAddonsPage({ module = 'nuvio' }) {
                         onClick={() => window.confirm(`Switch off ${u.username} (${u.label})? They lose access now. Their end date (${fmt(u.expiry_date)}) is kept and comes back when you switch them on.`)
                           && act(`off-${u.module}-${u.username}`, () => api.post(path(u, 'disable')), `${u.username} switched off`)}><Power className="w-4 h-4" /></button>
                     )}
+                    <button type="button" title="Delete" disabled={busy === `del-${u.module}-${u.username}`} className={`${btn} border border-gray-300 dark:border-gray-600 text-gray-500 hover:text-red-600`}
+                      onClick={() => {
+                        const typed = window.prompt(`Delete ${u.username} from ${u.label} for good?\n\nThey can't sign in any more and the account is removed from Cockpit.`
+                          + `${u.customer ? ` ${u.customer.name}'s service in billing is marked ended.` : ''}\n\nType the username to confirm:`);
+                        if (typed === null) return;
+                        if (typed.trim().toLowerCase() !== u.username.toLowerCase()) { toast.error("The username didn't match, so nothing was deleted"); return; }
+                        act(`del-${u.module}-${u.username}`, () => api.post(path(u, 'delete')), `${u.username} deleted`);
+                      }}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </li>
               ))}
