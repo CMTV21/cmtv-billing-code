@@ -129,6 +129,12 @@ cmtv_admin_overview.D["get_current_admin_user"] = get_current_admin_user
 cmtv_admin_overview.init_routes()
 app.include_router(cmtv_admin_overview.router)
 
+# CMTV local change 2026-09-26: Admin > Add-ons, Stremio / CMTVpn users in Cockpit (cmtv_addons.py)
+import cmtv_addons
+cmtv_addons.D["get_current_admin_user"] = get_current_admin_user
+cmtv_addons.init_routes()
+app.include_router(cmtv_addons.router)
+
 # CMTV local change 2026-09-26: 15% come-back email after a trial ends (cmtv_trial_winback.py)
 import cmtv_trial_winback
 cmtv_trial_winback.D["get_current_admin_user"] = get_current_admin_user
@@ -702,6 +708,10 @@ async def startup_event():
     # CMTV local change 2026-09-26: admin home
     cmtv_admin_overview.init(orders=orders_collection, services=services_collection, users=users_collection,
                              tickets=tickets_collection, products=products_collection, get_settings=get_settings)
+
+    # CMTV local change 2026-09-26: Admin > Add-ons
+    cmtv_addons.init(db=db, users=users_collection, services=services_collection, products=products_collection,
+                     get_email_service=get_configured_email_service)
 
     # CMTV local change 2026-09-26: trial come-back offer (hourly)
     cmtv_trial_winback.init(db=db, users=users_collection, services=services_collection, orders=orders_collection,

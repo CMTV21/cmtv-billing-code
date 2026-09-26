@@ -21,7 +21,8 @@ const NAV = [
     { label: 'Referrals', to: '/admin/referrals' }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
   ] },
   { group: 'Services', items: [
-    { label: 'Products', to: '/admin/products' }, { label: 'Audiobooks', to: '/admin/audiobooks', count: 'stuck' },
+    { label: 'Products', to: '/admin/products' }, { label: 'Stremio & CMTVpn', to: '/admin/addons' },
+    { label: 'Audiobooks', to: '/admin/audiobooks', count: 'stuck' },
     { label: 'Launcher', to: '/admin/launcher' }, { label: 'Downloads', to: '/admin/downloads' },
     { label: 'Knowledge base', to: '/admin/knowledge-base' },
   ] },

@@ -62,10 +62,47 @@ def handle(req):
     if not mod:
         raise ValueError(f"unknown Cockpit module {module!r}")
     action, username = req.get("action"), (req.get("username") or "").strip()
-    if not username:
+    if not username and action != "list":
         raise ValueError("username is required")
     con = connect(mod)
     try:
+        # CMTV local change 2026-09-26: list / set_expiry / set_password for billing's Admin > Add-ons page
+        if action == "list":
+            last_login = {}
+            if module == "nuvio":
+                try:   # when the customer last signed in to the app (Cockpit's own table; read only)
+                    last_login = {r["user_id"]: r["last_login_at"] for r in
+                                  con.execute("SELECT user_id, last_login_at FROM nuvio_user_mappings")}
+                except sqlite3.Error:
+                    pass
+            users = []
+            for row in con.execute(f'SELECT * FROM "{mod["table"]}" ORDER BY id'):
+                users.append({"id": row["id"], "username": row["username"], "status": row["status"] or "",
+                              "expires": expiry_of(module, row),
+                              "password": row["password_plain"] if module == "nuvio" else row["password"],
+                              "created_at": row["created_at"] if module == "nuvio" else None,
+                              "last_login_at": last_login.get(row["id"])})
+            return {"users": users}
+
+        if action == "set_password":
+            password = str(req.get("password") or "")
+            if len(password) < 6:
+                raise ValueError("password must be at least 6 characters")
+            con.execute("BEGIN IMMEDIATE")
+            row = find(con, mod, username)
+            if not row:
+                raise RuntimeError(f"username {username!r} not found in Cockpit ({module})")
+            if module == "nuvio":
+                pw_hash = req.get("password_hash") or ""
+                if not pw_hash.startswith("$2y$") or len(pw_hash) != 60:
+                    raise ValueError("password_hash must be a 60-character $2y$ bcrypt hash")
+                con.execute('UPDATE nuvio_users SET password_hash = ?, password_plain = ?, updated_at = ? WHERE id = ?',
+                            (pw_hash, password, int(time.time()), row["id"]))
+            else:
+                con.execute('UPDATE ipvanish_clients SET password = ? WHERE id = ?', (password, row["id"]))
+            con.commit()
+            return {"id": row["id"]}
+
         if action == "get":
             row = find(con, mod, username)
             return {"exists": bool(row), **({"id": row["id"], "status": row["status"], "expires": expiry_of(module, row)} if row else {})}
@@ -103,6 +140,18 @@ def handle(req):
                             (end_of_day_ts(expires), "active", int(time.time()), row["id"]))
             else:
                 con.execute('UPDATE ipvanish_clients SET expirey = ?, status = ? WHERE id = ?', (expires, "active", row["id"]))
+            con.commit()
+            return {"id": row["id"], "expires": expires, "previous_expires": expiry_of(module, row)}
+
+        if action == "set_expiry":
+            # exact end date, status left alone (billing's "switch off" = end date yesterday, the real date kept in billing)
+            if not row:
+                raise RuntimeError(f"username {username!r} not found in Cockpit ({module})")
+            if module == "nuvio":
+                con.execute('UPDATE nuvio_users SET expires_at = ?, updated_at = ? WHERE id = ?',
+                            (end_of_day_ts(expires), int(time.time()), row["id"]))
+            else:
+                con.execute('UPDATE ipvanish_clients SET expirey = ? WHERE id = ?', (expires, row["id"]))
             con.commit()
             return {"id": row["id"], "expires": expires, "previous_expires": expiry_of(module, row)}
 
