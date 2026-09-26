@@ -170,6 +170,15 @@ html.cmtv-adm-on .text-blue-600, html.cmtv-adm-on .dark\:text-blue-400, html.cmt
 html.cmtv-adm-on .border-blue-600, html.cmtv-adm-on .border-blue-500 { border-color: var(--blue) !important; }
 html.cmtv-adm-on .bg-blue-50, html.cmtv-adm-on .bg-blue-100, html.cmtv-adm-on .dark\:bg-blue-900\/20, html.cmtv-adm-on .dark\:bg-blue-900\/30 { background-color: rgba(46,139,255,.12) !important; }
 
+/* light status tints (buttons, badges, notices) -> dark tints */
+html.cmtv-adm-on .bg-red-50, html.cmtv-adm-on .bg-red-100 { background-color: rgba(248,113,113,.14) !important; }
+html.cmtv-adm-on .bg-red-50:hover, html.cmtv-adm-on .hover\:bg-red-100:hover { background-color: rgba(248,113,113,.24) !important; }
+html.cmtv-adm-on .bg-green-50, html.cmtv-adm-on .bg-green-100 { background-color: rgba(52,211,153,.14) !important; }
+html.cmtv-adm-on .bg-yellow-50, html.cmtv-adm-on .bg-yellow-100 { background-color: rgba(251,191,36,.14) !important; }
+html.cmtv-adm-on .text-red-600, html.cmtv-adm-on .text-red-800 { color: var(--crit) !important; }
+html.cmtv-adm-on .text-green-600, html.cmtv-adm-on .text-green-800 { color: var(--good) !important; }
+html.cmtv-adm-on .text-yellow-800 { color: var(--warn) !important; }
+
 /* shadows off, cards get a line instead */
 html.cmtv-adm-on .adm-main .shadow, html.cmtv-adm-on .adm-main .shadow-sm, html.cmtv-adm-on .adm-main .shadow-md { box-shadow: none !important; }
 html.cmtv-adm-on .adm-main .rounded-lg.shadow, html.cmtv-adm-on .adm-main .rounded-xl.shadow-sm, html.cmtv-adm-on .adm-main .rounded-lg.shadow-sm { border: 1px solid var(--line); }

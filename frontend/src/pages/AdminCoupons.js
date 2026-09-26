@@ -44,8 +44,9 @@ export default function AdminCoupons() {
     mutationFn: (id) => adminAPI.deleteCoupon(id),
     onSuccess: () => {
       queryClient.invalidateQueries(['coupons']);
-      toast.success('Coupon deactivated');
+      toast.success('Coupon deleted'); // CMTV local change 2026-09-26: delete really removes it now
     },
+    onError: () => toast.error("Couldn't delete that coupon"),
   });
 
   const resetForm = () => {
@@ -158,7 +159,7 @@ export default function AdminCoupons() {
 
                 <button
                   onClick={() => {
-                    if (window.confirm(`Deactivate coupon ${coupon.code}?`)) {
+                    if (window.confirm(`Delete coupon ${coupon.code}? It stops working straight away. Orders that used it keep their discount history.`)) {
                       deleteMutation.mutate(coupon.id);
                     }
                   }}
@@ -166,7 +167,7 @@ export default function AdminCoupons() {
                   data-testid={`delete-coupon-${coupon.code}`}
                 >
                   <Trash2 className="w-4 h-4" />
-                  Deactivate
+                  Delete
                 </button>
               </div>
             ))}

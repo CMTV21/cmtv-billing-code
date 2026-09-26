@@ -13721,12 +13721,17 @@ async def validate_coupon_code(data: dict):
 
 @app.delete("/api/admin/coupons/{coupon_id}")
 async def delete_coupon(coupon_id: str, current_user: dict = Depends(get_current_admin_user)):
-    """Delete/deactivate a coupon"""
-    await coupons_collection.update_one(
-        {"_id": str_to_objectid(coupon_id)},
-        {"$set": {"active": False}}
-    )
-    return {"message": "Coupon deactivated"}
+    """Delete a coupon"""
+    # CMTV local change 2026-09-26: really remove it from the list (it only set active=False and stayed listed),
+    # but keep it in coupons_retired so orders that used it keep their history.
+    coupon = await coupons_collection.find_one({"_id": str_to_objectid(coupon_id)})
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Coupon not found")
+    await db.coupons_retired.replace_one({"_id": coupon["_id"]}, {
+        **coupon, "retired_at": datetime.utcnow(),
+        "retired_reason": "deleted by admin", "retired_by": current_user.get("sub")}, upsert=True)
+    await coupons_collection.delete_one({"_id": coupon["_id"]})
+    return {"message": "Coupon deleted"}
 
 # ===== CREDIT SYSTEM ENDPOINTS =====
 
