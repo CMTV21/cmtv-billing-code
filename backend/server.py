@@ -129,6 +129,12 @@ cmtv_admin_overview.D["get_current_admin_user"] = get_current_admin_user
 cmtv_admin_overview.init_routes()
 app.include_router(cmtv_admin_overview.router)
 
+# CMTV local change 2026-09-26: 15% come-back email after a trial ends (cmtv_trial_winback.py)
+import cmtv_trial_winback
+cmtv_trial_winback.D["get_current_admin_user"] = get_current_admin_user
+cmtv_trial_winback.init_routes()
+app.include_router(cmtv_trial_winback.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -696,6 +702,11 @@ async def startup_event():
     # CMTV local change 2026-09-26: admin home
     cmtv_admin_overview.init(orders=orders_collection, services=services_collection, users=users_collection,
                              tickets=tickets_collection, products=products_collection, get_settings=get_settings)
+
+    # CMTV local change 2026-09-26: trial come-back offer (hourly)
+    cmtv_trial_winback.init(db=db, users=users_collection, services=services_collection, orders=orders_collection,
+                            products=products_collection, get_email_service=get_configured_email_service)
+    await cmtv_trial_winback.startup()
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
@@ -3460,8 +3471,14 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         
         if not coupon_result["valid"]:
             raise HTTPException(status_code=400, detail=coupon_result["error"])
-        
+
         discount_amount = coupon_result["discount"]
+        # CMTV local change 2026-09-26: personal codes (trial come-back offer): owner + first order only, and the
+        # percentage only counts plans, not trials or reseller packs (cmtv_trial_winback.py)
+        discount_amount, personal_err = await cmtv_trial_winback.check_order_coupon(
+            order_data.coupon_code, user_id, order_data.items, discount_amount)
+        if personal_err:
+            raise HTTPException(status_code=400, detail=personal_err)
 
     # CMTV local change 2026-09-25: referral tier discount (cmtv_referral.py). The bigger of the coupon and the
     # tier discount applies, never both; a coupon that loses isn't used up.
@@ -13711,12 +13728,25 @@ async def get_all_coupons(current_user: dict = Depends(get_current_admin_user)):
     return coupons
 
 @app.post("/api/coupon/validate")
-async def validate_coupon_code(data: dict):
+async def validate_coupon_code(data: dict, request: Request):
     """Validate coupon code (public endpoint for checkout)"""
     code = data.get("code", "")
     order_total = float(data.get("order_total", 0))
     product_ids = data.get("product_ids", [])
     result = await coupon_service.validate_coupon(code, order_total, product_ids)
+    # CMTV local change 2026-09-26: personal codes only work for the account they were sent to (cmtv_trial_winback.py)
+    if result.get("valid"):
+        uid = None
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            try:
+                from auth import verify_token
+                uid = verify_token(auth_header[7:]).get("sub")
+            except Exception:
+                uid = None
+        personal_err = await cmtv_trial_winback.check_validate(code, uid)
+        if personal_err:
+            return {"valid": False, "error": personal_err}
     return result
 
 @app.delete("/api/admin/coupons/{coupon_id}")
