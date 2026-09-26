@@ -22,7 +22,9 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import ProductsPage from './pages/ProductsPage';
 import OrderProductPage from './pages/OrderProductPage';
 import CheckoutPage from './pages/CheckoutPage';
-import DashboardPage from './pages/DashboardPage';
+import DashboardPage from './pages/DashboardPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvDashboardPage
+import CmtvDashboardPage from './pages/cmtv/CmtvDashboardPage'; // CMTV local change 2026-09-26: new customer dashboard
+import { CmtvAccountFrame } from './components/cmtv/AccountShell'; // CMTV local change 2026-09-26: navy frame for customer pages
 import ServicesPage from './pages/ServicesPage';
 import OrdersPage from './pages/OrdersPage';
 import InvoicesPage from './pages/InvoicesPage';
@@ -227,7 +229,7 @@ function App() {
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <CmtvDashboardPage />
                 </ProtectedRoute>
               }
             />
@@ -235,7 +237,7 @@ function App() {
               path="/services"
               element={
                 <ProtectedRoute>
-                  <ServicesPage />
+                  <CmtvAccountFrame><ServicesPage /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
@@ -243,7 +245,7 @@ function App() {
               path="/orders"
               element={
                 <ProtectedRoute>
-                  <OrdersPage />
+                  <CmtvAccountFrame><OrdersPage /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
@@ -251,7 +253,7 @@ function App() {
               path="/invoices"
               element={
                 <ProtectedRoute>
-                  <InvoicesPage />
+                  <CmtvAccountFrame><InvoicesPage /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
@@ -259,7 +261,7 @@ function App() {
               path="/tickets"
               element={
                 <ProtectedRoute>
-                  <TicketsPage />
+                  <CmtvAccountFrame><TicketsPage /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
@@ -267,7 +269,7 @@ function App() {
               path="/referrals"
               element={
                 <ProtectedRoute>
-                  <ReferralDashboard />
+                  <CmtvAccountFrame><ReferralDashboard /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
@@ -275,7 +277,7 @@ function App() {
               path="/downloads"
               element={
                 <ProtectedRoute>
-                  <DownloadsPage />
+                  <CmtvAccountFrame><DownloadsPage /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
@@ -418,7 +420,7 @@ function App() {
               path="/knowledge-base"
               element={
                 <ProtectedRoute>
-                  <KnowledgeBasePage />
+                  <CmtvAccountFrame><KnowledgeBasePage /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
