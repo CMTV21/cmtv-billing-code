@@ -103,6 +103,29 @@ async def changes(request: Request, since: str = "", include_open: bool = False)
     return {"tickets": out, "now": datetime.utcnow().isoformat()}
 
 
+@router.get("/catalog")
+async def catalog(request: Request):
+    """Active plans for the bot's "Plans & prices" / "Free trials" answers (2026-09-26), grouped like the storefront."""
+    _auth(request)
+    settings = await D["db"].settings.find_one({}) or {}
+    groups = {g.get("id"): g.get("name", "") for g in settings.get("product_groups", [])}
+    order = [g.get("id") for g in settings.get("product_groups", [])]
+    fams = {}
+    async for p in D["db"].products.find({"active": True}).sort("display_order", 1):
+        gname = groups.get(p.get("group_id"), "")
+        n = gname.lower()
+        fam = ("trials" if "trial" in n or p.get("is_trial") else "resellers" if "resell" in n or p.get("account_type") == "reseller"
+               else "imperium" if "imperium" in n else "cctv" if "cctv" in n else "addons" if "add" in n else "other")
+        if fam == "resellers":
+            continue
+        term, price = next(iter((p.get("prices") or {"1": 0}).items()))
+        fams.setdefault(fam, []).append({
+            "name": p.get("name"), "price": float(price), "term_months": int(term), "connections": p.get("max_connections"),
+            "trial": bool(p.get("is_trial")), "trial_length": f"{p.get('trial_duration')} {p.get('trial_duration_unit')}" if p.get("is_trial") else None,
+            "group_order": order.index(p.get("group_id")) if p.get("group_id") in order else 99})
+    return {"families": fams, "currency": (settings.get("currency") or "CAD") if isinstance(settings.get("currency"), str) else "CAD"}
+
+
 @router.post("/{ticket_id}/reply")
 async def reply(ticket_id: str, request: Request):
     _auth(request)
