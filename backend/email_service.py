@@ -980,6 +980,65 @@ class EmailService:
             logger.error(f"send_password_changed: EXCEPTION in send_email: {e}")
             return False
 
+    async def send_order_cancelled(
+        self,
+        customer_email: str,
+        customer_name: str,
+        order_id: str,
+        reason: str = "",
+        customer_id: str = None,
+        items: list = None,
+        total: float = 0.0,
+        credits_returned: float = 0.0
+    ):
+        """Tell the customer an unpaid order was cancelled (CMTV local change 2026-09-26: server.py called this
+        method but it never existed, so the email always failed). Uses the "order_cancelled" template (house style,
+        editable in Admin > Email Templates) with a plain fallback."""
+        if not self.enabled:
+            return False
+        from html import escape
+        ref = f"#{str(order_id)[:8]}"
+        names = [str(i.get("product_name") or "").strip() for i in (items or []) if i.get("product_name")]
+        item_text = ", ".join(names) or "your order"
+        name = (customer_name or "").split(" ")[0] or "there"
+        credit_line = (f"<li>The ${credits_returned:.2f} of account credit you used has been returned to your account</li>"
+                       if credits_returned > 0 else "")
+        values = {
+            "customer_name": escape(name), "order_id": escape(ref), "items": escape(item_text),
+            "total": f"{float(total or 0):.2f}", "reason": escape(reason or ""), "credits_note": credit_line,
+            "shop_link": f"{self.backend_url}/",
+        }
+        plain = (f"Hi {name},\n\nYour order {ref} ({item_text}, ${float(total or 0):.2f}) has been cancelled. "
+                 "You haven't been charged for it.\n"
+                 + (f"The ${credits_returned:.2f} of account credit you used has been returned.\n" if credits_returned > 0 else "")
+                 + f"\nIf you still want it, you can place a new order any time: {self.backend_url}/\n"
+                 "Questions? Just reply to this email.\n\nThe CMTV Support Team")
+        template = None
+        if self.db is not None:
+            template = await self.db.email_templates.find_one({"template_type": "order_cancelled", "is_active": True})
+        if template:
+            subject, content = template.get("subject") or "Your order {{order_id}} was cancelled", template["html_content"]
+            for k, v in values.items():
+                content = content.replace("{{" + k + "}}", v)
+                subject = subject.replace("{{" + k + "}}", v)
+            html = self._wrap_email(content, template.get("name", ""), customer_email, "transactional")
+        else:
+            subject = f"Your order {ref} was cancelled"
+            html = self._wrap_email(
+                f"<p>Hi {values['customer_name']},</p><p>Your order <strong>{values['order_id']}</strong> "
+                f"({values['items']}, ${values['total']}) has been cancelled. You haven't been charged for it.</p>"
+                + (f"<ul>{credit_line}</ul>" if credit_line else "")
+                + f"<p>If you still want it, you can <a href=\"{values['shop_link']}\">place a new order</a> any time.</p>",
+                "", customer_email, "transactional")
+        try:
+            return await self.send_email(
+                to_email=customer_email, subject=subject, html_content=html, text_content=plain,
+                email_type="transactional", template_type="order_cancelled",
+                customer_id=customer_id, order_id=str(order_id), recipient_name=customer_name)
+        except Exception as e:
+            logger.error(f"send_order_cancelled: EXCEPTION in send_email: {e}")
+            return False
+
     async def send_welcome_email(
         self,
         customer_email: str,

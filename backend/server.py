@@ -4588,11 +4588,14 @@ async def cancel_order(order_id: str, current_user: dict = Depends(get_current_a
         if user:
             email_service = await get_configured_email_service()
             if email_service and email_service.enabled:
+                # CMTV local change 2026-09-26: the method now exists (email_service.py); pass the order details too
                 await email_service.send_order_cancelled(
-                    user["email"], 
-                    user["name"], 
+                    user["email"],
+                    user.get("name", ""),
                     order_id,
-                    "Order cancelled by administrator"
+                    "Order cancelled by administrator",
+                    customer_id=order["user_id"], items=order.get("items") or [],
+                    total=float(order.get("total") or 0), credits_returned=float(order.get("credits_used") or 0)
                 )
     except Exception as e:
         logger.error(f"Failed to send cancellation email: {e}")
