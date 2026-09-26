@@ -1,5 +1,6 @@
 // CMTV local addition 2026-09-26: Admin > Add-ons (backend: cmtv_addons.py -> cockpit_helper.py).
-// Every Stremio and CMTVpn user in Cockpit: who it belongs to, when it runs out, and extend / switch off / new password.
+// Every Stremio (or CMTVpn) user in Cockpit: who it belongs to, when it runs out, and extend / switch off / new password.
+// Routes /admin/stremio and /admin/cmtvpn (separate pages, 2026-09-26); /admin/addons redirects to Stremio.
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -109,8 +110,7 @@ function Chips({ value, onChange, options }) {
 }
 const TERMS = [[1, '1 month'], [3, '3 months'], [12, '1 year']];
 
-function NewUserModal({ onClose, onDone }) {
-  const [module, setModule] = useState('nuvio');
+function NewUserModal({ module, onClose, onDone }) {
   const [customer, setCustomer] = useState(null);
   const [months, setMonths] = useState(12);
   const [username, setUsername] = useState('');
@@ -139,10 +139,6 @@ function NewUserModal({ onClose, onDone }) {
         </div>
       ) : (
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Add-on</label>
-            <Chips value={module} onChange={setModule} options={Object.entries(MODS)} />
-          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Billing customer <span className="text-gray-400 font-normal">(optional)</span></label>
             <CustomerPicker value={customer} onChange={setCustomer} />
@@ -232,9 +228,10 @@ function Password({ value }) {
   );
 }
 
-export default function AdminAddonsPage() {
+// One page per add-on (2026-09-26, the user's choice): <AdminAddonsPage module="nuvio" /> or module="vpn"
+export default function AdminAddonsPage({ module = 'nuvio' }) {
   const qc = useQueryClient();
-  const [mod, setMod] = useState('all');
+  const mod = module;
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null);
@@ -250,7 +247,7 @@ export default function AdminAddonsPage() {
 
   const users = useMemo(() => (data?.users || []).map((u) => ({ ...u, s: statusOf(u, today) }))
     .sort((a, b) => (a.s.days ?? 99999) - (b.s.days ?? 99999)), [data, today]);
-  const inMod = users.filter((u) => mod === 'all' || u.module === mod);
+  const inMod = users.filter((u) => u.module === mod);
   const counts = useMemo(() => {
     const c = { all: inMod.length, active: 0, soon: 0, expired: 0, off: 0, unlinked: 0 };
     inMod.forEach((u) => { c[u.s.key] += 1; if (!u.customer) c.unlinked += 1; });
@@ -261,7 +258,8 @@ export default function AdminAddonsPage() {
     const t = q.trim().toLowerCase();
     return f && (!t || [u.username, u.customer?.name, u.customer?.email].some((x) => String(x || '').toLowerCase().includes(t)));
   });
-  const unlinked = (data?.unlinked_services || []).filter((s) => mod === 'all' || s.module === mod);
+  const unlinked = (data?.unlinked_services || []).filter((s) => s.module === mod);
+  const errors = (data?.errors || []).filter((e) => e.startsWith(`${MODS[mod]}:`));
 
   const act = async (key, fn, ok) => {
     setBusy(key);
@@ -283,26 +281,17 @@ export default function AdminAddonsPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <header className="bg-white dark:bg-gray-900 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Add-ons · Stremio &amp; CMTVpn</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{MODS[mod]}</h1>
           <div className="ml-auto flex gap-2">
             <button type="button" onClick={refresh} title="Reload" className={`${btn} border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200`}><RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /></button>
-            <button type="button" onClick={() => setModal({ type: 'new' })} className={`${btn} bg-blue-600 text-white hover:bg-blue-700`}><Plus className="w-4 h-4" /> New account</button>
+            <button type="button" onClick={() => setModal({ type: 'new' })} className={`${btn} bg-blue-600 text-white hover:bg-blue-700`}><Plus className="w-4 h-4" /> New {MODS[mod]} account</button>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-5">
-        <div className="inline-flex rounded-lg bg-gray-200 dark:bg-gray-800 p-1">
-          {[['all', 'All'], ['nuvio', 'Stremio'], ['vpn', 'CMTVpn']].map(([k, label]) => (
-            <button key={k} type="button" onClick={() => setMod(k)}
-              className={`px-4 py-1.5 rounded-md text-sm font-semibold ${mod === k ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-
         {error && <div className="rounded-lg bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-4 text-sm">{errText(error, "Couldn't load the Cockpit accounts")}</div>}
-        {(data?.errors || []).map((e) => <div key={e} className="rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 p-3 text-sm">{e}</div>)}
+        {errors.map((e) => <div key={e} className="rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 p-3 text-sm">{e}</div>)}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {tiles.map(([key, label, n, color]) => (
@@ -317,7 +306,7 @@ export default function AdminAddonsPage() {
         {unlinked.length > 0 && (
           <section className="rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 p-4 space-y-3">
             <h2 className="font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Orders not tied to an account ({unlinked.length})</h2>
-            <p className="text-sm text-amber-900 dark:text-amber-200">Stremio / CMTVpn services in billing that were set up by hand. Pick their Cockpit account so renewals and changes work:</p>
+            <p className="text-sm text-amber-900 dark:text-amber-200">{MODS[mod]} services in billing that were set up by hand. Pick their Cockpit account so renewals and changes work:</p>
             <ul className="space-y-2">
               {unlinked.map((s) => (
                 <li key={s.service_id} className="flex flex-wrap items-center gap-2 bg-white dark:bg-gray-900 rounded-lg px-3 py-2">
@@ -358,7 +347,7 @@ export default function AdminAddonsPage() {
                     <div title={u.label} className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white font-bold flex items-center justify-center flex-shrink-0">{u.label.slice(0, 1)}</div>
                   )}
                   <div className="flex-1 min-w-[180px]">
-                    <p className="font-semibold text-gray-900 dark:text-white">{u.username} <span className="text-xs font-normal text-gray-500">· {u.label}</span></p>
+                    <p className="font-semibold text-gray-900 dark:text-white">{u.username}</p>
                     {u.customer ? (
                       <p className="text-xs text-gray-500 dark:text-gray-400">{u.customer.name} · {u.customer.email}</p>
                     ) : (
@@ -398,11 +387,11 @@ export default function AdminAddonsPage() {
           )}
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Straight from Cockpit (Stremio and CMTVpn). Changes here update the customer's My Services too. Switching off ends access now and keeps the end date for when you switch them back on.
+          Straight from Cockpit ({MODS[mod]}). Changes here update the customer's My Services too. Switching off ends access now and keeps the end date for when you switch them back on.
         </p>
       </main>
 
-      {modal?.type === 'new' && <NewUserModal onClose={() => setModal(null)} onDone={refresh} />}
+      {modal?.type === 'new' && <NewUserModal module={mod} onClose={() => setModal(null)} onDone={refresh} />}
       {modal?.type === 'extend' && <ExtendModal user={modal.user} onClose={() => setModal(null)} onDone={refresh} />}
       {modal?.type === 'link' && <LinkModal user={modal.user} onClose={() => setModal(null)} onDone={refresh} />}
       {pw && (

@@ -444,9 +444,14 @@ function App() {
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminReferralsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
-              path="/admin/addons"
-              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAddonsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+              path="/admin/stremio"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAddonsPage key="nuvio" module="nuvio" /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
+            <Route
+              path="/admin/cmtvpn"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAddonsPage key="vpn" module="vpn" /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />
+            <Route path="/admin/addons" element={<Navigate to="/admin/stremio" replace />} />
             <Route
               path="/admin/audiobooks"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAudiobooksPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
