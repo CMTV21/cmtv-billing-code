@@ -106,6 +106,10 @@ app.include_router(cmtv_finance.router)
 import cmtv_payments
 from fastapi import Body
 
+# CMTV local change 2026-09-26: website tickets <-> Telegram support bot (cmtv_tickets_bridge.py)
+import cmtv_tickets_bridge
+app.include_router(cmtv_tickets_bridge.router)
+
 # CMTV local change 2026-09-25: Admin > Audiobooks (cmtv_audiobooks.py, through abadmin on the Asus server)
 import cmtv_audiobooks
 cmtv_audiobooks.D["get_current_admin_user"] = get_current_admin_user
@@ -674,6 +678,10 @@ async def startup_event():
                        referrals=referrals_collection, credit_transactions=db.credit_transactions,
                        credit_service=credit_service)
     await cmtv_referral.startup()
+
+    # CMTV local change 2026-09-26: website tickets <-> Telegram
+    cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
+                             get_email_service=get_configured_email_service)
 
     # CMTV local change 2026-09-25: Admin > Audiobooks
     cmtv_audiobooks.init(services=services_collection, users=users_collection, products=products_collection,
@@ -3927,7 +3935,10 @@ async def reply_to_ticket(ticket_id: str, reply: dict, current_user: dict = Depe
     
     # Get customer info for notification
     user = await users_collection.find_one({"_id": str_to_objectid(ticket["user_id"])})
-    
+
+    # CMTV local change 2026-09-26: email the customer (billing only ever notified the admin, never the customer)
+    await cmtv_tickets_bridge.email_ticket_reply(ticket, reply["message"])
+
     # Send "Ticket Reply" Telegram notification
     await send_telegram_notification(
         "ticket_reply",
