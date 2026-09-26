@@ -2,13 +2,13 @@
 // Money from the Finances ledger; what needs attention, services, expiring and recent orders from billing.
 // Staff keep the developer's dashboard (AdminDashboard), which filters by their permissions.
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '../../api/api';
 import { useAuthStore } from '../../store/store';
 import AdminDashboard from '../AdminDashboard';
-import '../../components/cmtv/cmtv-admin.css';
+import { CmtvAdminFrame, useAdminOverview, useStuckAudiobooks } from '../../components/cmtv/AdminShell';
 
 const FAMILY = {
   cctv: { label: 'CCTV', c: 'var(--s-cctv)' },
@@ -22,57 +22,6 @@ const utc = (s) => (s ? new Date(/Z|[+-]\d\d:\d\d$/.test(s) ? s : `${s}Z`) : nul
 const day = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const errText = (e, fb) => e?.response?.data?.detail || fb;
-
-const NAV = [
-  { group: null, items: [{ label: 'Overview', to: '/admin' }] },
-  { group: 'Money', items: [
-    { label: 'Orders', to: '/admin/orders', count: 'pending' }, { label: 'Finances', to: '/admin/finances' },
-    { label: 'Analytics', to: '/admin/analytics' }, { label: 'Invoices', to: '/admin/invoices' },
-    { label: 'Refunds', to: '/admin/refunds' }, { label: 'Coupons', to: '/admin/coupons' },
-  ] },
-  { group: 'Customers', items: [
-    { label: 'Customers', to: '/admin/customers' }, { label: 'Support', to: '/admin/tickets', count: 'tickets', crit: true },
-    { label: 'Referrals', to: '/admin/referrals' }, { label: 'Imported users', to: '/admin/imported-users' },
-  ] },
-  { group: 'Services', items: [
-    { label: 'Products', to: '/admin/products' }, { label: 'Audiobooks', to: '/admin/audiobooks', count: 'stuck' },
-    { label: 'Launcher', to: '/admin/launcher' }, { label: 'Downloads', to: '/admin/downloads' },
-    { label: 'Knowledge base', to: '/admin/knowledge-base' },
-  ] },
-  { group: 'System', items: [
-    { label: 'Mass email', to: '/admin/mass-email' }, { label: 'Email templates', to: '/admin/email-templates' },
-    { label: 'Staff', to: '/admin/staff' }, { label: 'Settings', to: '/admin/settings' },
-  ] },
-];
-
-function Sidebar({ counts, onLogout }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <nav className={`side ${open ? 'open' : ''}`} aria-label="Admin">
-      <div className="brand">
-        <img src="/cmtv/cmtv-logo.png" alt="" />
-        <div><b>CMTV</b><small>Admin</small></div>
-        <button type="button" className="menu-btn" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Close' : 'Menu'}</button>
-      </div>
-      <div className="links">
-        {NAV.map((g) => (
-          <React.Fragment key={g.group || 'top'}>
-            {g.group && <div className="grp">{g.group}</div>}
-            {g.items.map((it) => (
-              <Link key={it.to} to={it.to} className={it.to === '/admin' ? 'on' : ''} aria-current={it.to === '/admin' ? 'page' : undefined}>
-                {it.label}
-                {counts[it.count] > 0 && <span className={`count ${it.crit ? 'crit' : ''}`}>{counts[it.count]}</span>}
-              </Link>
-            ))}
-          </React.Fragment>
-        ))}
-        <div className="grp">You</div>
-        <Link to="/">View the store</Link>
-        <button type="button" className="as-link" onClick={onLogout}>Log out</button>
-      </div>
-    </nav>
-  );
-}
 
 function Spark({ values }) {
   if (!values || values.length < 2) return null;
@@ -168,25 +117,14 @@ function orderPill(o) {
 }
 
 function CommandCentre() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(null);
-  const { data: d, error, isLoading } = useQuery({
-    queryKey: ['cmtv-admin-overview'],
-    queryFn: async () => (await api.get('/api/cmtv/admin/overview')).data,
-    refetchInterval: 120000,
-  });
-  // Stuck audiobook requests come from the Asus server and can take a while: loaded separately, never blocks the page.
-  const { data: stuck } = useQuery({
-    queryKey: ['ab-stuck'],
-    queryFn: async () => (await api.get('/api/cmtv/audiobooks/stuck')).data,
-    staleTime: 600000, retry: false,
-  });
+  const { data: d, error, isLoading } = useAdminOverview();
+  const { data: stuck } = useStuckAudiobooks();
   const stuckN = stuck?.requests?.length || 0;
 
-  const onLogout = () => { logout(); navigate('/login'); };
   const markFixed = async (id) => {
     setBusy(id);
     try {
@@ -201,17 +139,14 @@ function CommandCentre() {
   const pending = n.pending_payment || [];
   const waiting = n.tickets_waiting || [];
   const notSetUp = n.not_set_up || [];
-  const counts = { pending: pending.length, tickets: waiting.length, stuck: stuckN };
   const urgent = notSetUp.length + (pending.length ? 1 : 0) + (waiting.length ? 1 : 0);
   const hour = new Date().getHours();
   const hello = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const first = String(user?.name || '').split(' ')[0];
 
   return (
-    <div className="cmtv-adm">
-      <div className="app">
-        <Sidebar counts={counts} onLogout={onLogout} />
-        <main>
+    <CmtvAdminFrame>
+        <div className="adm-home">
           <div className="top">
             <div>
               <h1>{hello}{first ? `, ${first}` : ''}</h1>
@@ -388,9 +323,8 @@ function CommandCentre() {
               </div>
             </>
           )}
-        </main>
-      </div>
-    </div>
+        </div>
+    </CmtvAdminFrame>
   );
 }
 

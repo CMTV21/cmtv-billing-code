@@ -33,6 +33,7 @@ import LicenseActivationRequired from './pages/LicenseActivationRequired';
 import EmailVerificationPage from './pages/EmailVerificationPage';
 import AdminDashboard from './pages/AdminDashboard'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: shown to staff by AdminHomePage
 import AdminHomePage from './pages/cmtv/AdminHomePage'; // CMTV local change 2026-09-26: admin home "command centre"
+import { CmtvAdminFrame } from './components/cmtv/AdminShell'; // CMTV local change 2026-09-26: navy frame + sidebar around every admin tab
 import AdminCustomers from './pages/AdminCustomers';
 import AdminOrders from './pages/AdminOrders';
 import AdminInvoices from './pages/AdminInvoices';
@@ -294,15 +295,15 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="/admin/imported-users" element={<ProtectedRoute><AdminRoute><AdminImportedUsers /></AdminRoute></ProtectedRoute>} />
-            <Route path="/admin/launcher" element={<ProtectedRoute><AdminRoute><LauncherDashboard /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/imported-users" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminImportedUsers /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/launcher" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><LauncherDashboard /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
 
             <Route
               path="/admin/customers"
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminCustomers />
+                    <CmtvAdminFrame><AdminCustomers /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -312,7 +313,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminOrders />
+                    <CmtvAdminFrame><AdminOrders /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -322,7 +323,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminInvoices />
+                    <CmtvAdminFrame><AdminInvoices /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -332,7 +333,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminProducts />
+                    <CmtvAdminFrame><AdminProducts /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -342,7 +343,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminSettings />
+                    <CmtvAdminFrame><AdminSettings /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -352,7 +353,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminTickets />
+                    <CmtvAdminFrame><AdminTickets /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -362,7 +363,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminMassEmail />
+                    <CmtvAdminFrame><AdminMassEmail /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -372,7 +373,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminEmailTemplates />
+                    <CmtvAdminFrame><AdminEmailTemplates /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -382,7 +383,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminCoupons />
+                    <CmtvAdminFrame><AdminCoupons /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -392,7 +393,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminRefunds />
+                    <CmtvAdminFrame><AdminRefunds /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -402,7 +403,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminDownloads />
+                    <CmtvAdminFrame><AdminDownloads /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -412,7 +413,7 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminRoute>
-                    <AdminKnowledgeBase />
+                    <CmtvAdminFrame><AdminKnowledgeBase /></CmtvAdminFrame>
                   </AdminRoute>
                 </ProtectedRoute>
               }
@@ -427,23 +428,23 @@ function App() {
             />
             <Route
               path="/admin/staff"
-              element={<ProtectedRoute><AdminRoute><StaffManagement /></AdminRoute></ProtectedRoute>}
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><StaffManagement /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/analytics"
-              element={<ProtectedRoute><AdminRoute><AnalyticsDashboard /></AdminRoute></ProtectedRoute>}
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AnalyticsDashboard /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/finances"
-              element={<ProtectedRoute><AdminRoute><FinancesPage /></AdminRoute></ProtectedRoute>}
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><FinancesPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/referrals"
-              element={<ProtectedRoute><AdminRoute><AdminReferralsPage /></AdminRoute></ProtectedRoute>}
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminReferralsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/audiobooks"
-              element={<ProtectedRoute><AdminRoute><AdminAudiobooksPage /></AdminRoute></ProtectedRoute>}
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAudiobooksPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
           </Routes>
         </div>
