@@ -14,6 +14,7 @@ const PAGES = {
   '/register': ['Create your account | CMTV', 'Create your CMTV account to start a free trial or order a plan. Canadian & US channels, add-ons and real support.'],
   '/login': ['Sign in | CMTV', 'Sign in to your CMTV account to manage your services, renew and get help.'],
   '/terms': ['Terms and Conditions | CMTV', 'The terms for using CMTV services: plans, renewals, trials, refunds and referrals.'],
+  '/privacy': ['Privacy Policy | CMTV', 'What personal information CMTV collects, how it is used and shared, and your privacy choices.'],
   '/knowledge-base': ['Setup Guides & Help | CMTV', 'Step-by-step setup guides for Firestick, Android TV, Google TV, iPhone, iPad and PC, plus fixes for buffering and common problems.'],
 };
 const PRIVATE_TITLES = [

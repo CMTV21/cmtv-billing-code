@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/cmtv/seo", tags=["cmtv-seo"])
 D = {}
 SITE = "https://billing.cmtv.info"
 PAGES = [("/", "daily", "1.0"), ("/knowledge-base", "weekly", "0.8"), ("/register", "monthly", "0.6"),
-         ("/login", "monthly", "0.4"), ("/terms", "monthly", "0.3")]
+         ("/login", "monthly", "0.4"), ("/terms", "monthly", "0.3"), ("/privacy", "monthly", "0.3")]
 
 
 def init(**deps):
@@ -26,6 +26,15 @@ def _date(v):
     if isinstance(v, str) and len(v) >= 10:
         return v[:10]
     return None
+
+
+@router.get("/privacy")
+async def privacy():
+    """Public privacy policy (2026-09-27): cmtv_config {_id: "privacy_policy"}, set by scripts/2026-09-27-privacy/apply_privacy.py."""
+    doc = await D["db"].cmtv_config.find_one({"_id": "privacy_policy"}) or {}
+    if not doc.get("enabled"):
+        return {"enabled": False}
+    return {"enabled": True, "title": doc.get("title") or "Privacy Policy", "content": doc.get("content") or ""}
 
 
 @router.get("/sitemap.xml")

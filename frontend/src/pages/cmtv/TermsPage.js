@@ -19,6 +19,7 @@ export default function TermsPage() {
       </article>
       <div className="kb-help">
         <div><b>Questions about these terms?</b><span>Message us on Telegram or email cmtv@pm.me.</span></div>
+        <Link className="kb-btn" to="/privacy">Privacy Policy</Link>
         <Link className="kb-btn" to="/">Back to the store</Link>
       </div>
     </div>

@@ -83,7 +83,7 @@ export default function CmtvRegisterPage() {
         </button>
       </form>
 
-      <p className="ab-legal" style={{ marginTop: 14 }}>By creating an account you agree to our <Link to="/terms" target="_blank" rel="noopener">Terms and Conditions</Link>.</p>
+      <p className="ab-legal" style={{ marginTop: 14 }}>By creating an account you agree to our <Link to="/terms" target="_blank" rel="noopener">Terms and Conditions</Link> and <Link to="/privacy" target="_blank" rel="noopener">Privacy Policy</Link>.</p>
       <p className="ab-alt">Already with us? <Link to="/login">Sign in</Link></p>
       <RecaptchaLegal enabled={recaptchaConfig?.enabled} />
 
