@@ -204,7 +204,7 @@ export default function CmtvHomePage() {
         </div>
       </section>
 
-      <footer>{branding.footer_text || 'CMTV'}</footer>
+      <footer>{branding.footer_text || 'CMTV'} · <Link to="/terms" style={{ color: 'inherit' }}>Terms and Conditions</Link></footer>{/* CMTV 2026-09-27: terms link */}
     </div>
   );
 }
