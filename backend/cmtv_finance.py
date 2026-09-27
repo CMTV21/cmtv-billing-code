@@ -60,6 +60,7 @@ def init(**deps):
     D.update(deps)
     db = deps["db"]
     D["tx"], D["exp"], D["cfg"] = db.fin_transactions, db.fin_expenses, db.fin_config
+    D["buys"], D["cfg_hist"] = db.fin_credit_purchases, db.fin_config_history   # 2026-09-27: credit purchases
 
 
 async def startup():
@@ -72,12 +73,52 @@ async def startup():
 
 
 async def config():
-    return await D["cfg"].find_one({"_id": "config"}) or DEFAULT_CONFIG
+    cfg = await D["cfg"].find_one({"_id": "config"}) or dict(DEFAULT_CONFIG)
+    cfg["_avg"] = await avg_timelines()
+    return cfg
 
 
-# ---------------- maths (mirrors the spreadsheet) ----------------
+# ---------------- credit purchases -> average cost per credit (2026-09-27) ----------------
+# The user buys panel credits in batches at different prices (e.g. Imperium 100 at $3, then 200 at $2.50).
+# Moving weighted average: each purchase is blended with the credits still on hand; sales (the ledger's credits)
+# use credits up at the current average. From a server's first recorded purchase on, its cost per credit comes from
+# this; before it, the dated rates below still apply, so older months don't change.
+
+async def avg_timelines(server=None):
+    """{server: {"points": [(date, avg)], "stock": credits on hand (estimate), "avg": current}} for servers with purchases"""
+    q = {"deleted": {"$ne": True}}
+    if server:
+        q["server"] = server
+    buys = await D["buys"].find(q).sort("date", 1).to_list(5000)
+    out = {}
+    for srv in sorted({b["server"] for b in buys}):
+        mine = [b for b in buys if b["server"] == srv]
+        first = mine[0]["date"]
+        events = [(b["date"], 0, float(b["credits"]), float(b["total_paid"])) for b in mine]   # purchases first on a day
+        async for t in D["tx"].find({"server": srv, "deleted": {"$ne": True}, "date": {"$gte": first}, "credits": {"$gt": 0}},
+                                    {"date": 1, "credits": 1}):
+            events.append((t["date"], 1, float(t.get("credits") or 0), 0.0))
+        events.sort(key=lambda e: (e[0], e[1]))
+        stock, avg, points = 0.0, None, []
+        for when, kind, qty, paid in events:
+            if kind == 0:
+                avg = paid / qty if (avg is None or stock <= 0) else (stock * avg + paid) / (stock + qty)
+                stock += qty
+                points.append((when, round(avg, 4)))
+            else:
+                stock = max(0.0, stock - qty)
+        out[srv] = {"points": points, "stock": round(stock, 2), "avg": round(avg or 0, 4), "first": first}
+    return out
+
 
 def cost_per_credit(cfg, server, when):
+    tl = (cfg.get("_avg") or {}).get(server)
+    if tl and tl["points"] and tl["points"][0][0] <= when:   # from purchases (average of credits on hand)
+        best = tl["points"][0][1]
+        for d, a in tl["points"]:
+            if d <= when:
+                best = a
+        return best
     best, best_from = 0.0, None
     for r in cfg.get("rates", []):
         if r["server"].lower() != str(server).lower():
@@ -113,6 +154,60 @@ def credits_for(cfg, server, connections, months):
         if c["server"] == server and int(c["connections"]) == int(connections or 0) and int(c["months"]) == int(months or 0):
             return float(c["credits"])
     return None
+
+
+async def recost(server):
+    """Re-work a server's credit cost and profit on ledger rows from its first recorded purchase on (the first time a row
+    changes, its old figures are kept in cost_before_purchases). Returns how many rows changed."""
+    cfg = await config()
+    tl = cfg["_avg"].get(server)
+    q = {"server": server, "deleted": {"$ne": True}, "credits": {"$gt": 0}}
+    if tl:
+        q["date"] = {"$gte": tl["first"]}
+    else:   # no purchases left: rows that were re-costed go back to the dated rates
+        q["cost_before_purchases"] = {"$exists": True}
+    changed = 0
+    async for t in D["tx"].find(q):
+        row = {k: t.get(k) for k in ("server", "date", "amount", "credits", "method")}
+        row["cost_per_credit"] = None
+        complete(cfg, row)
+        if abs(float(t.get("total_cost") or 0) - row["total_cost"]) < 0.005 and t.get("cost_per_credit") == row["cost_per_credit"]:
+            continue
+        upd = {"cost_per_credit": row["cost_per_credit"], "total_cost": row["total_cost"], "profit": row["profit"],
+               "recosted_at": datetime.utcnow()}
+        if "cost_before_purchases" not in t:
+            upd["cost_before_purchases"] = {"cost_per_credit": t.get("cost_per_credit"), "total_cost": t.get("total_cost"),
+                                            "profit": t.get("profit")}
+        await D["tx"].update_one({"_id": t["_id"]}, {"$set": upd})
+        changed += 1
+    return changed
+
+
+async def margins(cfg):
+    """The pricing sheet: each plan in the credits table with its store price, credits, cost, profit and margin"""
+    settings = await D["get_settings"]()
+    groups = {g.get("id"): g.get("name") for g in settings.get("product_groups", [])}
+    store = {}
+    async for p in D["products"].find({"is_trial": {"$ne": True}, "account_type": {"$ne": "reseller"}}):
+        prices = p.get("prices") or {}
+        if not prices:
+            continue
+        months, price = next(iter(prices.items()))
+        key = (_server_for(p, groups), int(p.get("max_connections") or 0), int(months))
+        if float(price) > 0 and key not in store:
+            store[key] = {"price": float(price), "product": (p.get("name") or "").strip()}
+    now = datetime.utcnow()
+    rows = []
+    for c in sorted(cfg.get("credits", []), key=lambda c: (c["server"], int(c["connections"]), int(c["months"]))):
+        key = (c["server"], int(c["connections"]), int(c["months"]))
+        cpc = cost_per_credit(cfg, c["server"], now)
+        s = store.get(key)
+        cost = round(float(c["credits"]) * cpc, 2)
+        rows.append({"server": c["server"], "connections": key[1], "months": key[2], "credits": float(c["credits"]),
+                     "cost_per_credit": cpc, "cost": cost, "price": s["price"] if s else None, "product": s["product"] if s else None,
+                     "profit": round(s["price"] - cost, 2) if s else None,
+                     "margin": round((s["price"] - cost) * 100 / s["price"], 1) if s else None})
+    return rows
 
 
 # ---------------- billing orders -> ledger ----------------
@@ -336,7 +431,9 @@ def init_routes():
         c = await config()
         servers = sorted({r["server"] for r in c.get("rates", [])})
         return {"cutover": c["cutover"], "paypal_fee": c["paypal_fee"], "rates": c["rates"], "credits": c["credits"],
-                "servers": servers, "methods": METHODS, "expense_categories": EXPENSE_CATEGORIES}
+                "servers": servers, "methods": METHODS, "expense_categories": EXPENSE_CATEGORIES,
+                # 2026-09-27: average cost per credit from purchases, as [date, avg] points per server
+                "avg": {s: [[d, a] for d, a in v["points"]] for s, v in c["_avg"].items()}}
 
     @router.put("/config/rate")
     async def api_set_rate(data: dict, user=Depends(admin)):
@@ -347,6 +444,71 @@ def init_routes():
         rate = {"server": server, "cost_per_credit": float(data.get("cost_per_credit") or 0),
                 "from": _clean_date(data["from"]) if data.get("from") else None}
         await D["cfg"].update_one({"_id": "config"}, {"$push": {"rates": rate}})
+        return {"ok": True}
+
+    # ---- credits & margins (2026-09-27) ----
+    @router.get("/credits")
+    async def api_credits(user=Depends(admin)):
+        cfg = await config()
+        now = datetime.utcnow()
+        servers = sorted({c["server"] for c in cfg.get("credits", [])} | set(cfg["_avg"]))
+        buys = await D["buys"].find({"deleted": {"$ne": True}}).sort("date", -1).to_list(500)
+        return {
+            "servers": [{"server": s, "cost_per_credit": cost_per_credit(cfg, s, now),
+                         "from_purchases": s in cfg["_avg"], "stock": (cfg["_avg"].get(s) or {}).get("stock"),
+                         "purchases": [{"id": str(b["_id"]), "date": b["date"], "credits": b["credits"], "total_paid": b["total_paid"],
+                                        "per_credit": round(b["total_paid"] / b["credits"], 4) if b["credits"] else None,
+                                        "notes": b.get("notes", "")} for b in buys if b["server"] == s]}
+                        for s in servers],
+            "all_servers": sorted({r["server"] for r in cfg.get("rates", [])} | set(servers)),
+            "margins": await margins(cfg),
+        }
+
+    @router.post("/credits/purchases")
+    async def api_add_purchase(data: dict, user=Depends(admin)):
+        server = str(data.get("server") or "").strip()
+        try:
+            credits, paid = float(data.get("credits")), float(data.get("total_paid"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Enter the credits and what you paid")
+        if not server or credits <= 0 or paid < 0:
+            raise HTTPException(status_code=400, detail="Choose the server and enter credits above 0")
+        await D["buys"].insert_one({"server": server, "date": _clean_date(data.get("date")), "credits": credits,
+                                    "total_paid": round(paid, 2), "notes": str(data.get("notes") or "").strip()[:200],
+                                    "created_at": datetime.utcnow(), "created_by": user.get("email")})
+        changed = await recost(server)
+        cfg = await config()
+        return {"ok": True, "cost_per_credit": cost_per_credit(cfg, server, datetime.utcnow()), "recosted": changed}
+
+    @router.delete("/credits/purchases/{buy_id}")
+    async def api_remove_purchase(buy_id: str, user=Depends(admin)):
+        b = await D["buys"].find_one({"_id": ObjectId(buy_id)}) if ObjectId.is_valid(buy_id) else None
+        if not b:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+        await D["buys"].update_one({"_id": b["_id"]}, {"$set": {"deleted": True, "deleted_at": datetime.utcnow(),
+                                                                 "deleted_by": user.get("email")}})
+        return {"ok": True, "recosted": await recost(b["server"])}
+
+    @router.put("/credits/table")
+    async def api_set_credits(data: dict, user=Depends(admin)):
+        """Change (or add) how many credits a plan uses. The previous table is kept in fin_config_history."""
+        try:
+            server, conns, months = str(data["server"]).strip(), int(data["connections"]), int(data["months"])
+            credits = float(data["credits"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Server, devices, months and credits are needed")
+        if not server or conns <= 0 or months <= 0 or credits < 0:
+            raise HTTPException(status_code=400, detail="Devices and months must be above 0")
+        cfg = await D["cfg"].find_one({"_id": "config"})
+        table = list(cfg.get("credits", []))
+        await D["cfg_hist"].insert_one({"credits": table, "saved_at": datetime.utcnow(), "by": user.get("email")})
+        for c in table:
+            if c["server"] == server and int(c["connections"]) == conns and int(c["months"]) == months:
+                c["credits"] = credits
+                break
+        else:
+            table.append({"server": server, "connections": conns, "months": months, "credits": credits})
+        await D["cfg"].update_one({"_id": "config"}, {"$set": {"credits": table}})
         return {"ok": True}
 
     @router.get("/transactions")

@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Download, Plus, RefreshCw } from 
 import { toast } from 'sonner';
 import api from '../../api/api';
 import '../../components/cmtv/cmtv-finance.css';
+import CreditsMargins from './CreditsMargins';   // 2026-09-27: Credits & margins tab
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (a, b) => (b ? Math.round(((a - b) / Math.abs(b)) * 100) : null);
@@ -75,6 +76,9 @@ function RecordPayment({ cfg, onSaved }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const rate = useMemo(() => {
     const d = new Date(`${f.date}T12:00:00`);
+    // 2026-09-27: from credit purchases (average of credits on hand) once a server has any, else the dated rates
+    const pts = (cfg?.avg?.[f.server] || []).filter(([when]) => new Date(when) <= d);
+    if (pts.length) return pts[pts.length - 1][1];
     const rs = (cfg?.rates || []).filter((r) => r.server === f.server && (!r.from || new Date(r.from) <= d));
     rs.sort((a, b) => new Date(a.from || 0) - new Date(b.from || 0));
     return rs.length ? rs[rs.length - 1].cost_per_credit : 0;
@@ -196,6 +200,7 @@ export default function FinancesPage() {
   const qc = useQueryClient();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [panel, setPanel] = useState(null);   // 'payment' | 'expense' | null
+  const [tab, setTab] = useState('overview');   // 2026-09-27: 'overview' | 'credits'
   const [busy, setBusy] = useState('');
   const { data: s, isLoading } = useQuery({
     queryKey: ['fin-summary', month],
@@ -242,6 +247,13 @@ export default function FinancesPage() {
           <button type="button" className="btn" onClick={exportXlsx} disabled={busy === 'export'}><Download className="w-4 h-4" /> {busy === 'export' ? 'Preparing...' : 'Export to Excel'}</button>
         </div>
 
+        <div className="cm-tabs" role="tablist" aria-label="Finances view">
+          {[['overview', 'Overview'], ['credits', 'Credits & margins']].map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
+          ))}
+        </div>
+
+        {tab === 'credits' ? <CreditsMargins /> : (<>
         {panel && (
           <div className="panel">
             <h2>{panel === 'payment' ? 'Record payment' : 'Add expense'}</h2>
@@ -311,6 +323,7 @@ export default function FinancesPage() {
             </div>
           </>
         )}
+        </>)}
       </div>
     </div>
   );

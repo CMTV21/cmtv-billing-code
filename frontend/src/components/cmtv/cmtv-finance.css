@@ -63,3 +63,24 @@
 .cmtv-fin .spinner { width: 36px; height: 36px; margin: 60px auto; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--cyan); animation: cmtvfin-spin 1s linear infinite; }
 @keyframes cmtvfin-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .cmtv-fin * { animation: none !important; } }
+
+/* 2026-09-27: Credits & margins tab (CreditsMargins.js) */
+.cmtv-fin .cm-tabs { display: inline-flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; margin-bottom: 14px; }
+.cmtv-fin .cm-tabs button { font: 600 13.5px var(--body); color: var(--muted); background: transparent; border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+.cmtv-fin .cm-tabs button.on { background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--cyan); }
+.cmtv-fin .cm-intro { margin: 0 0 14px; max-width: 900px; }
+.cmtv-fin .cm-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.cmtv-fin .cm-head > div:first-child { flex: 1; }
+.cmtv-fin .cm-head h2 { margin-bottom: 2px; }
+.cmtv-fin .cm-cpc { text-align: right; }
+.cmtv-fin .cm-cpc span { display: block; font: 700 26px/1.1 var(--display); font-variant-numeric: tabular-nums; color: var(--cyan); }
+.cmtv-fin .cm-cpc small { color: var(--faint); font-size: 11.5px; }
+.cmtv-fin .cm-server .btn.small { margin-top: 8px; }
+.cmtv-fin .cm-buy { margin-top: 10px; }
+.cmtv-fin .cm-num { width: 78px; text-align: right; font: 600 13.5px var(--body); font-variant-numeric: tabular-nums; color: var(--text);
+  background: #0f1728; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; color-scheme: dark; }
+.cmtv-fin .cm-num:focus { outline: none; border-color: var(--cyan); }
+.cmtv-fin .cm-num::placeholder { color: var(--faint); }
+.cmtv-fin .cm-table tr.testing td { background: rgba(34,230,242,.05); }
+.cmtv-fin .pill.ok { color: var(--good); border-color: rgba(74,222,128,.45); }
+.cmtv-fin .muted { color: var(--faint); font-size: 12.5px; }
