@@ -119,6 +119,74 @@
 .adm-home .link { color: var(--cyan); text-decoration: none; font-weight: 600; font-size: 13px; background: none; border: 0; padding: 0; margin-top: 8px; display: inline-block; }
 .adm-home .skeleton { color: var(--muted); padding: 40px 0; text-align: center; }
 
+.adm-home a.plain { color: inherit; text-decoration: none; font-weight: inherit; }
+.adm-home a.plain:hover { color: var(--cyan); text-decoration: underline; }
+.adm-home .trial-row { display: flex; gap: 22px; flex-wrap: wrap; }
+.adm-home .trial-stat { flex: 1; min-width: 120px; }
+.adm-home .trial-stat .big { font: 700 26px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+.adm-home .trial-stat small { color: var(--muted); font-size: 12.5px; display: block; }
+.adm-home .meter { height: 8px; background: var(--row-line); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.adm-home .meter i { display: block; height: 100%; background: var(--good); border-radius: 0 4px 4px 0; }
+
+/* ---------- 2b. customer profile + customer search (2026-09-27) ---------- */
+.cmtv-adm .cust-search { position: relative; margin-bottom: 14px; }
+.cmtv-adm .side .cust-search { margin: 4px 0 6px; }
+.cmtv-adm .cust-search input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--text); font: 14px var(--body); }
+.cmtv-adm .cust-search.compact input { padding: 7px 10px; font-size: 13px; }
+.cmtv-adm .cust-search input:focus { outline: none; border-color: var(--cyan); }
+.cmtv-adm .cust-search ul { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); list-style: none; margin: 0; padding: 4px;
+  background: var(--deep); border: 1px solid var(--line); border-radius: 10px; max-height: 340px; overflow-y: auto; min-width: 260px; }
+.cmtv-adm .cust-search li.none { padding: 8px 10px; color: var(--faint); font-size: 13px; }
+.cmtv-adm .cust-search li button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 7px 10px; border-radius: 8px; }
+.cmtv-adm .cust-search li button:hover { background: var(--surface-2); }
+.cmtv-adm .cust-search li b { display: block; font-size: 13.5px; }
+.cmtv-adm .cust-search li span { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.cmtv-adm .cust-search li em { display: block; color: var(--cyan); font-size: 11.5px; font-style: normal; }
+
+.adm-cust .cust-head { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.adm-cust .avatar { width: 58px; height: 58px; border-radius: 16px; display: grid; place-items: center; font: italic 800 22px var(--display);
+  background: var(--ring-grad); color: #07101f; flex: none; }
+.adm-cust .who { flex: 1; min-width: 220px; }
+.adm-cust .who h1 { margin: 0 0 2px; }
+.adm-cust .who p { margin: 2px 0; color: var(--muted); overflow-wrap: anywhere; }
+.adm-cust code { font: 13px ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--deep); border: 1px solid var(--row-line);
+  border-radius: 6px; padding: 1px 6px; color: var(--text); }
+.adm-cust .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.adm-cust .svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.adm-cust .svc { border: 1px solid var(--line); border-left: 3px solid var(--c); border-radius: 12px; padding: 12px 14px; background: var(--deep); }
+.adm-cust .svc-top { display: flex; gap: 10px; align-items: flex-start; }
+.adm-cust .svc-top .dot { margin-top: 6px; }
+.adm-cust .svc-name { flex: 1; min-width: 0; }
+.adm-cust .svc-name b { display: block; }
+.adm-cust .svc-name small { color: var(--muted); font-size: 12.5px; }
+.adm-cust .svc-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 13.5px; }
+.adm-cust .svc-row > span:first-child { color: var(--faint); width: 44px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.adm-cust .svc-row small { color: var(--muted); }
+.adm-cust .svc-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.adm-cust .secret { display: inline-flex; gap: 4px; align-items: center; }
+.adm-cust .mini { background: none; border: 0; color: var(--cyan); font-size: 12px; font-weight: 600; padding: 0 4px; cursor: pointer; }
+.adm-cust .note-add { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 10px; }
+.adm-cust .note-add textarea { flex: 1; resize: vertical; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--deep);
+  color: var(--text); font: 14px var(--body); }
+.adm-cust .notes, .adm-cust .list { list-style: none; margin: 0; padding: 0; }
+.adm-cust .notes li, .adm-cust .list li { padding: 8px 0; border-bottom: 1px solid var(--row-line); }
+.adm-cust .notes li:last-child, .adm-cust .list li:last-child { border-bottom: 0; }
+.adm-cust .notes p { margin: 0 0 2px; white-space: pre-wrap; }
+.adm-cust .notes small, .adm-cust .list small { color: var(--muted); font-size: 12.5px; display: block; }
+.adm-cust .list b { display: block; font-weight: 600; font-size: 14px; }
+.adm-cust .bad { color: var(--crit); font-weight: 600; }
+.adm-cust .timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--row-line); max-height: 420px; overflow-y: auto; }
+.adm-cust .timeline li { position: relative; padding: 6px 0 6px 12px; font-size: 13.5px; display: flex; gap: 10px; }
+.adm-cust .timeline li::before { content: ""; position: absolute; left: -20px; top: 12px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--muted); }
+.adm-cust .timeline li.order::before { border-color: var(--good); }
+.adm-cust .timeline li.service::before { border-color: var(--warn); }
+.adm-cust .timeline li.ticket::before { border-color: var(--info); }
+.adm-cust .timeline li.email::before { border-color: var(--s-add); }
+.adm-cust .timeline .when { color: var(--faint); white-space: nowrap; min-width: 92px; font-variant-numeric: tabular-nums; }
+.adm-cust .ref-box .rounded-xl, .adm-cust .ref-box .rounded-lg { background: transparent !important; }
+
 /* ---------- 3. the developer's admin pages, re-coloured ---------- */
 /* shadcn colours (Card, Button, Input, Dialog, Select, Dropdown...), as HSL like the originals */
 html.cmtv-adm-on, html.cmtv-adm-on.dark {

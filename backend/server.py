@@ -129,6 +129,12 @@ cmtv_admin_overview.D["get_current_admin_user"] = get_current_admin_user
 cmtv_admin_overview.init_routes()
 app.include_router(cmtv_admin_overview.router)
 
+# CMTV local change 2026-09-27: admin customer profile page (cmtv_customer.py)
+import cmtv_customer
+cmtv_customer.D["get_current_admin_user"] = get_current_admin_user
+cmtv_customer.init_routes()
+app.include_router(cmtv_customer.router)
+
 # CMTV local change 2026-09-26: Admin > Add-ons, Stremio / CMTVpn users in Cockpit (cmtv_addons.py)
 import cmtv_addons
 cmtv_addons.D["get_current_admin_user"] = get_current_admin_user
@@ -708,6 +714,10 @@ async def startup_event():
     # CMTV local change 2026-09-26: admin home
     cmtv_admin_overview.init(orders=orders_collection, services=services_collection, users=users_collection,
                              tickets=tickets_collection, products=products_collection, get_settings=get_settings)
+
+    # CMTV local change 2026-09-27: customer profile page
+    cmtv_customer.init(db=db, users=users_collection, services=services_collection, orders=orders_collection,
+                       products=products_collection, get_settings=get_settings)
 
     # CMTV local change 2026-09-26: Admin > Add-ons
     cmtv_addons.init(db=db, users=users_collection, services=services_collection, products=products_collection,

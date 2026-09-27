@@ -14,6 +14,7 @@ import CmtvHomePage from './pages/cmtv/CmtvHomePage'; // CMTV local change 2026-
 import FinancesPage from './pages/cmtv/FinancesPage'; // CMTV local change 2026-09-25: Admin > Finances
 import AdminReferralsPage from './pages/cmtv/AdminReferralsPage'; // CMTV local change 2026-09-25: Admin > Referrals
 import AdminAudiobooksPage from './pages/cmtv/AdminAudiobooksPage'; // CMTV local change 2026-09-25: Admin > Audiobooks
+import AdminCustomerPage from './pages/cmtv/AdminCustomerPage'; // CMTV local change 2026-09-27: customer profile page
 import AdminAddonsPage from './pages/cmtv/AdminAddonsPage'; // CMTV local change 2026-09-26: Admin > Add-ons (Cockpit: Stremio, CMTVpn)
 import LoginPage from './pages/LoginPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvLoginPage
 import RegisterPage from './pages/RegisterPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvRegisterPage
@@ -445,6 +446,8 @@ function App() {
               path="/admin/referrals"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminReferralsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
+            <Route path="/admin/customer" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminCustomerPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/customer/:id" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminCustomerPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
             <Route
               path="/admin/stremio"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAddonsPage key="nuvio" module="nuvio" /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}

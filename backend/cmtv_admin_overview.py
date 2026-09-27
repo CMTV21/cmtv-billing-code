@@ -176,7 +176,7 @@ def init_routes():
                                     "cmtv_setup_resolved": {"$ne": True},
                                     "paid_at": {"$gte": now_utc - timedelta(days=30)}}).sort("paid_at", -1).limit(5):
             c = await who(o.get("user_id"))
-            not_set_up.append({"id": str(o["_id"]), "customer": c["name"], "items": ", ".join(i.get("product_name", "") for i in o.get("items") or []),
+            not_set_up.append({"id": str(o["_id"]), "customer": c["name"], "user_id": o.get("user_id"), "items": ", ".join(i.get("product_name", "") for i in o.get("items") or []),
                                "reason": ((o.get("provisioning_errors") or [""])[0] or "")[:140]})
         pending = []
         async for o in orders.find({"status": "pending", "total": {"$gt": 0}, "payment_method": {"$in": list(OFFLINE)},
@@ -201,11 +201,39 @@ def init_routes():
                                  "error": (e.get("error_message") or "")[:140],
                                  "at": e["created_at"].isoformat() if isinstance(e.get("created_at"), datetime) else None})
 
+        # ---- trials -> paying, and the come-back offer (2026-09-27) ----
+        async def trial_conversion(days):
+            since = now_utc - timedelta(days=days)
+            first = {}
+            async for s in services.find({"is_trial": True, "created_at": {"$gte": since}}, {"user_id": 1, "created_at": 1}):
+                uid = str(s.get("user_id") or "")
+                if uid and (uid not in first or s["created_at"] < first[uid]):
+                    first[uid] = s["created_at"]
+            converted = 0
+            for uid, t in first.items():
+                if await orders.find_one({"user_id": uid, "status": "paid", "total": {"$gt": 0}, "created_at": {"$gt": t}}, {"_id": 1}):
+                    converted += 1
+            return {"days": days, "trials": len(first), "paying": converted,
+                    "pct": round(converted * 100 / len(first)) if first else None}
+        wb_sent = wb_used = 0
+        wb_revenue = 0.0
+        async for w in orders.database.cmtv_trial_winback.find({"code": {"$ne": None}}, {"code": 1}):
+            wb_sent += 1
+            use = await orders.database.coupon_usage.find_one({"coupon_code": w["code"]}, {"order_id": 1})
+            if use:
+                o = await orders.find_one({"_id": ObjectId(use["order_id"])} if ObjectId.is_valid(str(use.get("order_id"))) else {"_id": None},
+                                          {"status": 1, "total": 1})
+                if o and o.get("status") == "paid":
+                    wb_used += 1
+                    wb_revenue += float(o.get("total") or 0)
+        trials = {"d30": await trial_conversion(30), "d90": await trial_conversion(90),
+                  "winback": {"sent": wb_sent, "used": wb_used, "revenue": round(wb_revenue, 2)}}
+
         # ---- recent orders ----
         recent = []
         async for o in orders.find({"status": {"$ne": "cancelled"}}).sort("created_at", -1).limit(8):
             c = await who(o.get("user_id"))
-            recent.append({"id": str(o["_id"]), "customer": c["name"], "items": ", ".join(i.get("product_name", "") for i in o.get("items") or []),
+            recent.append({"id": str(o["_id"]), "customer": c["name"], "user_id": o.get("user_id"), "items": ", ".join(i.get("product_name", "") for i in o.get("items") or []),
                            "method": _label(o), "total": float(o.get("total") or 0), "status": o.get("status"),
                            "provisioning": o.get("provisioning_status"), "created_at": o["created_at"].isoformat() if isinstance(o.get("created_at"), datetime) else None})
 
@@ -221,7 +249,7 @@ def init_routes():
             "customers": {"new30": new30, "prev30": prev30, "referred30": referred30, "new_paying30": new_paying30},
             "needs": {"not_set_up": not_set_up, "pending_payment": pending, "tickets_waiting": waiting,
                       "ending_week_no_autorenew": week_no_ar, "email_failed": email_failed},
-            "expiring": expiring[:40], "expiring_count": len(expiring), "recent_orders": recent,
+            "expiring": expiring[:40], "expiring_count": len(expiring), "recent_orders": recent, "trials": trials,
         }
 
     @router.post("/orders/{order_id}/setup-resolved")

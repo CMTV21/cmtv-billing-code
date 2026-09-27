@@ -208,7 +208,7 @@ function CommandCentre() {
                         <div className="what">
                           <span className="sev">▲ Urgent</span>
                           <b>Paid order didn't set up</b>
-                          <small>{o.customer} · {o.items}{o.reason ? ` · ${o.reason}` : ''}</small>
+                          <small>{o.user_id ? <Link className="plain" to={`/admin/customer/${o.user_id}`}>{o.customer}</Link> : o.customer} · {o.items}{o.reason ? ` · ${o.reason}` : ''}</small>
                         </div>
                         <div className="acts">
                           <Link className="btn" to="/admin/orders">Open orders</Link>
@@ -281,6 +281,33 @@ function CommandCentre() {
                 </section>
               </div>
 
+              {d.trials && (
+                <div className="grid2">
+                  <section className="card" aria-label="Trials that became paying customers">
+                    <h2>Trials → paying</h2>
+                    <div className="trial-row">
+                      {[d.trials.d30, d.trials.d90].map((t) => (
+                        <div key={t.days} className="trial-stat">
+                          <div className="big">{t.pct === null ? '–' : `${t.pct}%`}</div>
+                          <small>{t.paying} of {t.trials} trial customer{t.trials === 1 ? '' : 's'} paid · last {t.days} days</small>
+                          <div className="meter" aria-hidden="true"><i style={{ width: `${t.pct || 0}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="note" style={{ marginTop: 10 }}>A trial counts as converted when that customer pays for anything afterwards.</p>
+                  </section>
+                  <section className="card" aria-label="Come-back offer results">
+                    <h2>15% come-back offer</h2>
+                    <div className="trial-row">
+                      <div className="trial-stat"><div className="big">{d.trials.winback.sent}</div><small>emails sent</small></div>
+                      <div className="trial-stat"><div className="big">{d.trials.winback.used}</div><small>codes used{d.trials.winback.sent ? ` (${Math.round(d.trials.winback.used * 100 / d.trials.winback.sent)}%)` : ''}</small></div>
+                      <div className="trial-stat"><div className="big">{money(d.trials.winback.revenue, false)}</div><small>paid with those codes</small></div>
+                    </div>
+                    <p className="note" style={{ marginTop: 10 }}>Sent about a day after a trial ends without a purchase.</p>
+                  </section>
+                </div>
+              )}
+
               <section className="card" style={{ marginBottom: 14 }} aria-label="Revenue, last 30 days">
                 <h2>Revenue · last 30 days</h2>
                 <RevenueChart days={d.revenue.last30} />
@@ -299,7 +326,7 @@ function CommandCentre() {
                       <tbody>
                         {(showAll ? d.expiring : d.expiring.slice(0, 8)).map((e, i) => (
                           <tr key={`${e.user_id}-${i}`}>
-                            <td className="clip" title={e.email || ''}>{e.customer}</td>
+                            <td className="clip" title={e.email || ''}>{e.user_id ? <Link className="plain" to={`/admin/customer/${e.user_id}`}>{e.customer}</Link> : e.customer}</td>
                             <td className="clip"><span className="dot" style={{ '--c': (FAMILY[e.family] || FAMILY.other).c }} />{e.service}</td>
                             <td>{day(utc(e.ends))}</td>
                             <td>{e.auto_renew ? <span className="pill p-good">On</span> : <span className="pill p-mute">Off</span>}</td>
@@ -320,7 +347,7 @@ function CommandCentre() {
                     <tbody>
                       {d.recent_orders.map((o) => (
                         <tr key={o.id}>
-                          <td className="clip">{o.customer}</td>
+                          <td className="clip">{o.user_id ? <Link className="plain" to={`/admin/customer/${o.user_id}`}>{o.customer}</Link> : o.customer}</td>
                           <td className="clip" title={o.items}>{o.items}</td>
                           <td>{o.method}</td>
                           <td className="num">{money(o.total)}</td>

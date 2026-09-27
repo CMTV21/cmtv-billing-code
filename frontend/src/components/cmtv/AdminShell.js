@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../api/api';
 import { useAuthStore } from '../../store/store';
 import './cmtv-admin.css';
+import { CustomerSearch } from '../../pages/cmtv/AdminCustomerPage';   // 2026-09-27: find a customer from any admin page
 
 // perm = the staff permission that shows the item to staff (items without one are admin-only), like the developer's sidebar
 const NAV = [
@@ -16,7 +17,7 @@ const NAV = [
     { label: 'Refunds', to: '/admin/refunds' }, { label: 'Coupons', to: '/admin/coupons' },
   ] },
   { group: 'Customers', items: [
-    { label: 'Customers', to: '/admin/customers', perm: 'customers' },
+    { label: 'Customers', to: '/admin/customers', perm: 'customers' }, { label: 'Customer profile', to: '/admin/customer' },
     { label: 'Support', to: '/admin/tickets', count: 'tickets', crit: true, perm: 'tickets' },
     { label: 'Referrals', to: '/admin/referrals' }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
   ] },
@@ -71,6 +72,7 @@ function AdminSidebar() {
         <button type="button" className="menu-btn" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Close' : 'Menu'}</button>
       </div>
       <div className="links">
+        {!isStaff && <CustomerSearch compact />}
         {groups.map((g) => (
           <React.Fragment key={g.group || 'top'}>
             {g.group && <div className="grp">{g.group}</div>}
