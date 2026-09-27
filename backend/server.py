@@ -6991,6 +6991,15 @@ async def provision_aether_service(order_id: str, order: dict, user: dict, item:
             return
 
         account_type = product.get("account_type", "subscriber")
+        if account_type == "reseller":
+            # CMTV local change 2026-09-27: Imperium reseller packs create a sub-reseller (or add credits to the
+            # customer's own one) through the Aether API (cmtv_aether_reseller.py); before, they always failed here
+            import cmtv_aether_reseller
+            await cmtv_aether_reseller.provision(
+                ae=ae, order_id=order_id, order=order, user=user, item=item, product=product, panel_index=panel_index,
+                panel_name=panel_name, services=services_collection, email_service=email_service,
+                generate_username=generate_username)
+            return
         if account_type != "subscriber":
             logger.error("Aether: only subscriber lines can be provisioned via the API")
             return
