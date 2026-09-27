@@ -4061,19 +4061,20 @@ async def update_ticket_status(ticket_id: str, status_update: dict, current_user
     )
     
     # Send email if ticket is closed
-    if status_update["status"] == "closed" and ticket:
+    # CMTV local change 2026-09-26: send_ticket_closed now exists (email_service.py); only when it changes to closed,
+    # and through the configured service (the old get_email_service(smtp) couldn't read email templates)
+    if status_update["status"] == "closed" and ticket and ticket.get("status") != "closed":
         try:
             user = await users_collection.find_one({"_id": str_to_objectid(ticket["user_id"])})
             if user:
-                settings = await get_settings()
-                smtp_settings = settings.get("smtp", {})
-                email_service = get_email_service(smtp_settings)
+                email_service = await get_configured_email_service()
                 if email_service and email_service.enabled:
                     await email_service.send_ticket_closed(
                         user["email"],
-                        user["name"],
+                        user.get("name", ""),
                         ticket_id,
-                        ticket["subject"]
+                        ticket.get("subject", ""),
+                        customer_id=str(user["_id"])
                     )
         except Exception as e:
             logger.error(f"Failed to send ticket closed email: {e}")
@@ -4906,18 +4907,10 @@ async def _alert_provisioning_failure(order_id: str, order: dict, user: dict, fa
             "\n\nThe customer has paid, but the line was NOT created or extended on the panel. "
             "Fix it on the panel, then let the customer know. The order shows 'Not provisioned' in Admin > Orders.")
     settings = await get_settings()
-    tg = settings.get("notifications", {}).get("telegram", {})
-    if tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"):
-        try:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                msg = {"chat_id": tg["chat_id"], "text": text[:4000]}
-                topic = (settings.get("cmtv_telegram_topics") or {}).get("critical")   # CMTV 2026-09-25: Ops group topic
-                if topic:
-                    msg["message_thread_id"] = int(topic)
-                await client.post(f"https://api.telegram.org/bot{tg['bot_token']}/sendMessage", json=msg, timeout=10.0)
-        except Exception as e:
-            logger.warning(f"Provisioning alert: Telegram failed: {e}")
+    # CMTV local change 2026-09-26: through the Ops bot (cmtv_notify.py). The panel's own Telegram notifications are
+    # switched off on purpose, which silenced this alert.
+    import cmtv_notify
+    await cmtv_notify.ops(text, "critical", settings)
     em = settings.get("notifications", {}).get("email", {})
     if em.get("enabled") and em.get("recipient_email"):
         try:

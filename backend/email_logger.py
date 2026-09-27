@@ -4,6 +4,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _oid(log_id):
+    """CMTV local change 2026-09-26: log_email returns the id as text, but the documents' _id is an ObjectId, so
+    mark_sent / mark_failed never matched and every email stayed "pending". Look it up as an ObjectId."""
+    from bson import ObjectId
+    return ObjectId(log_id) if isinstance(log_id, str) and ObjectId.is_valid(log_id) else log_id
+
 class EmailLogger:
     """Service for logging all email activity"""
     
@@ -47,7 +54,7 @@ class EmailLogger:
     async def mark_sent(self, log_id: str):
         """Mark email as successfully sent"""
         await self.email_logs.update_one(
-            {"_id": log_id},
+            {"_id": _oid(log_id)},
             {"$set": {
                 "status": "sent",
                 "sent_at": datetime.utcnow()
@@ -57,7 +64,7 @@ class EmailLogger:
     async def mark_failed(self, log_id: str, error_message: str):
         """Mark email as failed"""
         await self.email_logs.update_one(
-            {"_id": log_id},
+            {"_id": _oid(log_id)},
             {"$set": {
                 "status": "failed",
                 "error_message": error_message
@@ -67,7 +74,7 @@ class EmailLogger:
     async def mark_bounced(self, log_id: str, bounce_reason: str):
         """Mark email as bounced"""
         await self.email_logs.update_one(
-            {"_id": log_id},
+            {"_id": _oid(log_id)},
             {"$set": {
                 "status": "bounced",
                 "error_message": bounce_reason,

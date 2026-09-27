@@ -158,18 +158,12 @@ def _to_dt(v):
 
 
 async def _notify_admin(text, kind="critical"):
-    """Telegram through the billing panel's own notification settings (always sent, not tied to an event switch).
-    kind: "critical" (problems) or "billing" (routine), mapped to Ops group topics by settings.cmtv_telegram_topics."""
+    """Telegram to the Ops group through the Ops bot (2026-09-26: was the panel's own notification settings, which the
+    user switched off). kind: "critical" (problems) or "billing" (routine). Also used by cmtv_referral (tier reached)."""
     try:
+        import cmtv_notify
         settings = await D["get_settings"]()
-        tg = (settings.get("notifications", {}) or {}).get("telegram", {}) or {}
-        if tg.get("enabled") and tg.get("bot_token") and tg.get("chat_id"):
-            msg = {"chat_id": tg["chat_id"], "text": text[:4000]}
-            topic = (settings.get("cmtv_telegram_topics") or {}).get(kind)
-            if topic:
-                msg["message_thread_id"] = int(topic)
-            async with httpx.AsyncClient(timeout=10) as c:
-                await c.post(f"https://api.telegram.org/bot{tg['bot_token']}/sendMessage", json=msg)
+        await cmtv_notify.ops(text, kind, settings)
     except Exception as e:
         logger.warning(f"auto-renew admin alert failed: {e}")
 

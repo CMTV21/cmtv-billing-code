@@ -192,6 +192,15 @@ def init_routes():
                 waiting.append({"id": str(t["_id"]), "subject": t.get("subject"),
                                 "hours": int((now_utc - at).total_seconds() // 3600) if isinstance(at, datetime) else None})
 
+        # emails that failed to send in the last 7 days (2026-09-26: the log only records sent/failed from today)
+        email_failed = []
+        async for e in D["orders"].database.email_logs.find(
+                {"status": "failed", "created_at": {"$gte": now_utc - timedelta(days=7)}},
+                {"recipient_email": 1, "subject": 1, "error_message": 1, "created_at": 1}).sort("created_at", -1).limit(20):
+            email_failed.append({"to": e.get("recipient_email"), "subject": (e.get("subject") or "")[:90],
+                                 "error": (e.get("error_message") or "")[:140],
+                                 "at": e["created_at"].isoformat() if isinstance(e.get("created_at"), datetime) else None})
+
         # ---- recent orders ----
         recent = []
         async for o in orders.find({"status": {"$ne": "cancelled"}}).sort("created_at", -1).limit(8):
@@ -211,7 +220,7 @@ def init_routes():
             "recurring_month": round(recurring, 2), "auto_renew_on": auto_on,
             "customers": {"new30": new30, "prev30": prev30, "referred30": referred30, "new_paying30": new_paying30},
             "needs": {"not_set_up": not_set_up, "pending_payment": pending, "tickets_waiting": waiting,
-                      "ending_week_no_autorenew": week_no_ar},
+                      "ending_week_no_autorenew": week_no_ar, "email_failed": email_failed},
             "expiring": expiring[:40], "expiring_count": len(expiring), "recent_orders": recent,
         }
 

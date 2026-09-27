@@ -139,7 +139,8 @@ function CommandCentre() {
   const pending = n.pending_payment || [];
   const waiting = n.tickets_waiting || [];
   const notSetUp = n.not_set_up || [];
-  const urgent = notSetUp.length + (pending.length ? 1 : 0) + (waiting.length ? 1 : 0);
+  const emailFailed = n.email_failed || [];
+  const urgent = notSetUp.length + (pending.length ? 1 : 0) + (waiting.length ? 1 : 0) + (emailFailed.length ? 1 : 0);
   const hour = new Date().getHours();
   const hello = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const first = String(user?.name || '').split(' ')[0];
@@ -235,6 +236,16 @@ function CommandCentre() {
                           <small>“{waiting[0].subject}”{waiting[0].hours != null ? ` · ${waiting[0].hours < 24 ? `${waiting[0].hours}h` : plural(Math.floor(waiting[0].hours / 24), 'day', 'days')}` : ''} · you can also reply in Telegram</small>
                         </div>
                         <Link className="btn" to="/admin/tickets">Open</Link>
+                      </div>
+                    )}
+                    {emailFailed.length > 0 && (
+                      <div className="row" style={{ '--c': 'var(--crit)' }}>
+                        <div className="what">
+                          <span className="sev">▲ Email</span>
+                          <b>{plural(emailFailed.length, 'email', 'emails')} failed to send this week</b>
+                          <small>{emailFailed[0].to} · “{emailFailed[0].subject}”{emailFailed[0].error ? ` · ${emailFailed[0].error}` : ''}</small>
+                        </div>
+                        <Link className="btn" to="/admin/mass-email">See email log</Link>
                       </div>
                     )}
                     {n.ending_week_no_autorenew > 0 && (

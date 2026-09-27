@@ -980,6 +980,53 @@ class EmailService:
             logger.error(f"send_password_changed: EXCEPTION in send_email: {e}")
             return False
 
+    async def send_ticket_closed(
+        self,
+        customer_email: str,
+        customer_name: str,
+        ticket_id: str,
+        ticket_subject: str = "",
+        customer_id: str = None
+    ):
+        """Tell the customer their support ticket was closed (CMTV local change 2026-09-26: server.py called this
+        method but it never existed, so the email always failed). Template "ticket_closed" (house style, editable in
+        Admin > Email Templates) with a plain fallback."""
+        if not self.enabled:
+            return False
+        from html import escape
+        ref = str(ticket_id)[-8:].upper()
+        name = (customer_name or "").split(" ")[0] or "there"
+        site = self.backend_url
+        values = {"customer_name": escape(name), "ticket_id": escape(ref), "ticket_subject": escape(ticket_subject or "your request"),
+                  "ticket_link": f"{site}/tickets"}
+        plain = (f"Hi {name},\n\nYour support ticket #{ref} (\"{ticket_subject}\") has been closed.\n\n"
+                 f"Still need help? Open a new ticket at {site}/tickets or message @Cmtv_support_bot on Telegram.\n\n"
+                 "The CMTV Support Team")
+        template = None
+        if self.db is not None:
+            template = await self.db.email_templates.find_one({"template_type": "ticket_closed", "is_active": True})
+        if template:
+            subject, content = template.get("subject") or "Your support ticket #{{ticket_id}} is closed", template["html_content"]
+            for k, v in values.items():
+                content = content.replace("{{" + k + "}}", v)
+                subject = subject.replace("{{" + k + "}}", v)
+            html = self._wrap_email(content, template.get("name", ""), customer_email, "transactional")
+        else:
+            subject = f"Your support ticket #{ref} is closed"
+            html = self._wrap_email(
+                f"<p>Hi {values['customer_name']},</p><p>Your support ticket <strong>#{values['ticket_id']}</strong> "
+                f"(\"{values['ticket_subject']}\") has been closed.</p><p>Still need help? "
+                f"<a href=\"{values['ticket_link']}\">Open a new ticket</a> or message @Cmtv_support_bot on Telegram.</p>",
+                "", customer_email, "transactional")
+        try:
+            return await self.send_email(
+                to_email=customer_email, subject=subject, html_content=html, text_content=plain,
+                email_type="transactional", template_type="ticket_closed",
+                customer_id=customer_id, recipient_name=customer_name)
+        except Exception as e:
+            logger.error(f"send_ticket_closed: EXCEPTION in send_email: {e}")
+            return False
+
     async def send_order_cancelled(
         self,
         customer_email: str,

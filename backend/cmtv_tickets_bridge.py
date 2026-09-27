@@ -153,8 +153,19 @@ async def status(ticket_id: str, request: Request):
     new = str(data.get("status") or "")
     if new not in ("open", "in_progress", "closed"):
         raise HTTPException(400, "status must be open, in_progress or closed")
-    r = await D["tickets"].update_one({"_id": _oid(ticket_id)}, {"$set": {"status": new, "updated_at": datetime.utcnow()}})
-    if not r.matched_count:
+    before = await D["tickets"].find_one({"_id": _oid(ticket_id)})
+    if not before:
         raise HTTPException(404, "Ticket not found")
-    logger.info(f"Ticket {ticket_id}: status -> {new} from Telegram ({data.get('staff') or 'staff'})")
-    return {"success": True}
+    await D["tickets"].update_one({"_id": before["_id"]}, {"$set": {"status": new, "updated_at": datetime.utcnow()}})
+    emailed = False
+    if new == "closed" and before.get("status") != "closed":   # 2026-09-26: same "ticket closed" email as the website
+        try:
+            user = await D["users"].find_one({"_id": _oid(before.get("user_id"))})
+            es = await D["get_email_service"]()
+            if user and user.get("email") and es and getattr(es, "enabled", False):
+                emailed = bool(await es.send_ticket_closed(user["email"], user.get("name", ""), ticket_id,
+                                                           before.get("subject", ""), customer_id=str(user["_id"])))
+        except Exception as e:
+            logger.warning(f"ticket closed email failed: {e}")
+    logger.info(f"Ticket {ticket_id}: status -> {new} from Telegram ({data.get('staff') or 'staff'}), emailed={emailed}")
+    return {"success": True, "emailed": emailed}
