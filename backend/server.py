@@ -1258,14 +1258,8 @@ async def register(user_data: UserCreate):
         if not user_data.recaptcha_token:
             raise HTTPException(status_code=403, detail="Security verification required. Please refresh and try again.")
         
-        secret_key = recaptcha_settings.get("secret_key")
-        if secret_key:
-            score_threshold = recaptcha_settings.get("customer_score_threshold", 0.5)
-            success, score, _ = await RecaptchaService.verify_token(
-                user_data.recaptcha_token, secret_key, action="register", min_score=score_threshold
-            )
-            if not success and score > 0.0:
-                raise HTTPException(status_code=403, detail=f"Security verification failed (score: {score}). Please try again.")
+        if not await cmtv_recaptcha_ok(recaptcha_settings, user_data.recaptcha_token, "register", user_data.email):
+            raise HTTPException(status_code=403, detail="Security check failed. Please refresh the page and try again.")
     
     # Check if email already exists
     existing_user = await email_in_use(user_data.email)
@@ -1507,6 +1501,26 @@ async def _find_reset_account(login_id: str):
         return None
     return matches[0] if matches else None
 
+async def cmtv_recaptcha_ok(recaptcha_settings: dict, token: str, action: str, who: str = "") -> bool:
+    """CMTV local change 2026-09-27: the one reCAPTCHA decision for login, register and forgot password.
+    Before, a score of 0.0 (i.e. every failed check) was let through "for test environments", so reCAPTCHA blocked nothing
+    (the site key wasn't even valid for the domain until 2026-09-27). Now: Google rejects the token, or the score is below
+    recaptcha.cmtv_block_below (default 0.3; privacy browsers can score real people 0.3-0.5) -> blocked.
+    Google unreachable (no answer) -> allowed and logged, so a Google outage never locks customers out."""
+    secret_key = recaptcha_settings.get("secret_key")
+    if not secret_key:
+        logger.warning("reCAPTCHA enabled but no secret key configured")
+        return True
+    threshold = float(recaptcha_settings.get("cmtv_block_below", 0.3))
+    success, score, data = await RecaptchaService.verify_token(token, secret_key, action=action, min_score=threshold)
+    if data is None:
+        logger.warning(f"reCAPTCHA: no answer from Google for {action} {who}; allowed")
+        return True
+    if not success:
+        logger.warning(f"reCAPTCHA blocked {action} {who}: score={score} errors={data.get('error-codes')} action={data.get('action')}")
+    return success
+
+
 @app.post("/api/auth/forgot-password")
 async def forgot_password(data: ForgotPasswordRequest):
     """Email a password reset link. Always gives the same answer, so it can't be used to find out who has an account."""
@@ -1517,14 +1531,8 @@ async def forgot_password(data: ForgotPasswordRequest):
     if recaptcha_settings.get("enabled"):
         if not data.recaptcha_token:
             raise HTTPException(status_code=403, detail="Security verification required. Please refresh and try again.")
-        secret_key = recaptcha_settings.get("secret_key")
-        if secret_key:
-            success, score, _ = await RecaptchaService.verify_token(
-                data.recaptcha_token, secret_key, action="forgot_password",
-                min_score=recaptcha_settings.get("customer_score_threshold", 0.5)
-            )
-            if not success and score > 0.0:
-                raise HTTPException(status_code=403, detail=f"Security verification failed (score: {score}). Please try again.")
+        if not await cmtv_recaptcha_ok(recaptcha_settings, data.recaptcha_token, "forgot_password", data.email):
+            raise HTTPException(status_code=403, detail="Security check failed. Please refresh the page and try again.")
 
     login_id = data.email.strip()
     if not login_id:
@@ -1645,34 +1653,9 @@ async def login(credentials: UserLogin):
     recaptcha_settings = settings.get("recaptcha", {})
     
     if recaptcha_settings.get("enabled") and credentials.recaptcha_token:
-        score_threshold = recaptcha_settings.get("customer_score_threshold", 0.5)
-        secret_key = recaptcha_settings.get("secret_key")
-        
-        logger.info(f"reCAPTCHA verification attempt for {credentials.email}")
-        logger.info(f"Score threshold: {score_threshold}, Has secret key: {bool(secret_key)}")
-        
-        if secret_key:
-            success, score, response_data = await RecaptchaService.verify_token(
-                credentials.recaptcha_token,
-                secret_key,
-                action="login",
-                min_score=score_threshold
-            )
-            
-            logger.info(f"reCAPTCHA result: success={success}, score={score}")
-            
-            # For development/testing: Allow 0.0 scores (common in test environments)
-            # In production, you may want to be stricter
-            if not success and score > 0.0:
-                logger.warning(f"reCAPTCHA failed for {credentials.email}: score={score}, threshold={score_threshold}")
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Security verification failed (score: {score}). Please try again."
-                )
-            elif score == 0.0:
-                logger.warning(f"reCAPTCHA score 0.0 for {credentials.email} - allowing (test environment)")
-        else:
-            logger.warning("reCAPTCHA enabled but no secret key configured")
+        # CMTV local change 2026-09-27: one decision for all three forms (cmtv_recaptcha_ok); 0.0 is no longer let through
+        if not await cmtv_recaptcha_ok(recaptcha_settings, credentials.recaptcha_token, "login", credentials.email):
+            raise HTTPException(status_code=403, detail="Security check failed. Please refresh the page and try again.")
     elif recaptcha_settings.get("enabled") and not credentials.recaptcha_token:
         logger.warning(f"reCAPTCHA enabled but no token provided for {credentials.email}")
         raise HTTPException(
