@@ -55,7 +55,8 @@ import KnowledgeBasePage from './pages/KnowledgeBasePage';
 import SEOHead from './components/SEOHead';
 import ChatbotWidget from './components/ChatbotWidget';
 import { useTimezone } from './utils/timezone';
-import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import AnalyticsDashboard from './pages/AnalyticsDashboard'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-27: replaced by AnalyticsPage
+import AnalyticsPage from './pages/cmtv/AnalyticsPage'; // CMTV local change 2026-09-27: new Admin > Analytics
 import AdminImportedUsers from './pages/AdminImportedUsers';
 import TicketsPage from './pages/TicketsPage';
 import DownloadsPage from './pages/DownloadsPage';
@@ -436,7 +437,7 @@ function App() {
             />
             <Route
               path="/admin/analytics"
-              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AnalyticsDashboard /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AnalyticsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/finances"

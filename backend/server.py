@@ -129,6 +129,12 @@ cmtv_admin_overview.D["get_current_admin_user"] = get_current_admin_user
 cmtv_admin_overview.init_routes()
 app.include_router(cmtv_admin_overview.router)
 
+# CMTV local change 2026-09-27: new Admin > Analytics (cmtv_analytics.py)
+import cmtv_analytics
+cmtv_analytics.D["get_current_admin_user"] = get_current_admin_user
+cmtv_analytics.init_routes()
+app.include_router(cmtv_analytics.router)
+
 # CMTV local change 2026-09-27: admin customer profile page (cmtv_customer.py)
 import cmtv_customer
 cmtv_customer.D["get_current_admin_user"] = get_current_admin_user
@@ -714,6 +720,9 @@ async def startup_event():
     # CMTV local change 2026-09-26: admin home
     cmtv_admin_overview.init(orders=orders_collection, services=services_collection, users=users_collection,
                              tickets=tickets_collection, products=products_collection, get_settings=get_settings)
+
+    # CMTV local change 2026-09-27: Admin > Analytics
+    cmtv_analytics.init(services=services_collection, products=products_collection, get_settings=get_settings)
 
     # CMTV local change 2026-09-27: customer profile page
     cmtv_customer.init(db=db, users=users_collection, services=services_collection, orders=orders_collection,
