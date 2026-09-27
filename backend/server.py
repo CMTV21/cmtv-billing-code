@@ -153,6 +153,10 @@ cmtv_trial_winback.D["get_current_admin_user"] = get_current_admin_user
 cmtv_trial_winback.init_routes()
 app.include_router(cmtv_trial_winback.router)
 
+# CMTV local change 2026-09-27: sitemap of the billing site's real public pages + guides (cmtv_seo.py; nginx /sitemap.xml)
+import cmtv_seo
+app.include_router(cmtv_seo.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -725,6 +729,7 @@ async def startup_event():
     cmtv_analytics.init(services=services_collection, products=products_collection, get_settings=get_settings)
 
     # CMTV local change 2026-09-27: customer profile page
+    cmtv_seo.init(db=db)  # CMTV local change 2026-09-27: sitemap
     cmtv_customer.init(db=db, users=users_collection, services=services_collection, orders=orders_collection,
                        products=products_collection, get_settings=get_settings)
 

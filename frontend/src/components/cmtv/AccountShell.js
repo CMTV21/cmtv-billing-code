@@ -12,6 +12,8 @@ const TABS = [
   ['/dashboard', 'Home'], ['/services', 'Services'], ['/orders', 'Orders'], ['/invoices', 'Invoices'],
   ['/tickets', 'Support'], ['/referrals', 'Referrals'], ['/knowledge-base', 'Guides'], ['/downloads', 'Downloads'],
 ];
+// 2026-09-27: visitors who aren't signed in (public Guides / Terms) get these instead of account tabs
+const GUEST_TABS = [['/', 'Plans'], ['/knowledge-base', 'Guides'], ['/terms', 'Terms']];
 
 export function AccountHeader() {
   const { user, logout } = useAuthStore();
@@ -35,7 +37,7 @@ export function AccountHeader() {
       <div className="ca-bar-in">
         <Link className="ca-brand" to="/" aria-label="CMTV home"><img src={BRAND.siteLogo} alt="" /><span>CMTV</span></Link>
         <nav className="ca-tabs" aria-label="Account">
-          {TABS.map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard'}>{label}</NavLink>)}
+          {(user ? TABS : GUEST_TABS).map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard' || to === '/'}>{label}</NavLink>)}
         </nav>
         {user ? (
           <div className="ca-who" ref={ref}>

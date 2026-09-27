@@ -54,7 +54,8 @@ import AdminDownloads from './pages/AdminDownloads';
 import AdminKnowledgeBase from './pages/AdminKnowledgeBase';
 import KnowledgeBasePage from './pages/KnowledgeBasePage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-27: replaced by CmtvKnowledgeBasePage
 import CmtvKnowledgeBasePage from './pages/cmtv/CmtvKnowledgeBasePage'; // CMTV local change 2026-09-27: new help centre
-import SEOHead from './components/SEOHead';
+import SEOHead from './components/SEOHead'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-27: replaced by CmtvSEO
+import CmtvSEO from './components/cmtv/CmtvSEO'; // CMTV local change 2026-09-27: per-page titles, previews, canonical, noindex
 import ChatbotWidget from './components/ChatbotWidget';
 import { useTimezone } from './utils/timezone';
 import AnalyticsDashboard from './pages/AnalyticsDashboard'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-27: replaced by AnalyticsPage
@@ -428,12 +429,10 @@ function App() {
             />
             <Route
               path="/knowledge-base"
-              element={
-                <ProtectedRoute>
-                  <CmtvAccountFrame><CmtvKnowledgeBasePage /></CmtvAccountFrame>
-                </ProtectedRoute>
-              }
+              element={<CmtvAccountFrame><CmtvKnowledgeBasePage /></CmtvAccountFrame>}
             />
+            {/* CMTV local change 2026-09-27: the guides are public (search engines, visitors from cmtv.info); one link per guide */}
+            <Route path="/knowledge-base/:articleId" element={<CmtvAccountFrame><CmtvKnowledgeBasePage /></CmtvAccountFrame>} />
             <Route
               path="/admin/staff"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><StaffManagement /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
@@ -466,9 +465,9 @@ function App() {
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAudiobooksPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
           </Routes>
+          <CmtvSEO />
         </div>
       </Router>
-      <SEOHead />
       <ChatbotWidget />
       <TimezoneLoader />
       <Toaster position="top-center" richColors closeButton duration={4000} />

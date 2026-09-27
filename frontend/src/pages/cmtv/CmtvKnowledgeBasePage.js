@@ -2,13 +2,19 @@
 // KnowledgeBasePage (still in the code, unused). Articles come from the same kb_articles (GET /api/kb); admins also see
 // unpublished drafts (GET /api/admin/kb), marked "Draft". Light markup: "## " heading, "1. " steps, "- " bullets,
 // "**bold**", "> Tip:" / "> Important:" callouts, [image:url] / [video:url], bare https:// links.
-import React, { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+// 2026-09-27: public (no login needed); each guide has its own link /knowledge-base/<id> (old ?a=<id> links redirect)
+// and its own page title. Private Telegram invite links (t.me/+...) are shown to signed-in customers only.
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import api from '../../api/api';
 import { useAuthStore } from '../../store/store';
+import { usePageMeta } from '../../components/cmtv/CmtvSEO';
 import '../../components/cmtv/cmtv-kb.css';
+
+const SUPPORT_BOT = 'https://t.me/Cmtv_support_bot';
+const hidePrivateLinks = (text) => String(text || '').replace(/https:\/\/t\.me\/\+[^\s)]+/g, '(sign in to see the invite link)');
 
 const CATEGORY_ORDER = ['Getting started', 'Set up your device', 'Add-ons', 'Your account', 'Troubleshooting', 'Contact us'];
 const DEVICES = [
@@ -95,8 +101,12 @@ const summaryOf = (a) => a.cmtv_summary || String(a.content || '').replace(/\[(i
 export default function CmtvKnowledgeBasePage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
-  const [params, setParams] = useSearchParams();
-  const openId = params.get('a');
+  const [params] = useSearchParams();
+  const { articleId } = useParams();
+  const navigate = useNavigate();
+  const legacyId = params.get('a');
+  const openId = articleId || legacyId;
+  useEffect(() => { if (legacyId && !articleId) navigate(`/knowledge-base/${legacyId}`, { replace: true }); }, [legacyId, articleId, navigate]);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const { data: published, isLoading } = useQuery({ queryKey: ['kb-public'], queryFn: async () => (await api.get('/api/kb')).data });
@@ -118,8 +128,9 @@ export default function CmtvKnowledgeBasePage() {
   const shown = articles.filter((a) => (!cat || (a.category || 'General') === cat)
     && (!term || `${a.title} ${summaryOf(a)} ${a.content}`.toLowerCase().includes(term)));
   const open = openId ? byId[openId] : null;
-  const go = (id) => { setParams(id ? { a: id } : {}); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const go = (id) => { navigate(id ? `/knowledge-base/${id}` : '/knowledge-base'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const drafts = isAdmin && articles.some((a) => !a.is_published);
+  usePageMeta(open ? { title: `${open.title} | CMTV Guides`, description: summaryOf(open) } : null);
 
   if (open) {
     const siblings = articles.filter((a) => a.category === open.category && a.id !== open.id).slice(0, 4);
@@ -131,13 +142,21 @@ export default function CmtvKnowledgeBasePage() {
         <article className="kb-article">
           <h1>{open.title}{!open.is_published && <span className="kb-draft">Draft</span>}</h1>
           {open.cmtv_summary && <p className="kb-lede">{open.cmtv_summary}</p>}
-          <div className="kb-body">{renderContent(open.content)}</div>
+          <div className="kb-body">{renderContent(user ? open.content : hidePrivateLinks(open.content))}</div>
         </article>
-        <div className="kb-help">
-          <div><b>Still stuck?</b><span>Open a ticket or message us on Telegram, and we'll sort it out.</span></div>
-          <Link className="kb-btn glow" to="/tickets">Contact support</Link>
-          <Link className="kb-btn" to="/downloads">Downloads</Link>
-        </div>
+        {user ? (
+          <div className="kb-help">
+            <div><b>Still stuck?</b><span>Open a ticket or message us on Telegram, and we'll sort it out.</span></div>
+            <Link className="kb-btn glow" to="/tickets">Contact support</Link>
+            <Link className="kb-btn" to="/downloads">Downloads</Link>
+          </div>
+        ) : (
+          <div className="kb-help">
+            <div><b>Questions?</b><span>Message us on Telegram, or start a free trial and try it yourself.</span></div>
+            <a className="kb-btn glow" href={SUPPORT_BOT} target="_blank" rel="noopener noreferrer">Message us</a>
+            <Link className="kb-btn" to="/">See plans & trials</Link>
+          </div>
+        )}
         {siblings.length > 0 && (
           <section className="kb-related">
             <h2>More in {open.category}</h2>
@@ -182,7 +201,7 @@ export default function CmtvKnowledgeBasePage() {
       </div>
 
       {isLoading && !articles.length ? <p className="kb-empty">Loading guides…</p> : shown.length === 0 ? (
-        <p className="kb-empty">No guides match "{q}". Try another word, or <Link to="/tickets">ask us</Link>.</p>
+        <p className="kb-empty">No guides match "{q}". Try another word, or {user ? <Link to="/tickets">ask us</Link> : <a href={SUPPORT_BOT} target="_blank" rel="noopener noreferrer">ask us</a>}.</p>
       ) : (
         (cat ? [cat] : cats).map((c) => {
           const items = shown.filter((a) => (a.category || 'General') === c);
