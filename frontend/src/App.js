@@ -51,7 +51,8 @@ import AdminCoupons from './pages/AdminCoupons';
 import AdminRefunds from './pages/AdminRefunds';
 import AdminDownloads from './pages/AdminDownloads';
 import AdminKnowledgeBase from './pages/AdminKnowledgeBase';
-import KnowledgeBasePage from './pages/KnowledgeBasePage';
+import KnowledgeBasePage from './pages/KnowledgeBasePage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-27: replaced by CmtvKnowledgeBasePage
+import CmtvKnowledgeBasePage from './pages/cmtv/CmtvKnowledgeBasePage'; // CMTV local change 2026-09-27: new help centre
 import SEOHead from './components/SEOHead';
 import ChatbotWidget from './components/ChatbotWidget';
 import { useTimezone } from './utils/timezone';
@@ -427,7 +428,7 @@ function App() {
               path="/knowledge-base"
               element={
                 <ProtectedRoute>
-                  <CmtvAccountFrame><KnowledgeBasePage /></CmtvAccountFrame>
+                  <CmtvAccountFrame><CmtvKnowledgeBasePage /></CmtvAccountFrame>
                 </ProtectedRoute>
               }
             />
