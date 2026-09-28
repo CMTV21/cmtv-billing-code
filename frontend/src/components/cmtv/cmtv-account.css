@@ -152,3 +152,15 @@
 .cmtv-acct.ca-frame .rounded-lg.shadow, .cmtv-acct.ca-frame .rounded-xl { border: 1px solid var(--line); }
 .cmtv-acct.ca-frame input, .cmtv-acct.ca-frame select, .cmtv-acct.ca-frame textarea { color: var(--text); }
 .cmtv-acct.ca-frame h1, .cmtv-acct.ca-frame h2 { font-family: var(--display); }
+
+/* 2026-09-28: Telegram alerts panel (components/cmtv/TelegramAlerts.js) */
+.ca-tg .ca-help { margin-top: 12px; }
+.ca-tg .ca-tg-note { margin-top: 10px; font-size: 13px; }
+.ca-tg-prefs { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 10px; }
+.ca-toggle.ca-tg-toggle { margin-left: 0; align-items: flex-start; text-align: left; gap: 10px; }
+.ca-tg-toggle > span:last-child { display: flex; flex-direction: column; }
+.ca-tg-toggle b { color: var(--text); font-size: 14px; }
+.ca-tg-toggle small { color: var(--muted); font-size: 12.5px; }
+.ca-tg-toggle .ca-switch { margin-top: 2px; }
+.ca-linkbtn { background: none; border: 0; padding: 0; color: var(--muted); font: 600 13px var(--body); text-decoration: underline; cursor: pointer; }
+.ca-linkbtn:hover { color: var(--text); }

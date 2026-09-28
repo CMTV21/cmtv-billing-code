@@ -168,6 +168,14 @@ cmtv_kb_email.D["get_current_user"] = get_current_user
 cmtv_kb_email.init_routes()
 app.include_router(cmtv_kb_email.router)
 
+# CMTV local change 2026-09-28: Telegram alerts for customers via @Cmtv_support_bot (cmtv_telegram_alerts.py)
+import cmtv_telegram_alerts
+cmtv_telegram_alerts.D["get_current_user"] = get_current_user
+cmtv_telegram_alerts.D["get_current_admin_user"] = get_current_admin_user
+cmtv_telegram_alerts.init_routes()
+app.include_router(cmtv_telegram_alerts.router)
+app.include_router(cmtv_telegram_alerts.bridge)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -778,6 +786,8 @@ async def startup_event():
                         oid=str_to_objectid, provision=provision_order_services, get_settings=get_settings)
     await cmtv_etransfer.startup()
     cmtv_kb_email.init(db=db, get_email_service=get_configured_email_service)  # CMTV local change 2026-09-28
+    cmtv_telegram_alerts.init(db=db)  # CMTV local change 2026-09-28: Telegram alerts
+    await cmtv_telegram_alerts.startup()
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()

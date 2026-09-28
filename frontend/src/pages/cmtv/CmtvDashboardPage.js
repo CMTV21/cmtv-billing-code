@@ -3,8 +3,9 @@
 // Fixes vs the old page: Renew really extends the service (addRenewalItem with the service id) at the product's real
 // price and length (the old button put a $0, 1-month item in the cart as a NEW line); the "days left" bar uses the
 // service's own term instead of assuming 30 days.
-import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import TelegramAlerts from '../../components/cmtv/TelegramAlerts'; // 2026-09-28: Telegram alerts panel
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { ordersAPI, productsAPI, servicesAPI } from '../../api/api';
@@ -223,6 +224,18 @@ export default function CmtvDashboardPage() {
   const recent = (orders.data || []).filter((o) => o.status === 'paid' || o.status === 'pending').slice(0, 3);
   const loading = services.isLoading || products.isLoading;
 
+  // 2026-09-28: the Telegram reminder's "Renew now" opens /dashboard?renew=<service id>: put that renewal in the cart
+  const [params, setParams] = useSearchParams();
+  const renewId = params.get('renew');
+  const renewDone = useRef(false);
+  useEffect(() => {
+    if (!renewId || renewDone.current || loading) return;
+    renewDone.current = true;
+    const d = cards.find((c) => c.s.id === renewId);
+    if (d && d.canRenew) renew(d);
+    else { setParams({}, { replace: true }); toast.info('That service can\'t be renewed online. Pick a plan or contact us.'); }
+  }, [renewId, cards, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="cmtv-acct">
       <AccountHeader />
@@ -299,6 +312,7 @@ export default function CmtvDashboardPage() {
                 <Link className="ca-more" to="/orders">All orders →</Link>
               </div>
             )}
+            <TelegramAlerts />
             <div className="ca-panel">
               <h2 className="ca-h2">Need help?</h2>
               <p>Most answers are in the setup steps on each service. For anything else:</p>
