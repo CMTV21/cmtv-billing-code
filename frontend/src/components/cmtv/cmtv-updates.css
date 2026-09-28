@@ -1,0 +1,21 @@
+/* CMTV local addition 2026-09-28: "CMTV updates" boxes (components/cmtv/CmtvUpdates.js). Always navy, like the account area. */
+.cu { font-family: var(--body, "Figtree", system-ui, sans-serif); color: #e9edf8; }
+.cu h2, .cu h3 { font-family: var(--display, "Exo 2", system-ui, sans-serif); font-style: italic; margin: 0 0 6px; }
+.cu h2 { font-size: 18px; letter-spacing: .06em; text-transform: uppercase; color: #9aa6c6; }
+.cu h3 { font-size: 17px; color: #fbbf24; }
+.cu-lede { margin: 0 0 12px; color: #9aa6c6; font-size: 14px; }
+.cu-post { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 14px 16px; margin: 0 0 10px; }
+.cu-post.recent { border-color: rgba(34,230,242,.45); box-shadow: 0 0 0 3px rgba(34,230,242,.07); }
+.cu-post header { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+.cu-post header b { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #22e6f2; }
+.cu-post time { color: #6b7799; font-size: 12.5px; white-space: nowrap; }
+.cu-text { margin: 0; font-size: 15px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.cu-text a { color: #22e6f2; }
+.cu-reply { margin-top: 10px; padding-left: 12px; border-left: 2px solid #27345a; }
+.cu-tag { display: block; font-size: 12px; font-weight: 700; color: #9aa6c6; margin-bottom: 2px; }
+.cu-more { background: none; border: 0; color: #9aa6c6; font: 600 13px inherit; text-decoration: underline; padding: 0; margin-top: 8px; cursor: pointer; }
+.cu-dash { margin: 0 0 18px; }
+.cu-tickets { margin: 0 0 24px; }
+.cu-modal { margin: 16px 24px 0; padding: 14px 16px; border-radius: 14px; background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.35);
+  max-height: 38vh; overflow: auto; }
+.cu-modal .cu-post { background: #0f1728; }
