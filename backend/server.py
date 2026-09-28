@@ -203,6 +203,11 @@ db = client[DB_NAME]
 
 # Collections
 users_collection = db.users
+
+# CMTV local change 2026-09-28: demo accounts (users.cmtv_demo) can look but not buy, create or change anything (cmtv_demo.py)
+import cmtv_demo
+cmtv_demo.D["db"] = db
+app.middleware("http")(cmtv_demo.guard)
 products_collection = db.products
 orders_collection = db.orders
 invoices_collection = db.invoices

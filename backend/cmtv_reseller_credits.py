@@ -320,7 +320,8 @@ def init_routes():
             out.append({"id": str(s["_id"]), "server": r["server"], "label": LABEL[r["server"]], "username": r["username"],
                         "password": s.get("xtream_password") or s.get("password") or "",
                         "panel_url": s.get("panel_url") or pack_url.get(r["server"]) or "",
-                        "credits": r["credits"], "as_of": _iso(r["as_of"]), "low_level": low})
+                        "credits": r["credits"], "as_of": _iso(r["as_of"]), "low_level": low,
+                        "demo": bool(s.get("cmtv_demo"))})
         return {"panels": out}
 
     @router.get("/guide")

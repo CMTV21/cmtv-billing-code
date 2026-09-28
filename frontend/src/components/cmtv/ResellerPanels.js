@@ -38,6 +38,7 @@ function Panel({ p }) {
         )}
       </div>
       {low && <p className="rp-warn">Running low. Top up so you can keep creating lines.</p>}
+      {p.demo && <p className="rp-warn">Demo account: everything here is for show. Buying credits and other changes are switched off.</p>}
       {topup
         ? <ResellerCredits lockServer={p.server} topup={p.username} compact />
         : (
