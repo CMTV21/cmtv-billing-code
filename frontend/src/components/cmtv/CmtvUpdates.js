@@ -1,7 +1,7 @@
 // CMTV local addition 2026-09-28: posts from the "CMTV Updates" Telegram channel on the website (GET /api/cmtv/updates,
 // cmtv_updates.py; the support bot forwards them). variant:
 //   "dashboard" - the latest post if there was news in the last 48 h, with its follow-ups
-//   "tickets"   - the Support page: the last 7 days (or "no known issues")
+//   "tickets"   - the Support page: every post still in the channel (or "no known issues")
 //   "modal"     - the new-ticket form: "Known issues right now" (last 48 h), so people can skip writing in
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -84,7 +84,7 @@ export default function CmtvUpdates({ variant = 'dashboard' }) {
       {items.length ? (
         <>
           <p className="cu-lede">Check here first: if something's down, we've usually posted about it already.</p>
-          {items.slice(0, 4).map((x) => <Post key={x.id} item={x} open={false} />)}
+          {items.map((x) => <Post key={x.id} item={x} open={false} />)}
         </>
       ) : <p className="cu-lede">✅ No known issues right now.</p>}
     </section>
