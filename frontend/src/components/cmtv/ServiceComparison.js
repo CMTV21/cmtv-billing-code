@@ -4,8 +4,8 @@ import { Check, Minus } from 'lucide-react';
 // CMTV local addition 2026-09-24 (restyled 2026-09-25): CCTV vs Imperium feature matrix on the storefront.
 // CCTV is CMTV cyan, Imperium is its own gold. To change a row, edit ROWS below (a value of null shows a dash).
 const ROWS = [
-  ['Live channels', '11,000', '30,000'],
-  ['Movie library', '20,000', '35,000'],
+  ['Live channels', '11,000', '40,000'],
+  ['Movie library', '20,000', '30,000'],
   ['Series library', '6,000', '8,000'],
   ['Canadian and US live TV', true, true],
   ['Sports and PPV', true, true],
