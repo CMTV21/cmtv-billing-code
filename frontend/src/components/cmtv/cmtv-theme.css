@@ -125,3 +125,27 @@
   .cmtv .hero .inner { padding-block: 44px 40px; }
 }
 @media (prefers-reduced-motion: reduce) { .cmtv * { transition: none !important; animation: none !important; } }
+
+/* 2026-09-28: "Choose your credits" (components/cmtv/ResellerCredits.js) on the Resellers tab */
+.cmtv .rc { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px; margin: 0 0 16px; }
+.cmtv .rc-head h3 { font-family: var(--display); font-style: italic; font-weight: 800; font-size: 20px; margin: 0 0 4px; }
+.cmtv .rc-head p { color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+.cmtv .rc-tabs { display: inline-flex; gap: 6px; padding: 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--deep); margin-bottom: 14px; }
+.cmtv .rc-tabs button { font: 700 14px var(--body); color: var(--muted); background: none; border: 0; border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+.cmtv .rc-tabs button.on { background: var(--ring); color: #07101f; }
+.cmtv .rc-pick { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.cmtv .rc-pick input[type="range"] { flex: 1; min-width: 200px; accent-color: var(--cyan); }
+.cmtv .rc-num { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.cmtv .rc-num input { width: 96px; font: 700 18px var(--body); color: var(--text); background: var(--deep); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; text-align: right; }
+.cmtv .rc-num input:focus { outline: none; border-color: var(--cyan); }
+.cmtv .rc-tiers { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin: 14px 0; }
+.cmtv .rc-tiers > div { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; background: var(--deep); }
+.cmtv .rc-tiers > div.on { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(34,230,242,.12); }
+.cmtv .rc-tiers b { font-family: var(--display); font-style: italic; font-size: 17px; }
+.cmtv .rc-tiers span { color: var(--muted); font-size: 12px; }
+.cmtv .rc-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 14px; }
+.cmtv .rc-total > div { display: flex; flex-direction: column; }
+.cmtv .rc-total > div span { color: var(--muted); font-size: 13px; }
+.cmtv .rc-total > div b { font-family: var(--display); font-style: italic; font-size: 28px; }
+.cmtv .rc-note { color: var(--faint); font-size: 12.5px; margin: 10px 0 0; }
+@media (max-width: 560px) { .cmtv .rc-tiers { grid-template-columns: repeat(2, minmax(0,1fr)); } }

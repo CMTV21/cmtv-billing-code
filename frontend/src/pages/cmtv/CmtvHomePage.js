@@ -3,7 +3,9 @@
 // Reuses the same data and flows: products + product groups from the API, the cart store, login redirect, checkout.
 import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { rememberPlan, pendingPlan, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
+import { rememberPlan, pendingPlan, pendingCredits, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
+import ResellerCredits, { creditPrice } from '../../components/cmtv/ResellerCredits'; // 2026-09-28: any credit amount
+import api from '../../api/api';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { ShoppingCart, X, Info, Package } from 'lucide-react';
@@ -121,13 +123,28 @@ export default function CmtvHomePage() {
     const id = params.get('add') || pendingPlan();
     if (!id) return;
     addDone.current = true;
+    const credits = Number(params.get('credits')) || pendingCredits();   // a chosen reseller credit amount
     const p = products.find((x) => x.id === id);
     if (!p) { forgetPlan(); return; }
-    if (!user) { rememberPlan(id); window.location.href = '/login?redirect=/'; return; }
+    if (!user) { rememberPlan(id, credits); window.location.href = '/login?redirect=/'; return; }
     forgetPlan();
-    const { term, price } = firstPrice(p);
-    addItem({ product_id: p.id, product_name: p.name, term_months: term, price, account_type: p.account_type });
-    window.location.href = '/checkout';
+    (async () => {
+      if (credits && p.account_type === 'reseller') {
+        // same price the server will charge (it recalculates at checkout)
+        const pr = (await api.get('/api/cmtv/reseller/pricing')).data;
+        const s = Object.values(pr.servers || {}).find((x) => x.product_id === p.id);
+        const q = s ? creditPrice(s.tiers, credits) : null;
+        if (s && q) {
+          addItem({ product_id: p.id, product_name: `${s.label} Reseller Credits - ${credits} credits`, term_months: 1,
+            price: q.total, account_type: 'reseller', credits });
+          window.location.href = '/checkout';
+          return;
+        }
+      }
+      const { term, price } = firstPrice(p);
+      addItem({ product_id: p.id, product_name: p.name, term_months: term, price, account_type: p.account_type });
+      window.location.href = '/checkout';
+    })();
   }, [products, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
@@ -222,6 +239,7 @@ export default function CmtvHomePage() {
                 const { intro } = splitDescription(g.cards[0]?.products[0]?.description);
                 return intro ? <div className="family-desc"><FormattedText text={intro} /></div> : null;
               })()}
+              {g.family === 'resellers' && <ResellerCredits />}
               <div className="stack">
                 {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} />)}
               </div>

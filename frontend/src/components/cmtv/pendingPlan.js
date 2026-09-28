@@ -4,15 +4,26 @@
 const KEY = 'cmtv-pending-add';
 const TTL = 2 * 60 * 60 * 1000;
 
-export function rememberPlan(id) {
-  try { localStorage.setItem(KEY, JSON.stringify({ id: String(id), at: Date.now() })); } catch { /* private mode */ }
+// credits: a chosen reseller credit amount (ResellerCredits.js), kept with the plan
+export function rememberPlan(id, credits = null) {
+  try { localStorage.setItem(KEY, JSON.stringify({ id: String(id), credits: credits || null, at: Date.now() })); } catch { /* private mode */ }
+}
+
+function read() {
+  try {
+    const p = JSON.parse(localStorage.getItem(KEY) || 'null');
+    return p && p.id && Date.now() - p.at < TTL ? p : null;
+  } catch { return null; }
 }
 
 export function pendingPlan() {
-  try {
-    const p = JSON.parse(localStorage.getItem(KEY) || 'null');
-    return p && p.id && Date.now() - p.at < TTL ? p.id : null;
-  } catch { return null; }
+  const p = read();
+  return p ? p.id : null;
+}
+
+export function pendingCredits() {
+  const p = read();
+  return p && p.credits ? Number(p.credits) : null;
 }
 
 export function forgetPlan() {

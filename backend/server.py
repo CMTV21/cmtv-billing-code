@@ -187,6 +187,10 @@ cmtv_reviews.D["get_current_admin_user"] = get_current_admin_user
 cmtv_reviews.init_routes()
 app.include_router(cmtv_reviews.router)
 
+# CMTV local change 2026-09-28: reseller credits in any amount 50-1000, priced per credit (cmtv_reseller_credits.py)
+import cmtv_reseller_credits
+app.include_router(cmtv_reseller_credits.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -802,6 +806,7 @@ async def startup_event():
     cmtv_updates.init(db=db)  # CMTV local change 2026-09-28: CMTV Updates on the website
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
+    cmtv_reseller_credits.init(db=db)  # CMTV local change 2026-09-28: reseller credits in any amount
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
@@ -3529,6 +3534,16 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}")
         product_prices = product.get("prices", {}) or {}
         actual_price = float(list(product_prices.values())[0]) if product_prices else 0.0
+        # CMTV local change 2026-09-28: reseller credits in a chosen amount (50-1000) are priced per credit on the
+        # server (cmtv_reseller_credits.py); a credit amount on anything else is ignored
+        if getattr(item, "credits", None):
+            if product.get("account_type") == "reseller":
+                try:
+                    actual_price, item.product_name = await cmtv_reseller_credits.custom_price(product, int(item.credits))
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+            else:
+                item.credits = None
         if abs(float(item.price or 0) - actual_price) > 0.009:
             logger.warning(f"Order item {item.product_name}: client price ${item.price} replaced by product price ${actual_price}")
         item.price = actual_price
@@ -5058,6 +5073,11 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 units += 1
                 failures.append(f"{item.get('product_name', item['product_id'])}: the product no longer exists (deleted?), so nothing was provisioned")
                 continue
+
+            # CMTV local change 2026-09-28: a chosen reseller credit amount -> the panel code gets a copy of the pack
+            # with that many credits (every reseller path reads product["reseller_credits"])
+            if item.get("credits") and product.get("account_type") == "reseller":
+                product = {**product, "reseller_credits": float(item["credits"])}
 
             # Bundle product - provision each included product separately
             if product.get("is_bundle") and product.get("bundle_product_ids"):

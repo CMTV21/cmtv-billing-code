@@ -255,7 +255,7 @@ async def sync_billing_orders():
             server = server or _server_for(p, groups)
             months = int(it.get("term_months") or 1)
             if (p or {}).get("account_type") == "reseller":
-                c = float((p or {}).get("reseller_credits") or 0)
+                c = float(it.get("credits") or (p or {}).get("reseller_credits") or 0)   # 2026-09-28: chosen amount
             else:
                 c = credits_for(cfg, _server_for(p, groups), (p or {}).get("max_connections"), months)
             if c is None and cost_per_credit(cfg, _server_for(p, groups), o.get("paid_at") or datetime.utcnow()) == 0:
