@@ -4,6 +4,7 @@
 // "**bold**", "> Tip:" / "> Important:" callouts, [image:url] / [video:url], bare https:// links.
 // 2026-09-27: public (no login needed); each guide has its own link /knowledge-base/<id> (old ?a=<id> links redirect)
 // and its own page title. Private Telegram invite links (t.me/+...) are shown to signed-in customers only.
+// 2026-09-28: reseller guides (cmtv_audience "resellers") are unpublished and come from /api/cmtv/reseller/guide (resellers + admins).
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -97,6 +98,8 @@ function renderContent(content) {
   });
 }
 
+const forRes = (a) => a.cmtv_audience === 'resellers';
+const Badge = ({ a }) => (forRes(a) ? <span className="kb-draft">Resellers only</span> : !a.is_published ? <span className="kb-draft">Draft</span> : null);
 const summaryOf = (a) => a.cmtv_summary || String(a.content || '').replace(/\[(image|video):[^\]]+\]/g, '').replace(/[#*>]/g, '').trim().split('\n')[0].slice(0, 140);
 
 export default function CmtvKnowledgeBasePage() {
@@ -112,14 +115,20 @@ export default function CmtvKnowledgeBasePage() {
   const [cat, setCat] = useState('');
   const { data: published, isLoading } = useQuery({ queryKey: ['kb-public'], queryFn: async () => (await api.get('/api/kb')).data });
   const { data: all } = useQuery({ queryKey: ['kb-admin'], queryFn: async () => (await api.get('/api/admin/kb')).data, enabled: isAdmin });
+  // 2026-09-28: reseller guides (unpublished, cmtv_audience "resellers") come only to customers with a reseller panel
+  const { data: forResellers, isLoading: resLoading } = useQuery({
+    queryKey: ['kb-reseller', user?.id], enabled: !!user, retry: false, staleTime: 300000,
+    queryFn: async () => { try { return (await api.get('/api/cmtv/reseller/guide')).data.articles || []; } catch { return []; } },
+  });
 
   const articles = useMemo(() => {
-    const list = isAdmin && all ? all.filter((a) => a.is_published || String(a.id).startsWith('cmtv-')) : (published || []);
+    const base = isAdmin && all ? all.filter((a) => a.is_published || String(a.id).startsWith('cmtv-')) : (published || []);
+    const list = [...base, ...(forResellers || []).filter((r) => !base.some((a) => a.id === r.id))];
     // while the new articles are drafts, admins preview them instead of the old ones they replace
     const hasNew = list.some((a) => String(a.id).startsWith('cmtv-'));
     return list.filter((a) => !(isAdmin && hasNew && !String(a.id).startsWith('cmtv-') && ['Knowledge Base', 'Using the Webplayer'].includes(a.title)))
       .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
-  }, [published, all, isAdmin]);
+  }, [published, all, isAdmin, forResellers]);
   const byId = useMemo(() => Object.fromEntries(articles.map((a) => [a.id, a])), [articles]);
   const cats = useMemo(() => {
     const present = [...new Set(articles.map((a) => a.category || 'General'))];
@@ -130,8 +139,9 @@ export default function CmtvKnowledgeBasePage() {
     && (!term || `${a.title} ${summaryOf(a)} ${a.content}`.toLowerCase().includes(term)));
   const open = openId ? byId[openId] : null;
   const go = (id) => { navigate(id ? `/knowledge-base/${id}` : '/knowledge-base'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const drafts = isAdmin && articles.some((a) => !a.is_published);
+  const drafts = isAdmin && articles.some((a) => !a.is_published && !forRes(a));
   usePageMeta(open ? { title: `${open.title} | CMTV Guides`, description: summaryOf(open) } : null);
+  if (openId && !open && (isLoading || resLoading)) return <div className="cmtv-kb"><p className="kb-empty">Loading guide…</p></div>;
 
   if (open) {
     const siblings = articles.filter((a) => a.category === open.category && a.id !== open.id).slice(0, 4);
@@ -141,7 +151,7 @@ export default function CmtvKnowledgeBasePage() {
           <button type="button" onClick={() => go(null)}>Guides</button><span>›</span><span>{open.category || 'General'}</span>
         </nav>
         <article className="kb-article">
-          <h1>{open.title}{!open.is_published && <span className="kb-draft">Draft</span>}</h1>
+          <h1>{open.title}<Badge a={open} /></h1>
           {open.cmtv_summary && <p className="kb-lede">{open.cmtv_summary}</p>}
           <GuideLogin articleId={open.id} user={user} />
           <div className="kb-body">{renderContent(user ? open.content : hidePrivateLinks(open.content))}</div>
@@ -213,7 +223,7 @@ export default function CmtvKnowledgeBasePage() {
               <h2>{c}</h2>
               <div className="kb-grid">{items.map((a) => (
                 <button type="button" key={a.id} className="kb-card" onClick={() => go(a.id)}>
-                  <b>{a.title}{!a.is_published && <span className="kb-draft">Draft</span>}</b><span>{summaryOf(a)}</span>
+                  <b>{a.title}<Badge a={a} /></b><span>{summaryOf(a)}</span>
                 </button>
               ))}</div>
             </section>

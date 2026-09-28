@@ -21,7 +21,7 @@ import logging
 from datetime import datetime, timedelta
 
 from bson import ObjectId
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/reseller", tags=["cmtv-reseller"])
@@ -315,6 +315,19 @@ def init_routes():
                         "panel_url": s.get("panel_url") or pack_url.get(r["server"]) or "",
                         "credits": r["credits"], "as_of": _iso(r["as_of"]), "low_level": low})
         return {"panels": out}
+
+    @router.get("/guide")
+    async def reseller_guide(current_user: dict = Depends(current)):
+        """2026-09-28: the reseller guides (kb_articles with cmtv_audience "resellers", unpublished so the public
+        /api/kb and the sitemap leave them out). Only for customers with an active reseller panel, and admins."""
+        db = D["db"]
+        uid = current_user["sub"]
+        u = await db.users.find_one({"_id": _oid(uid)}) or {}
+        if u.get("role") != "admin" and not await db.services.find_one(
+                {"user_id": uid, "account_type": "reseller", "status": "active"}):
+            raise HTTPException(status_code=403, detail="These guides are for CMTV resellers.")
+        arts = await db.kb_articles.find({"cmtv_audience": "resellers"}, {"_id": 0}).sort("display_order", 1).to_list(50)
+        return {"articles": arts}
 
     @router.get("/admin")
     async def admin_view(current_user: dict = Depends(admin)):
