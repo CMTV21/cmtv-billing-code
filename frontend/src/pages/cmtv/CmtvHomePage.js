@@ -240,7 +240,13 @@ export default function CmtvHomePage() {
                 return intro ? <div className="family-desc"><FormattedText text={intro} /></div> : null;
               })()}
               {/* 2026-09-28: resellers get the credit slider only (the fixed packs stay in billing: the slider orders through them) */}
-              {g.family === 'resellers' ? <ResellerCredits /> : (
+              {g.family === 'resellers' ? (
+                <>{/* 2026-09-28: new resellers -> the Partner Program page on cmtv.info */}
+                  <ResellerCredits />
+                  <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--muted)' }}>New to reselling?{' '}
+                    <a href="https://cmtv.info/partners/" style={{ color: 'var(--cyan)', fontWeight: 700 }}>See what's included and our partner services &rarr;</a></p>
+                </>
+              ) : (
                 <div className="stack">
                   {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} />)}
                 </div>
