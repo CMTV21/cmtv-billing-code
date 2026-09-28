@@ -18,6 +18,45 @@ function ago(iso) {
 }
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '–');
 
+// 2026-09-28: a notice to every active reseller (email + Telegram if connected + their dashboard for 7 days).
+// "Check" is a dry run that lists who gets it; "Send" asks once more.
+function NoticeBox() {
+  const [text, setText] = useState('');
+  const [check, setCheck] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const { data, refetch } = useQuery({ queryKey: ['cmtv-reseller-notices'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin/notices')).data });
+  const post = async (dry) => {
+    setBusy(true);
+    try {
+      const r = (await api.post('/api/cmtv/reseller/admin/notice', { text, dry_run: dry })).data;
+      if (dry) setCheck(r);
+      else {
+        toast.success(`Sent to ${r.resellers} reseller${r.resellers === 1 ? '' : 's'} (${r.emailed} emailed, ${r.telegram} on Telegram)`);
+        setText(''); setCheck(null); refetch();
+      }
+    } catch (e) { toast.error(e.response?.data?.detail || 'Could not send'); }
+    setBusy(false);
+  };
+  const send = () => { if (window.confirm(`Send this notice to ${check.resellers} reseller(s) now?`)) post(false); };
+  return (
+    <div className="rs-notice">
+      <b>Send a notice to all resellers</b>
+      <textarea value={text} maxLength={1000} onChange={(e) => { setText(e.target.value); setCheck(null); }}
+        placeholder="e.g. CCTV maintenance tonight 2-3 AM ET. Your customers may see a short outage." aria-label="Notice text" />
+      <div className="row">
+        <button type="button" className="rv-btn" disabled={busy || text.trim().length < 5} onClick={() => post(true)}>Check who gets it</button>
+        {check && <button type="button" className="rv-btn glow" disabled={busy} onClick={send}>Send to {check.resellers}</button>}
+        {check && <span>{check.names.join(', ')}</span>}
+      </div>
+      {data?.notices?.length > 0 && (
+        <ul>{data.notices.slice(0, 5).map((n) => (
+          <li key={n.id}>{day(n.created_at)}: {n.text.length > 90 ? `${n.text.slice(0, 90)}…` : n.text} ({n.resellers} resellers, {n.emailed} emailed, {n.telegram} Telegram)</li>
+        ))}</ul>
+      )}
+    </div>
+  );
+}
+
 export default function AdminResellersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cmtv-resellers-admin'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin')).data });
@@ -53,6 +92,8 @@ export default function AdminResellersPage() {
           <button type="button" className="rv-btn glow" onClick={save}>Save</button>
         </div>
       </div>
+
+      <NoticeBox />
 
       {isLoading ? <p>Loading…</p> : rows.length === 0 ? <p className="rs-sub">No active reseller panels.</p> : (
         <div className="rs-table-wrap">

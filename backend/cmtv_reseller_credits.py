@@ -369,6 +369,10 @@ def init_routes():
             await D["db"].cmtv_config.update_one({"_id": "reseller_alerts"}, {"$set": upd}, upsert=True)
         return {"levels": await alert_levels()}
 
+    # 2026-09-28: reseller tools (brand, unbranded guide + flyer, notices) live in cmtv_reseller_kit.py, same router
+    import cmtv_reseller_kit
+    cmtv_reseller_kit.init_routes(router)
+
 
 @router.get("/pricing")
 async def pricing():

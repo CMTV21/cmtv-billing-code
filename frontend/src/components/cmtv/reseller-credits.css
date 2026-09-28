@@ -68,3 +68,40 @@
 .rs-admin .rv-btn { font: inherit; font-weight: 700; font-size: 13.5px; color: #e9edf8; background: transparent; border: 1px solid #27345a; border-radius: 10px; padding: 8px 14px; cursor: pointer; }
 .rs-admin .rv-btn.glow { background: linear-gradient(135deg, #22e6f2, #8b5cf6); color: #07101f; border: 0; }
 @media (max-width: 760px) { .rs-top { grid-template-columns: 1fr; } }
+/* 2026-09-28: /reseller "Reseller tools" (ResellerToolsPage.js) + notices on the dashboard and Admin > Resellers */
+.rt { display: flex; flex-direction: column; gap: 16px; }
+.rt-title { font-family: var(--display); font-style: italic; font-weight: 800; font-size: 30px; margin: 0; }
+.rt-sub { color: var(--muted); margin: -8px 0 0; }
+.rt-h3 { font-size: 15px; font-weight: 700; margin: 18px 0 8px; }
+.rt-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.rt-form label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 13px; }
+.rt input:not([type="color"]), .rt select, .rs-notice textarea { font: 500 15px var(--body); color: var(--text, #e9edf8); background: var(--deep, #0a1020); border: 1px solid var(--line, #26314d); border-radius: 10px; padding: 9px 11px; width: 100%; }
+.rt input:focus, .rt select:focus, .rs-notice textarea:focus { outline: none; border-color: var(--cyan, #22e6f2); }
+.rt-color { display: flex; align-items: center; gap: 10px; }
+.rt-color input { width: 48px; height: 38px; border: 0; background: none; padding: 0; cursor: pointer; }
+.rt-srv { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(200px, 2fr) auto; gap: 8px; margin: 0 0 8px; }
+@media (max-width: 600px) { .rt-srv { grid-template-columns: 1fr; } }
+.rt-warn { color: var(--warn, #fbbf24); font-size: 13.5px; margin: 8px 0; }
+.rt-note { color: var(--muted); font-size: 13.5px; margin: 12px 0; }
+.rt-guide { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.rt-guide > div:first-child { flex: 1; min-width: 240px; }
+.rt-link code { display: block; font: 600 14px ui-monospace, Menlo, Consolas, monospace; background: var(--deep); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin: 0 0 10px; word-break: break-all; }
+.rt-qr { background: #fff; padding: 10px; border-radius: 12px; line-height: 0; }
+.rt-social { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.rt-canvas { flex: 1 1 280px; max-width: 420px; }
+.rt-canvas canvas { width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); display: block; }
+.rt-social-opts { flex: 1 1 240px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.rt-social-opts b { font-size: 13px; color: var(--muted); }
+.rt-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.rt-seg.col { flex-direction: column; align-items: stretch; width: 100%; }
+.rt-seg button { font: 600 13.5px var(--body); color: var(--text); background: var(--deep); border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; cursor: pointer; text-align: left; }
+.rt-seg button.on { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(34,230,242,.12); }
+.rt-caption { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 0 0 8px; background: var(--deep); }
+.rt-caption p { margin: 0; flex: 1; font-size: 14px; }
+.rt-notice { border-left: 3px solid var(--cyan, #22e6f2); padding: 4px 0 4px 12px; margin: 0 0 10px; }
+.rt-notice small { color: var(--muted); }
+.rt-notice p { margin: 2px 0 0; white-space: pre-wrap; }
+.rs-notice { margin: 0 0 18px; border: 1px solid #26314d; border-radius: 14px; padding: 14px 16px; background: #111a2e; }
+.rs-notice textarea { min-height: 90px; margin: 8px 0; }
+.rs-notice .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.rs-notice ul { margin: 10px 0 0; padding-left: 18px; color: #aab4c8; font-size: 13.5px; }

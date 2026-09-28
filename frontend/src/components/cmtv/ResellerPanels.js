@@ -1,6 +1,7 @@
 // CMTV local addition 2026-09-28: "Your reseller panel" on the dashboard, for customers with an active reseller panel:
 // login (copy / show), panel link, credit balance (CCTV: hourly panel sync; Imperium: live) and a top-up slider locked
 // to that panel (ResellerCredits with topup = the panel username). Backend: GET /api/cmtv/reseller/mine.
+// 2026-09-28: notices from CMTV (last 7 days) and a "Reseller tools" button (/reseller).
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -42,6 +43,7 @@ function Panel({ p }) {
         : (
           <div className="rp-actions">
             <button type="button" className="ca-btn ca-glow" onClick={() => setTopup(true)}>Add credits</button>
+            <Link className="ca-btn ca-ghost" to="/reseller">Reseller tools</Link>
             <Link className="ca-btn ca-ghost" to="/knowledge-base/cmtv-reseller-guide">Reseller guide</Link>
           </div>
         )}
@@ -52,6 +54,20 @@ function Panel({ p }) {
 export default function ResellerPanels() {
   const { data } = useQuery({ queryKey: ['my-reseller-panels'], queryFn: async () => (await api.get('/api/cmtv/reseller/mine')).data, staleTime: 60000 });
   const panels = data?.panels || [];
+  // 2026-09-28: notices from CMTV to resellers (Admin > Resellers), shown here for 7 days
+  const { data: nd } = useQuery({ queryKey: ['reseller-notices'], queryFn: async () => (await api.get('/api/cmtv/reseller/notices')).data,
+    enabled: panels.length > 0, staleTime: 300000 });
+  const recent = (nd?.notices || []).filter((n) => Date.now() - new Date(n.created_at).getTime() < 7 * 86400000);
   if (!panels.length) return null;
-  return <section className="rp" aria-label="Your reseller panels">{panels.map((p) => <Panel key={p.id} p={p} />)}</section>;
+  return (
+    <section className="rp" aria-label="Your reseller panels">
+      {recent.length > 0 && (
+        <div className="ca-panel rt-notices">
+          <h2 className="ca-h2">Notice for resellers</h2>
+          {recent.map((n) => <div key={n.id} className="rt-notice"><small>{new Date(n.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small><p>{n.text}</p></div>)}
+        </div>
+      )}
+      {panels.map((p) => <Panel key={p.id} p={p} />)}
+    </section>
+  );
 }
