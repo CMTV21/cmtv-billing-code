@@ -2,7 +2,8 @@
 // his HomePage.js is left untouched, so his updates to it can't clash with this design.
 // Reuses the same data and flows: products + product groups from the API, the cart store, login redirect, checkout.
 import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { rememberPlan, pendingPlan, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { ShoppingCart, X, Info, Package } from 'lucide-react';
@@ -66,9 +67,12 @@ function titleCase(name) {
 
 export default function CmtvHomePage() {
   const { user } = useAuthStore();
-  const { items } = useCartStore();
+  const { items, addItem } = useCartStore();
   const { branding, fetchBranding } = useBrandingStore();
-  const [tab, setTab] = useState('all');
+  // 2026-09-28: links from cmtv.info: ?tab=cctv|imperium|addons|resellers opens that tab, ?tab=trials scrolls to the
+  // free trials, ?add=<product id> puts that plan in the cart and opens checkout (after sign-in if needed)
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => (['cctv', 'imperium', 'addons', 'resellers'].includes(params.get('tab')) ? params.get('tab') : 'all'));
 
   React.useEffect(() => { fetchBranding(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -109,6 +113,28 @@ export default function CmtvHomePage() {
     if (rest.length) out.push({ id: 'other', name: '', family: 'other', hasSubgroups: false, cards: rest.map((p) => ({ id: p.id, name: p.name, products: [p] })) });
     return out;
   }, [products, productGroups]);
+
+  // a plan chosen on cmtv.info (?add=) or picked here while signed out: cart + checkout once signed in
+  const addDone = React.useRef(false);
+  React.useEffect(() => {
+    if (!products || addDone.current) return;
+    const id = params.get('add') || pendingPlan();
+    if (!id) return;
+    addDone.current = true;
+    const p = products.find((x) => x.id === id);
+    if (!p) { forgetPlan(); return; }
+    if (!user) { rememberPlan(id); window.location.href = '/login?redirect=/'; return; }
+    forgetPlan();
+    const { term, price } = firstPrice(p);
+    addItem({ product_id: p.id, product_name: p.name, term_months: term, price, account_type: p.account_type });
+    window.location.href = '/checkout';
+  }, [products, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    if (params.get('tab') !== 'trials' || !groups.length) return;
+    const el = document.getElementById('group-trials');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [groups.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabs = TABS.filter((t) => t.key === 'all' || groups.some((g) => g.family === t.key));
 
@@ -189,7 +215,7 @@ export default function CmtvHomePage() {
           {isLoading ? <div className="spinner" aria-label="Loading plans" /> : visible.length === 0 ? (
             <p className="empty">No plans to show here right now.</p>
           ) : visible.map((g, gi) => (
-            <div key={g.id}>
+            <div key={g.id} id={`group-${g.family}`} style={{ scrollMarginTop: 80 }}>
               {gi === compareAt && <div style={{ margin: '28px 0 8px' }}><ServiceComparison /></div>}
               {g.name && <div className={`family fam-${g.family}`}><span>{g.name}</span></div>}
               {g.hasSubgroups && (() => {
@@ -233,7 +259,8 @@ function PlanCard({ card, family, grouped, allProducts }) {
   const logo = family === 'addons' ? lookup(BRAND.logos, first?.name) : null;
 
   const buy = (p) => {
-    if (!user) { window.location.href = '/login'; return; }
+    // 2026-09-28: remember the plan through sign-in (it used to be forgotten)
+    if (!user) { rememberPlan(p.id); window.location.href = '/login?redirect=/'; return; }
     const { term, price } = firstPrice(p);
     addItem({ product_id: p.id, product_name: p.name, term_months: term, price, account_type: p.account_type });
     window.location.href = '/checkout';

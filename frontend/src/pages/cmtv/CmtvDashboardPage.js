@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import TelegramAlerts from '../../components/cmtv/TelegramAlerts'; // 2026-09-28: Telegram alerts panel
 import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: latest CMTV Updates post
+import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { ordersAPI, productsAPI, servicesAPI } from '../../api/api';
@@ -180,6 +181,8 @@ export default function CmtvDashboardPage() {
   const { addRenewalItem } = useCartStore();
   const navigate = useNavigate();
   const now = useMemo(() => new Date(), []);
+  // a plan picked on cmtv.info / the storefront before signing in: finish it (the storefront adds it and opens checkout)
+  useEffect(() => { if (pendingPlan()) navigate('/'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const services = useQ(['services'], async () => (await servicesAPI.getAll()).data || []);
   const products = useQ(['products'], async () => (await productsAPI.getAll()).data || [], { staleTime: 300000 });
   const groups = useQ(['product-groups-public'], async () => (await api.get('/api/product-groups')).data || [], { staleTime: 300000 });
