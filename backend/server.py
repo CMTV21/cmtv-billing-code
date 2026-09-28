@@ -157,6 +157,11 @@ app.include_router(cmtv_trial_winback.router)
 import cmtv_seo
 app.include_router(cmtv_seo.router)
 
+# CMTV local change 2026-09-28: Interac e-Transfer emails (forwarded by a Cloudflare Email Worker) -> set up
+# returning customers' e-Transfer orders right away, Telegram for the rest (cmtv_etransfer.py)
+import cmtv_etransfer
+app.include_router(cmtv_etransfer.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -761,6 +766,11 @@ async def startup_event():
     cmtv_trial_winback.init(db=db, users=users_collection, services=services_collection, orders=orders_collection,
                             products=products_collection, get_email_service=get_configured_email_service)
     await cmtv_trial_winback.startup()
+
+    # CMTV local change 2026-09-28: e-Transfer emails
+    cmtv_etransfer.init(orders=orders_collection, users=users_collection, etransfers=db.cmtv_etransfers,
+                        oid=str_to_objectid, provision=provision_order_services, get_settings=get_settings)
+    await cmtv_etransfer.startup()
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
