@@ -7,6 +7,7 @@ every path (new CCTV reseller, CCTV top-up, new Imperium sub-reseller, Imperium 
 The fixed packs still work as before. Steps can be changed in cmtv_config {_id: "reseller_pricing"} without a deploy.
   GET /api/cmtv/reseller/pricing -> {min, max, servers: {cctv|imperium: {label, product_id, tiers [{min, rate}]}}}
 """
+import asyncio
 import logging
 from datetime import datetime
 
@@ -64,6 +65,48 @@ async def custom_price(product: dict, credits: int):
         raise ValueError(f"Choose between {MIN_CREDITS} and {MAX_CREDITS} credits (message us for more)")
     rate = rate_for(await tiers_for(server), int(credits))
     return round(int(credits) * rate, 2), f"{LABEL[server]} Reseller Credits - {int(credits)} credits"
+
+
+async def refresh_cctv_balances() -> int:
+    """Reseller balances on the CCTV (XtreamUI) panels -> imported_users.credits. The developer's automatic sync only
+    refreshes subscriber lines, so reseller balances only moved when an admin clicked "sync" (2026-09-28). Updates the
+    resellers billing already knows; never creates or removes anything."""
+    settings = await D["get_settings"]()
+    panels = (settings.get("xtream") or {}).get("panels") or []
+    now = datetime.utcnow()
+    n = 0
+    for i, panel in enumerate(panels):
+        svc = D["get_xtream_service"](panel)
+        if not svc:
+            continue
+        res = await asyncio.to_thread(svc.get_subresellers)
+        if not res.get("success"):
+            log.warning(f"reseller balances: panel {i} said {res.get('error')}")
+            continue
+        for r in res.get("users") or []:
+            name = r.get("username")
+            if not name:
+                continue
+            up = await D["db"].imported_users.update_one(
+                {"username": name, "account_type": "reseller", "panel_index": i},
+                {"$set": {"credits": float(r.get("credits") or 0), "member_group": r.get("member_group", ""), "last_synced": now}})
+            n += up.matched_count
+    return n
+
+
+async def _balance_loop():
+    await asyncio.sleep(120)
+    while True:
+        try:
+            n = await refresh_cctv_balances()
+            log.info(f"reseller balances refreshed: {n}")
+        except Exception as e:
+            log.warning(f"reseller balance refresh failed: {e}")
+        await asyncio.sleep(3600)
+
+
+async def startup():
+    asyncio.create_task(_balance_loop())
 
 
 def init_routes():

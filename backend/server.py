@@ -808,7 +808,8 @@ async def startup_event():
     cmtv_updates.init(db=db)  # CMTV local change 2026-09-28: CMTV Updates on the website
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
-    cmtv_reseller_credits.init(db=db, get_settings=get_settings)  # CMTV local change 2026-09-28: reseller credits in any amount
+    cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service)  # CMTV 2026-09-28: reseller credits
+    await cmtv_reseller_credits.startup()   # hourly CCTV reseller balance refresh
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
