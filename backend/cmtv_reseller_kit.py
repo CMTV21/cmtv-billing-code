@@ -7,6 +7,8 @@ customers, and notices from CMTV to all resellers. Routes are added to cmtv_rese
   POST /admin/notice {text, dry_run=true} -> email + Telegram (if connected) to every active reseller  (admin)
   GET  /admin/notices        -> the last 20 notices sent                                             (admin)
   GET  /g/{slug}, /g/{slug}/flyer -> public HTML without any CMTV name (nginx maps /g/ here)
+  POST /apply                -> partner application from cmtv.info/partners (public; Ops Billing note)
+  GET  /admin/applications   -> the last 50 applications                                            (admin)
 Collections: cmtv_reseller_brands {_id: user id, slug, name, contact, color, tv_app, downloader, phone_app, phone_link,
 servers [{name, url}], facts cctv|imperium|none}, cmtv_reseller_notices.
 """
@@ -300,6 +302,39 @@ def init_routes(router):
         async for n in D["db"].cmtv_reseller_notices.find().sort("created_at", -1).limit(20):
             out.append({**_notice_out(n), "resellers": n.get("resellers"), "emailed": n.get("emailed"), "telegram": n.get("telegram")})
         return {"notices": out}
+
+    @router.post("/apply")
+    async def partner_apply(body: dict = Body(...)):
+        """Partner application from cmtv.info/partners (relayed by the site's worker /api/apply). Saved + Ops Billing note.
+        Before 2026-09-28 the form posted to api.cmtv.info (405) and showed "received" anyway, so applications were lost."""
+        if str(body.get("website") or "").strip():   # hidden field only bots fill in
+            return {"ok": True}
+        f = lambda k, n: str(body.get(k) or "").strip()[:n]  # noqa: E731
+        doc = {"first_name": f("first_name", 40), "last_name": f("last_name", 40), "email": f("email", 120).lower(),
+               "telegram": f("telegram", 60), "interest": f("interest", 300), "message": f("message", 2000)}
+        if not doc["first_name"] or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", doc["email"]):
+            raise HTTPException(400, "Enter your first name and a valid email.")
+        db, now = D["db"], datetime.utcnow()
+        if await db.cmtv_partner_applications.find_one({"email": doc["email"], "created_at": {"$gte": now - timedelta(hours=1)}}):
+            return {"ok": True}
+        if await db.cmtv_partner_applications.count_documents({"created_at": {"$gte": now - timedelta(days=1)}}) >= 30:
+            raise HTTPException(429, "Too many applications today. Please message us on Telegram.")
+        await db.cmtv_partner_applications.insert_one({**doc, "created_at": now, "status": "new"})
+        who = f"{doc['first_name']} {doc['last_name']}".strip()
+        await RC._ops(f"🤝 New partner application: {who} ({doc['email']}"
+                      + (f", Telegram {doc['telegram']}" if doc["telegram"] else "") + ")\n"
+                      + (f"Interested in: {doc['interest']}\n" if doc["interest"] else "")
+                      + (f"\n{doc['message'][:800]}" if doc["message"] else "")
+                      + "\n\nAdmin > Resellers has the list.", "billing")
+        return {"ok": True}
+
+    @router.get("/admin/applications")
+    async def admin_applications(current_user: dict = Depends(admin)):
+        out = []
+        async for a in D["db"].cmtv_partner_applications.find().sort("created_at", -1).limit(50):
+            out.append({**{k: a.get(k, "") for k in ("first_name", "last_name", "email", "telegram", "interest", "message")},
+                        "id": str(a["_id"]), "created_at": RC._iso(a.get("created_at"))})
+        return {"applications": out}
 
     async def _brand(slug):
         b = await D["db"].cmtv_reseller_brands.find_one({"slug": slug})

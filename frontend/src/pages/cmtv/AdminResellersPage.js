@@ -57,6 +57,22 @@ function NoticeBox() {
   );
 }
 
+// 2026-09-28: partner applications from cmtv.info/partners (each one also goes to the Ops Billing topic)
+function Applications() {
+  const { data } = useQuery({ queryKey: ['cmtv-partner-apps'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin/applications')).data });
+  const apps = data?.applications || [];
+  if (!apps.length) return null;
+  return (
+    <div className="rs-notice">
+      <b>Partner applications</b>
+      <ul>{apps.map((a) => (
+        <li key={a.id}>{day(a.created_at)}: <b>{`${a.first_name} ${a.last_name}`.trim()}</b>, <a href={`mailto:${a.email}`}>{a.email}</a>
+          {a.telegram && ` · ${a.telegram}`}{a.interest && ` · ${a.interest}`}{a.message && <div>{a.message}</div>}</li>
+      ))}</ul>
+    </div>
+  );
+}
+
 export default function AdminResellersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cmtv-resellers-admin'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin')).data });
@@ -94,6 +110,7 @@ export default function AdminResellersPage() {
       </div>
 
       <NoticeBox />
+      <Applications />
 
       {isLoading ? <p>Loading…</p> : rows.length === 0 ? <p className="rs-sub">No active reseller panels.</p> : (
         <div className="rs-table-wrap">
