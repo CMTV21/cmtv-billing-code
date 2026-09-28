@@ -7,8 +7,12 @@ every path (new CCTV reseller, CCTV top-up, new Imperium sub-reseller, Imperium 
 The fixed packs still work as before. Steps can be changed in cmtv_config {_id: "reseller_pricing"} without a deploy.
   GET /api/cmtv/reseller/pricing -> {min, max, servers: {cctv|imperium: {label, product_id, tiers [{min, rate}]}}}
 """
-from fastapi import APIRouter
+import logging
+from datetime import datetime
 
+from fastapi import APIRouter, Depends
+
+log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/reseller", tags=["cmtv-reseller"])
 D = {}
 MIN_CREDITS, MAX_CREDITS = 50, 1000
@@ -60,6 +64,44 @@ async def custom_price(product: dict, credits: int):
         raise ValueError(f"Choose between {MIN_CREDITS} and {MAX_CREDITS} credits (message us for more)")
     rate = rate_for(await tiers_for(server), int(credits))
     return round(int(credits) * rate, 2), f"{LABEL[server]} Reseller Credits - {int(credits)} credits"
+
+
+def init_routes():
+    """Routes that need the signed-in customer (dependency passed in from server.py)"""
+    current = D["get_current_user"]
+
+    @router.get("/mine")
+    async def mine(current_user: dict = Depends(current)):
+        """The customer's own reseller panels, with the credit balance: CCTV from the hourly panel sync
+        (imported_users.credits), Imperium read live from the Aether API. Used by the dashboard's reseller box."""
+        db = D["db"]
+        uid = current_user["sub"]
+        out = []
+        async for s in db.services.find({"user_id": uid, "account_type": "reseller", "status": "active"}).sort("created_at", 1):
+            server = "imperium" if s.get("panel_type") in ("aether", "nxtdash") else "cctv"
+            username = s.get("xtream_username") or s.get("username") or ""
+            balance, as_of = None, None
+            if server == "cctv":
+                iu = await db.imported_users.find_one({"username": username, "account_type": "reseller"})
+                if iu and iu.get("credits") is not None:
+                    balance, as_of = float(iu["credits"]), iu.get("last_synced") or iu.get("updated_at")
+            else:
+                try:
+                    from aether_service import get_aether_service
+                    import cmtv_aether_reseller
+                    panels = ((await D["get_settings"]()).get("aether") or {}).get("panels") or []
+                    ae = get_aether_service(panels[int(s.get("panel_index") or 0)]) if panels else None
+                    if ae:
+                        sub = await cmtv_aether_reseller._find_sub(ae, await ae._base(), username)
+                        if sub and sub.get("credits_balance") is not None:
+                            balance, as_of = float(sub["credits_balance"]), datetime.utcnow()
+                except Exception as e:
+                    log.warning(f"reseller balance for {username}: {e}")
+            out.append({"id": str(s["_id"]), "server": server, "label": LABEL[server], "username": username,
+                        "password": s.get("xtream_password") or s.get("password") or "",
+                        "panel_url": s.get("panel_url") or ("https://bestpanel.xyz" if server == "imperium" else ""),
+                        "credits": balance, "as_of": as_of.isoformat() + "Z" if isinstance(as_of, datetime) else None})
+        return {"panels": out}
 
 
 @router.get("/pricing")

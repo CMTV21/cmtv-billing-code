@@ -189,6 +189,8 @@ app.include_router(cmtv_reviews.router)
 
 # CMTV local change 2026-09-28: reseller credits in any amount 50-1000, priced per credit (cmtv_reseller_credits.py)
 import cmtv_reseller_credits
+cmtv_reseller_credits.D["get_current_user"] = get_current_user
+cmtv_reseller_credits.init_routes()
 app.include_router(cmtv_reseller_credits.router)
 
 
@@ -806,7 +808,7 @@ async def startup_event():
     cmtv_updates.init(db=db)  # CMTV local change 2026-09-28: CMTV Updates on the website
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
-    cmtv_reseller_credits.init(db=db)  # CMTV local change 2026-09-28: reseller credits in any amount
+    cmtv_reseller_credits.init(db=db, get_settings=get_settings)  # CMTV local change 2026-09-28: reseller credits in any amount
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../api/api';
 import { useAuthStore, useCartStore } from '../../store/store';
 import { rememberPlan } from './pendingPlan';
+import './reseller-credits.css';
 
 export function creditPrice(tiers, n) {
   let rate = null;
@@ -14,16 +15,19 @@ export function creditPrice(tiers, n) {
 }
 
 const money = (v) => `$${v.toLocaleString(undefined, { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+const rateMoney = (v) => `$${Number(v).toFixed(2)}`;
 
-export default function ResellerCredits() {
+// lockServer ('cctv' | 'imperium') + topup (panel username): the dashboard's top-up for the reseller's own panel;
+// the cart item carries topup_username so checkout adds the credits to that panel (no new username/password asked)
+export default function ResellerCredits({ lockServer = null, topup = null, compact = false }) {
   const { user } = useAuthStore();
   const { addItem } = useCartStore();
   const { data } = useQuery({ queryKey: ['reseller-pricing'], queryFn: async () => (await api.get('/api/cmtv/reseller/pricing')).data, staleTime: 300000 });
   const servers = data?.servers || {};
   const keys = Object.keys(servers);
-  const [server, setServer] = useState('cctv');
+  const [server, setServer] = useState(lockServer || 'cctv');
   const [credits, setCredits] = useState(100);
-  const s = servers[server] || servers[keys[0]];
+  const s = lockServer ? servers[lockServer] : (servers[server] || servers[keys[0]]);
   const min = data?.min || 50;
   const max = data?.max || 1000;
   const n = Math.min(max, Math.max(min, Math.round(Number(credits) || 0)));
@@ -33,22 +37,26 @@ export default function ResellerCredits() {
   const buy = () => {
     if (!quote) return;
     if (!user) { rememberPlan(s.product_id, n); window.location.href = '/login?redirect=/'; return; }
-    addItem({ product_id: s.product_id, product_name: `${s.label} Reseller Credits - ${n} credits`, term_months: 1,
-      price: quote.total, account_type: 'reseller', credits: n });
+    addItem({ product_id: s.product_id, product_name: `${s.label} Reseller Credits - ${n} credits${topup ? ` for ${topup}` : ''}`,
+      term_months: 1, price: quote.total, account_type: 'reseller', credits: n, ...(topup ? { topup_username: topup } : {}) });
     window.location.href = '/checkout';
   };
 
   return (
-    <div className="rc">
-      <div className="rc-head">
-        <h3>Choose your credits</h3>
-        <p>Any amount from {min} to {max.toLocaleString()}. The more you buy, the less each credit costs.</p>
-      </div>
-      <div className="rc-tabs" role="group" aria-label="Server">
-        {keys.map((k) => (
-          <button type="button" key={k} className={k === server ? 'on' : ''} aria-pressed={k === server} onClick={() => setServer(k)}>{servers[k].label}</button>
-        ))}
-      </div>
+    <div className={`rc${compact ? ' rc-compact' : ''}`}>
+      {!compact && (
+        <div className="rc-head">
+          <h3>Choose your credits</h3>
+          <p>Any amount from {min} to {max.toLocaleString()}. The more you buy, the less each credit costs.</p>
+        </div>
+      )}
+      {!lockServer && (
+        <div className="rc-tabs" role="group" aria-label="Server">
+          {keys.map((k) => (
+            <button type="button" key={k} className={k === server ? 'on' : ''} aria-pressed={k === server} onClick={() => setServer(k)}>{servers[k].label}</button>
+          ))}
+        </div>
+      )}
       <div className="rc-pick">
         <input type="range" min={min} max={max} step={10} value={n} onChange={(e) => setCredits(e.target.value)} aria-label="Credits" />
         <label className="rc-num">
@@ -62,16 +70,18 @@ export default function ResellerCredits() {
           const on = n >= t.min && (!next || n < next.min);
           return (
             <div key={t.min} className={on ? 'on' : ''}>
-              <b>{money(t.rate)}</b><span>{next ? `${t.min}-${next.min - 1}` : `${t.min}+`} credits</span>
+              <b>{rateMoney(t.rate)}</b><span>{next ? `${t.min}-${next.min - 1}` : `${t.min}+`} credits</span>
             </div>
           );
         })}
       </div>
       <div className="rc-total">
-        <div><span>{n} credits &times; {quote ? money(quote.rate) : '-'}</span><b>{quote ? money(quote.total) : '-'}</b></div>
-        <button type="button" className="btn btn-glow" onClick={buy}>Buy {n} {s.label} credits</button>
+        <div><span>{n} credits &times; {quote ? rateMoney(quote.rate) : '-'}</span><b>{quote ? money(quote.total) : '-'}</b></div>
+        <button type="button" className="btn btn-glow ca-btn ca-glow" onClick={buy}>{topup ? `Add ${n} credits` : `Buy ${n} ${s.label} credits`}</button>
       </div>
-      <p className="rc-note">At checkout choose a new reseller panel (your own username and password) or add the credits to the panel you already have.</p>
+      <p className="rc-note">{topup
+        ? `The credits go straight onto your panel ${topup} once you've paid.`
+        : 'At checkout choose a new reseller panel (your own username and password) or add the credits to the panel you already have.'}</p>
     </div>
   );
 }

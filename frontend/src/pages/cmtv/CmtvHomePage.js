@@ -239,10 +239,12 @@ export default function CmtvHomePage() {
                 const { intro } = splitDescription(g.cards[0]?.products[0]?.description);
                 return intro ? <div className="family-desc"><FormattedText text={intro} /></div> : null;
               })()}
-              {g.family === 'resellers' && <ResellerCredits />}
-              <div className="stack">
-                {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} />)}
-              </div>
+              {/* 2026-09-28: resellers get the credit slider only (the fixed packs stay in billing: the slider orders through them) */}
+              {g.family === 'resellers' ? <ResellerCredits /> : (
+                <div className="stack">
+                  {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} />)}
+                </div>
+              )}
             </div>
           ))}
         </div>

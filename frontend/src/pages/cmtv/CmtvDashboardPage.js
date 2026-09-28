@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import TelegramAlerts from '../../components/cmtv/TelegramAlerts'; // 2026-09-28: Telegram alerts panel
+import ResellerPanels from '../../components/cmtv/ResellerPanels'; // 2026-09-28: reseller login, balance, top-up slider
 import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: latest CMTV Updates post
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -251,6 +252,7 @@ export default function CmtvDashboardPage() {
         </p>
 
         <CmtvUpdates variant="dashboard" />
+        <ResellerPanels />
         {alerts.length > 0 && (
           <section className="ca-attention" aria-label="Needs attention">
             {alerts.map((a) => (

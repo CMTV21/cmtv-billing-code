@@ -77,8 +77,14 @@ export default function CheckoutPage() {
 
   // Check if cart has reseller products that need new credentials
   const hasNewResellerProduct = items.some(item => 
-    item.account_type === 'reseller' && item.action_type !== 'extend'
+    item.account_type === 'reseller' && item.action_type !== 'extend' && !item.topup_username /* CMTV 2026-09-28: dashboard top-up */
   );
+  // CMTV local change 2026-09-28: a reseller top-up from the dashboard carries topup_username (ResellerCredits.js):
+  // no new username/password needed; the credits go onto that existing panel
+  const topupItem = items.find((i) => i.account_type === 'reseller' && i.topup_username);
+  const cmtvResellerCreds = () => (hasNewResellerProduct
+    ? { username: resellerUsername, password: resellerPassword, add_credits_to_existing: resellerAddCredits }
+    : topupItem ? { username: topupItem.topup_username, password: '', add_credits_to_existing: true } : null);
   
   // Check if cart has subscriber products (for extend/create option)
   // CMTV local change 2026-09-25: add-ons (account_type "manual") can extend too (e.g. Stremio after its trial)
@@ -200,11 +206,7 @@ export default function CheckoutPage() {
       total: getTotal(),
       coupon_code: appliedCouponCode,
       use_credits: creditsApplied,
-      reseller_credentials: hasNewResellerProduct ? {
-        username: resellerUsername,
-        password: resellerPassword,
-        add_credits_to_existing: resellerAddCredits
-      } : null
+      reseller_credentials: cmtvResellerCreds()
     });
   };
 
@@ -220,10 +222,7 @@ export default function CheckoutPage() {
           total: getTotal(),
           coupon_code: appliedCouponCode,
           use_credits: creditsApplied,
-          reseller_credentials: hasNewResellerProduct ? {
-            username: resellerUsername, password: resellerPassword,
-            add_credits_to_existing: resellerAddCredits
-          } : null
+          reseller_credentials: cmtvResellerCreds()
         };
         const orderResponse = await createOrder(orderData);
         const orderId = orderResponse.data.order_id || orderResponse.data.id;
@@ -289,10 +288,7 @@ export default function CheckoutPage() {
         total: getTotal(),
         coupon_code: appliedCouponCode,
         use_credits: creditsApplied,
-        reseller_credentials: hasNewResellerProduct ? {
-          username: resellerUsername, password: resellerPassword,
-          add_credits_to_existing: resellerAddCredits
-        } : null
+        reseller_credentials: cmtvResellerCreds()
       };
       const orderResponse = await createOrder(orderData);
       const orderId = orderResponse.data.order_id || orderResponse.data.id;
@@ -438,10 +434,7 @@ export default function CheckoutPage() {
         total: getTotal(),
         coupon_code: appliedCouponCode,
         use_credits: creditsApplied,
-        reseller_credentials: hasNewResellerProduct ? {
-          username: resellerUsername, password: resellerPassword,
-          add_credits_to_existing: resellerAddCredits
-        } : null
+        reseller_credentials: cmtvResellerCreds()
       };
 
       const orderResponse = await createOrder(orderData);
@@ -1589,7 +1582,7 @@ export default function CheckoutPage() {
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
                             items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */ })),
                             total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
-                            reseller_credentials: hasNewResellerProduct ? { username: resellerUsername, password: resellerPassword, add_credits_to_existing: resellerAddCredits } : null,
+                            reseller_credentials: cmtvResellerCreds(),
                             payment_method: 'tagadapay' // CMTV local change 2026-09-25
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
                           const orderId = orderRes.data.order_id || orderRes.data.id;
