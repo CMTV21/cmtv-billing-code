@@ -2,6 +2,7 @@
 // login (copy / show), panel link, credit balance (CCTV: hourly panel sync; Imperium: live) and a top-up slider locked
 // to that panel (ResellerCredits with topup = the panel username). Backend: GET /api/cmtv/reseller/mine.
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '../../api/api';
@@ -14,7 +15,7 @@ function copy(text, what) {
 function Panel({ p }) {
   const [show, setShow] = useState(false);
   const [topup, setTopup] = useState(false);
-  const low = p.credits !== null && p.credits < 50;
+  const low = p.credits !== null && p.credits < (p.low_level || 50);
   return (
     <div className="ca-panel rp-panel">
       <div className="rp-head">
@@ -38,7 +39,12 @@ function Panel({ p }) {
       {low && <p className="rp-warn">Running low. Top up so you can keep creating lines.</p>}
       {topup
         ? <ResellerCredits lockServer={p.server} topup={p.username} compact />
-        : <button type="button" className="ca-btn ca-glow" onClick={() => setTopup(true)}>Add credits</button>}
+        : (
+          <div className="rp-actions">
+            <button type="button" className="ca-btn ca-glow" onClick={() => setTopup(true)}>Add credits</button>
+            <Link className="ca-btn ca-ghost" to="/knowledge-base/cmtv-reseller-guide">Reseller guide</Link>
+          </div>
+        )}
     </div>
   );
 }

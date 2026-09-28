@@ -29,10 +29,12 @@ export default function ResellerCredits({ lockServer = null, topup = null, compa
   const [credits, setCredits] = useState(100);
   const s = lockServer ? servers[lockServer] : (servers[server] || servers[keys[0]]);
   const min = data?.min || 50;
-  const max = data?.max || 1000;
+  // Imperium credits come out of CMTV's own balance: the server caps what can be bought online
+  const max = Math.max(min, s?.max ?? data?.max ?? 1000);
   const n = Math.min(max, Math.max(min, Math.round(Number(credits) || 0)));
   const quote = useMemo(() => (s ? creditPrice(s.tiers, n) : null), [s, n]);
   if (!s) return null;
+  const unavailable = s.available === false;
 
   const buy = () => {
     if (!quote) return;
@@ -57,6 +59,9 @@ export default function ResellerCredits({ lockServer = null, topup = null, compa
           ))}
         </div>
       )}
+      {unavailable ? (
+        <p className="rc-note" style={{ fontSize: 14 }}>{s.label} credits can't be bought online right now. Message us on Telegram or email cmtv@pm.me and we'll sort it out.</p>
+      ) : (<>
       <div className="rc-pick">
         <input type="range" min={min} max={max} step={10} value={n} onChange={(e) => setCredits(e.target.value)} aria-label="Credits" />
         <label className="rc-num">
@@ -81,7 +86,9 @@ export default function ResellerCredits({ lockServer = null, topup = null, compa
       </div>
       <p className="rc-note">{topup
         ? `The credits go straight onto your panel ${topup} once you've paid.`
-        : 'At checkout choose a new reseller panel (your own username and password) or add the credits to the panel you already have.'}</p>
+        : 'At checkout choose a new reseller panel (your own username and password) or add the credits to the panel you already have.'}
+        {max < (data?.max || 1000) ? ` Up to ${max} ${s.label} credits online right now; message us for more.` : ''}</p>
+      </>)}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import TermsPage from './pages/cmtv/TermsPage'; // CMTV local change 2026-09-27:
 import PrivacyPage from './pages/cmtv/PrivacyPage'; // CMTV local change 2026-09-27: public privacy policy
 import ReviewPage from './pages/cmtv/ReviewPage'; // CMTV local change 2026-09-28: customer review form (/review?t=)
 import AdminReviewsPage from './pages/cmtv/AdminReviewsPage'; // CMTV local change 2026-09-28: Admin > Reviews
+import AdminResellersPage from './pages/cmtv/AdminResellersPage'; // CMTV local change 2026-09-28: Admin > Resellers
 import LinkEmailPage from './pages/LinkEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -449,6 +450,10 @@ function App() {
             <Route
               path="/admin/finances"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><FinancesPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/resellers"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminResellersPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/reviews"

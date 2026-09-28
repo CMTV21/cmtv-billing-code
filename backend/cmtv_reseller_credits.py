@@ -1,32 +1,49 @@
-"""Reseller credits in any amount, priced per credit (CMTV local addition 2026-09-28).
+"""Reseller credits in any amount, priced per credit, plus the reseller area and alerts (CMTV local addition 2026-09-28).
 
 A reseller picks 50-1000 credits instead of a fixed 100/250/500/1000 pack. The order item carries `credits` (models.py
 OrderItemCreate); create_order (server.py) prices it here, on the server, from the per-credit steps below, and
 provision_order_services hands the panel code a copy of the pack product with reseller_credits = the chosen amount, so
 every path (new CCTV reseller, CCTV top-up, new Imperium sub-reseller, Imperium top-up) gives exactly that many.
-The fixed packs still work as before. Steps can be changed in cmtv_config {_id: "reseller_pricing"} without a deploy.
-  GET /api/cmtv/reseller/pricing -> {min, max, servers: {cctv|imperium: {label, product_id, tiers [{min, rate}]}}}
+Steps can be changed in cmtv_config {_id: "reseller_pricing"} without a deploy.
+Imperium credits come out of CMTV's own Imperium balance, so an online order can't ask for more than CMTV has
+(the slider's max shrinks to it; anything bigger: "message us").
+  GET  /api/cmtv/reseller/pricing -> {min, max, servers: {cctv|imperium: {label, product_id, tiers, max, available}}}
+  GET  /api/cmtv/reseller/mine    -> the signed-in customer's reseller panels with balance (dashboard box)
+  GET  /api/cmtv/reseller/admin   -> Admin > Resellers (all resellers, CMTV's Imperium balance, alert levels)
+  POST /api/cmtv/reseller/admin/alerts {reseller_low, own_imperium_low}
+Hourly job: CCTV reseller balances from the panel (the developer's sync only refreshes subscriber lines), then alerts:
+a reseller under `reseller_low` (default 50) gets one email + Telegram (if connected), reset once they're back above;
+CMTV's Imperium balance under `own_imperium_low` (default 300) -> Ops Critical, at most once a day.
 """
 import asyncio
+import html
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from bson import ObjectId
+from fastapi import APIRouter, Body, Depends
 
 log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/reseller", tags=["cmtv-reseller"])
 D = {}
 MIN_CREDITS, MAX_CREDITS = 50, 1000
 LABEL = {"cctv": "CCTV", "imperium": "Imperium"}
+SITE = "https://billing.cmtv.info"
 # price per credit from each amount up (the user's prices, 2026-09-28)
 DEFAULT_TIERS = {
     "cctv": [{"min": 50, "rate": 3.00}, {"min": 250, "rate": 2.75}, {"min": 500, "rate": 2.50}, {"min": 1000, "rate": 2.25}],
     "imperium": [{"min": 50, "rate": 4.00}, {"min": 250, "rate": 3.80}, {"min": 500, "rate": 3.70}, {"min": 1000, "rate": 3.50}],
 }
+DEFAULT_ALERTS = {"reseller_low": 50, "own_imperium_low": 300}
+_imp = {"balance": None, "at": None}
 
 
 def init(**deps):
     D.update(deps)
+
+
+def _oid(v):
+    return ObjectId(v) if ObjectId.is_valid(str(v)) else None
 
 
 def server_of(product: dict):
@@ -44,6 +61,11 @@ async def tiers_for(server: str):
     return sorted(({"min": int(x["min"]), "rate": float(x["rate"])} for x in t), key=lambda x: x["min"])
 
 
+async def alert_levels():
+    cfg = await D["db"].cmtv_config.find_one({"_id": "reseller_alerts"}) or {}
+    return {k: float(cfg.get(k, v)) for k, v in DEFAULT_ALERTS.items()}
+
+
 def rate_for(tiers, credits: int) -> float:
     r = None
     for t in tiers:
@@ -52,6 +74,49 @@ def rate_for(tiers, credits: int) -> float:
     if r is None:
         raise ValueError("No price for that amount")
     return r
+
+
+# ---------- Imperium (Aether) ----------
+
+async def _aether():
+    from aether_service import get_aether_service
+    panels = ((await D["get_settings"]()).get("aether") or {}).get("panels") or []
+    return get_aether_service(panels[0]) if panels else None
+
+
+async def imperium_balance(max_age: int = 600):
+    """CMTV's own Imperium credit balance (cached for max_age seconds). None if the panel can't be reached."""
+    if _imp["at"] and (datetime.utcnow() - _imp["at"]).total_seconds() < max_age:
+        return _imp["balance"]
+    bal = None
+    try:
+        ae = await _aether()
+        bal = await ae.get_balance() if ae else None
+    except Exception as e:
+        log.warning(f"Imperium balance: {e}")
+    _imp.update(balance=bal, at=datetime.utcnow())
+    return bal
+
+
+async def imperium_sub_balances():
+    """{username (lower): credits} for all of CMTV's Imperium sub-resellers (one API page is plenty today)."""
+    out = {}
+    try:
+        ae = await _aether()
+        if not ae:
+            return out
+        base = await ae._base()
+        page = 1
+        while True:
+            data = await ae._request("GET", f"{base}/subresellers", params={"page": page, "per_page": 50})
+            for it in data.get("items") or []:
+                out[str(it.get("username", "")).lower()] = float(it.get("credits_balance") or 0)
+            if page * 50 >= int(data.get("total") or 0):
+                break
+            page += 1
+    except Exception as e:
+        log.warning(f"Imperium sub-reseller balances: {e}")
+    return out
 
 
 async def custom_price(product: dict, credits: int):
@@ -63,9 +128,15 @@ async def custom_price(product: dict, credits: int):
         raise ValueError("This pack can't be bought in a custom amount")
     if not (MIN_CREDITS <= int(credits) <= MAX_CREDITS):
         raise ValueError(f"Choose between {MIN_CREDITS} and {MAX_CREDITS} credits (message us for more)")
+    if server == "imperium":
+        bal = await imperium_balance(max_age=60)
+        if bal is not None and int(credits) > bal:
+            raise ValueError(f"Only {int(bal)} Imperium credits can be bought online right now. Message us for more.")
     rate = rate_for(await tiers_for(server), int(credits))
     return round(int(credits) * rate, 2), f"{LABEL[server]} Reseller Credits - {int(credits)} credits"
 
+
+# ---------- balances ----------
 
 async def refresh_cctv_balances() -> int:
     """Reseller balances on the CCTV (XtreamUI) panels -> imported_users.credits. The developer's automatic sync only
@@ -94,12 +165,113 @@ async def refresh_cctv_balances() -> int:
     return n
 
 
+async def reseller_rows(live_imperium=True):
+    """Every active reseller service with its balance: [{service, server, username, credits, as_of}]"""
+    db = D["db"]
+    imp = await imperium_sub_balances() if live_imperium else {}
+    rows = []
+    async for s in db.services.find({"account_type": "reseller", "status": "active"}).sort("created_at", 1):
+        server = "imperium" if s.get("panel_type") in ("aether", "nxtdash") else "cctv"
+        username = s.get("xtream_username") or s.get("username") or ""
+        credits, as_of = None, None
+        if server == "cctv":
+            iu = await db.imported_users.find_one({"username": username, "account_type": "reseller"})
+            if iu and iu.get("credits") is not None:
+                credits, as_of = float(iu["credits"]), iu.get("last_synced")
+        elif username.lower() in imp:
+            credits, as_of = imp[username.lower()], datetime.utcnow()
+        rows.append({"service": s, "server": server, "username": username, "credits": credits, "as_of": as_of})
+    return rows
+
+
+# ---------- alerts ----------
+
+async def _ops(text, kind):
+    try:
+        import cmtv_notify
+        await cmtv_notify.ops(text, kind, await D["get_settings"]())
+    except Exception as e:
+        log.warning(f"reseller alert (ops) failed: {e}")
+
+
+async def low_balance_alerts(rows=None):
+    """One heads-up per drop below the level (email + Telegram), reset once the balance is back above. Returns how many."""
+    db = D["db"]
+    levels = await alert_levels()
+    low = levels["reseller_low"]
+    rows = rows if rows is not None else await reseller_rows()
+    sent = 0
+    for r in rows:
+        s, credits = r["service"], r["credits"]
+        if credits is None:
+            continue
+        if credits >= low:
+            if s.get("cmtv_low_alerted_at"):
+                await db.services.update_one({"_id": s["_id"]}, {"$unset": {"cmtv_low_alerted_at": ""}})
+            continue
+        if s.get("cmtv_low_alerted_at"):
+            continue
+        u = await db.users.find_one({"_id": _oid(s.get("user_id"))}) or {}
+        first = html.escape(str(u.get("name") or "").split(" ")[0] or "there")
+        label = LABEL[r["server"]]
+        amount = f"{credits:g}"
+        link = f"{SITE}/dashboard"
+        es = await D["get_email_service"]()
+        if u.get("email") and not str(u["email"]).lower().endswith("@panel.local") and es and getattr(es, "enabled", False):
+            body = (f"<h2 style=\"margin:0 0 8px\">You're down to {amount} credits</h2>"
+                    f"<p>Hi {first}, your {label} reseller panel <strong>{html.escape(r['username'])}</strong> has "
+                    f"<strong>{amount} credits</strong> left.</p><p>Top up any amount from 50 to 1,000 on your dashboard and the "
+                    f"credits go straight onto your panel.</p>"
+                    f"<p style=\"margin:22px 0\"><a href=\"{link}\" style=\"background:#22e6f2;color:#07101a;padding:12px 22px;"
+                    f"border-radius:999px;text-decoration:none;font-weight:700\">Add credits</a></p>")
+            try:
+                await es.send_email(to_email=u["email"], subject=f"Your {label} reseller panel: {amount} credits left",
+                                    html_content=es._wrap_email(body, "Low credits", u["email"], "transactional"),
+                                    email_type="transactional", template_type="cmtv_reseller_low", customer_id=str(u["_id"]))
+            except Exception as e:
+                log.warning(f"low-credit email failed: {e}")
+        tg = (u.get("cmtv_telegram") or {}).get("chat_id")
+        if tg:
+            try:
+                import cmtv_telegram_alerts
+                await cmtv_telegram_alerts.queue(str(u["_id"]), tg, f"⚠️ <b>Your {label} reseller panel has {amount} credits left</b>\n\n"
+                                                 "Top up any amount from 50 to 1,000.",
+                                                 [[{"text": "➕ Add credits", "url": link}]], kind="reseller_low")
+            except Exception as e:
+                log.warning(f"low-credit telegram failed: {e}")
+        await _ops(f"ℹ️ Reseller low on credits: {u.get('name') or r['username']} ({label} {r['username']}) has {amount} left. "
+                   "They've been sent a top-up reminder.", "billing")
+        await db.services.update_one({"_id": s["_id"]}, {"$set": {"cmtv_low_alerted_at": datetime.utcnow()}})
+        sent += 1
+    return sent
+
+
+async def own_imperium_alert():
+    """CMTV's Imperium balance under the level -> one Critical alert a day while it stays low. Returns True if sent."""
+    db = D["db"]
+    level = (await alert_levels())["own_imperium_low"]
+    bal = await imperium_balance(max_age=0)
+    if bal is None or bal >= level:
+        return False
+    st = await db.cmtv_config.find_one({"_id": "reseller_alerts_state"}) or {}
+    last = st.get("own_imperium_alerted_at")
+    if last and datetime.utcnow() - last < timedelta(hours=24):
+        return False
+    await _ops(f"🟠 CMTV's own Imperium balance is {bal:g} credits (alert level {level:g}).\n\nImperium reseller credits and "
+               f"sub-reseller top-ups come out of it: customers can buy at most {int(bal)} online until you top it up on the "
+               "Imperium panel.", "critical")
+    await db.cmtv_config.update_one({"_id": "reseller_alerts_state"}, {"$set": {"own_imperium_alerted_at": datetime.utcnow()}}, upsert=True)
+    return True
+
+
 async def _balance_loop():
     await asyncio.sleep(120)
     while True:
         try:
             n = await refresh_cctv_balances()
             log.info(f"reseller balances refreshed: {n}")
+            await low_balance_alerts()
+            await own_imperium_alert()
         except Exception as e:
             log.warning(f"reseller balance refresh failed: {e}")
         await asyncio.sleep(3600)
@@ -109,42 +281,80 @@ async def startup():
     asyncio.create_task(_balance_loop())
 
 
+# ---------- routes ----------
+
+def _iso(v):
+    return v.isoformat() + "Z" if isinstance(v, datetime) else None
+
+
 def init_routes():
-    """Routes that need the signed-in customer (dependency passed in from server.py)"""
+    """Routes that need the signed-in customer / admin (dependencies passed in from server.py)"""
     current = D["get_current_user"]
+    admin = D["get_current_admin_user"]
 
     @router.get("/mine")
     async def mine(current_user: dict = Depends(current)):
-        """The customer's own reseller panels, with the credit balance: CCTV from the hourly panel sync
-        (imported_users.credits), Imperium read live from the Aether API. Used by the dashboard's reseller box."""
-        db = D["db"]
+        """The customer's own reseller panels, with the credit balance (dashboard box)."""
         uid = current_user["sub"]
+        rows = [r for r in await reseller_rows(live_imperium=False) if str(r["service"].get("user_id")) == uid]
+        if any(r["server"] == "imperium" for r in rows):
+            imp = await imperium_sub_balances()
+            for r in rows:
+                if r["server"] == "imperium" and r["username"].lower() in imp:
+                    r["credits"], r["as_of"] = imp[r["username"].lower()], datetime.utcnow()
+        low = (await alert_levels())["reseller_low"]
+        # panel-synced reseller records have no panel_url: use the reseller pack's (custom_panel_url) for that server
+        pack_url = {}
+        async for p in D["db"].products.find({"account_type": "reseller", "custom_panel_url": {"$nin": [None, ""]}}):
+            pack_url.setdefault(server_of(p), str(p["custom_panel_url"]).replace("Https://", "https://"))
         out = []
-        async for s in db.services.find({"user_id": uid, "account_type": "reseller", "status": "active"}).sort("created_at", 1):
-            server = "imperium" if s.get("panel_type") in ("aether", "nxtdash") else "cctv"
-            username = s.get("xtream_username") or s.get("username") or ""
-            balance, as_of = None, None
-            if server == "cctv":
-                iu = await db.imported_users.find_one({"username": username, "account_type": "reseller"})
-                if iu and iu.get("credits") is not None:
-                    balance, as_of = float(iu["credits"]), iu.get("last_synced") or iu.get("updated_at")
-            else:
-                try:
-                    from aether_service import get_aether_service
-                    import cmtv_aether_reseller
-                    panels = ((await D["get_settings"]()).get("aether") or {}).get("panels") or []
-                    ae = get_aether_service(panels[int(s.get("panel_index") or 0)]) if panels else None
-                    if ae:
-                        sub = await cmtv_aether_reseller._find_sub(ae, await ae._base(), username)
-                        if sub and sub.get("credits_balance") is not None:
-                            balance, as_of = float(sub["credits_balance"]), datetime.utcnow()
-                except Exception as e:
-                    log.warning(f"reseller balance for {username}: {e}")
-            out.append({"id": str(s["_id"]), "server": server, "label": LABEL[server], "username": username,
+        for r in rows:
+            s = r["service"]
+            out.append({"id": str(s["_id"]), "server": r["server"], "label": LABEL[r["server"]], "username": r["username"],
                         "password": s.get("xtream_password") or s.get("password") or "",
-                        "panel_url": s.get("panel_url") or ("https://bestpanel.xyz" if server == "imperium" else ""),
-                        "credits": balance, "as_of": as_of.isoformat() + "Z" if isinstance(as_of, datetime) else None})
+                        "panel_url": s.get("panel_url") or pack_url.get(r["server"]) or "",
+                        "credits": r["credits"], "as_of": _iso(r["as_of"]), "low_level": low})
         return {"panels": out}
+
+    @router.get("/admin")
+    async def admin_view(current_user: dict = Depends(admin)):
+        db = D["db"]
+        rows = await reseller_rows()
+        levels = await alert_levels()
+        out = []
+        for r in rows:
+            s = r["service"]
+            uid = str(s.get("user_id"))
+            u = await db.users.find_one({"_id": _oid(uid)}) or {}
+            spent, last_topup, n = 0.0, None, 0
+            async for o in db.orders.find({"user_id": uid, "status": "paid"}):
+                its = [i for i in o.get("items") or [] if i.get("account_type") == "reseller"]
+                if not its:
+                    continue
+                n += 1
+                spent += sum(float(i.get("price") or 0) for i in its)
+                t = o.get("paid_at") or o.get("created_at")
+                if isinstance(t, datetime) and (last_topup is None or t > last_topup):
+                    last_topup = t
+            out.append({"service_id": str(s["_id"]), "user_id": uid, "name": u.get("name"), "email": u.get("email"),
+                        "server": r["server"], "label": LABEL[r["server"]], "username": r["username"], "credits": r["credits"],
+                        "as_of": _iso(r["as_of"]), "low": r["credits"] is not None and r["credits"] < levels["reseller_low"],
+                        "spent": round(spent, 2), "orders": n, "last_topup": _iso(last_topup),
+                        "placeholder": str(u.get("email", "")).lower().endswith("@panel.local")})
+        return {"resellers": out, "levels": levels, "own": {"imperium": await imperium_balance(max_age=60)}}
+
+    @router.post("/admin/alerts")
+    async def admin_alerts(data: dict = Body(...), current_user: dict = Depends(admin)):
+        upd = {}
+        for k in DEFAULT_ALERTS:
+            if k in data:
+                try:
+                    upd[k] = max(0.0, float(data[k]))
+                except (TypeError, ValueError):
+                    pass
+        if upd:
+            await D["db"].cmtv_config.update_one({"_id": "reseller_alerts"}, {"$set": upd}, upsert=True)
+        return {"levels": await alert_levels()}
 
 
 @router.get("/pricing")
@@ -156,6 +366,13 @@ async def pricing():
         async for p in D["db"].products.find({"account_type": "reseller", "active": {"$ne": False}}):
             if server_of(p) == server and (base is None or float(p.get("reseller_credits") or 0) < float(base.get("reseller_credits") or 0)):
                 base = p
-        if base:
-            out[server] = {"label": LABEL[server], "product_id": str(base["_id"]), "tiers": await tiers_for(server)}
+        if not base:
+            continue
+        mx = MAX_CREDITS
+        if server == "imperium":
+            bal = await imperium_balance()
+            if bal is not None:
+                mx = min(MAX_CREDITS, int(bal // 10 * 10) if bal >= MIN_CREDITS else int(bal))
+        out[server] = {"label": LABEL[server], "product_id": str(base["_id"]), "tiers": await tiers_for(server),
+                       "max": mx, "available": mx >= MIN_CREDITS}
     return {"min": MIN_CREDITS, "max": MAX_CREDITS, "servers": out}

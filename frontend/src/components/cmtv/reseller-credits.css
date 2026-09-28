@@ -37,4 +37,34 @@
 .rp-login > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rp-login span { color: var(--muted); font-size: 13px; min-width: 76px; }
 .rp-login code { font: 600 14.5px ui-monospace, Menlo, Consolas, monospace; color: var(--text); background: var(--deep); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; }
-.rp-warn { color: var(--warn, #fbbf24) !important; font-size: 13.5px; margin: 0 0 10px !important; }
+.rp-warn { color: var(--warn, #fbbf24) !important; font-size: 13.5px; margin: 0 0 10px !important; }.rp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Admin > Resellers (pages/cmtv/AdminResellersPage.js), 2026-09-28 */
+.rs-admin { color: #e9edf8; }
+.rs-admin h1 { font-size: 26px; font-weight: 800; margin: 0 0 4px; }
+.rs-sub, .rs-note { color: #9aa6c6; margin: 0 0 16px; font-size: 14px; }
+.rs-note { font-size: 12.5px; margin-top: 12px; }
+.rs-top { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.3fr); gap: 12px; margin-bottom: 18px; }
+.rs-own, .rs-levels { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.rs-own span { color: #9aa6c6; font-size: 13px; font-weight: 700; }
+.rs-own b { font-family: "Exo 2", sans-serif; font-style: italic; font-size: 34px; line-height: 1; }
+.rs-own small { color: #9aa6c6; font-size: 12.5px; }
+.rs-own.low { border-color: rgba(251,191,36,.6); }
+.rs-own.low b { color: #fbbf24; }
+.rs-levels label { color: #c7d2ee; font-size: 13.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rs-levels input { width: 84px; font: inherit; color: #e9edf8; background: #0a1020; border: 1px solid #27345a; border-radius: 8px; padding: 5px 8px; }
+.rs-levels .rv-btn { align-self: flex-start; }
+.rs-table-wrap { overflow-x: auto; }
+.rs-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.rs-table th { text-align: left; color: #9aa6c6; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; border-bottom: 1px solid #27345a; }
+.rs-table td { padding: 10px; border-bottom: 1px solid #202b4a; vertical-align: top; }
+.rs-table td small { display: block; color: #6b7799; font-size: 12px; }
+.rs-table td a { color: #22e6f2; font-weight: 700; }
+.rs-table td code { font: 600 13.5px ui-monospace, Menlo, Consolas, monospace; }
+.rs-table tr.low td b { color: #fbbf24; }
+.rs-srv { font-size: 12px; font-weight: 800; border-radius: 999px; padding: 2px 9px; border: 1px solid #27345a; }
+.rs-srv.cctv { color: #22e6f2; border-color: rgba(34,230,242,.45); }
+.rs-srv.imperium { color: #d8b35a; border-color: rgba(216,179,90,.5); }
+.rs-admin .rv-btn { font: inherit; font-weight: 700; font-size: 13.5px; color: #e9edf8; background: transparent; border: 1px solid #27345a; border-radius: 10px; padding: 8px 14px; cursor: pointer; }
+.rs-admin .rv-btn.glow { background: linear-gradient(135deg, #22e6f2, #8b5cf6); color: #07101f; border: 0; }
+@media (max-width: 760px) { .rs-top { grid-template-columns: 1fr; } }
