@@ -6,8 +6,13 @@
 .cu-lede { margin: 0 0 12px; color: #9aa6c6; font-size: 14px; }
 .cu-post { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 14px 16px; margin: 0 0 10px; }
 .cu-post.recent { border-color: rgba(34,230,242,.45); box-shadow: 0 0 0 3px rgba(34,230,242,.07); }
-.cu-post header { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 6px; }
-.cu-post header b { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #22e6f2; }
+.cu-post .cu-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+.cu-post .cu-head b { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: #22e6f2; }
+/* collapsed posts: clamp the main text and the latest update */
+.cu-post.clamp5 .cu-text, .cu-post.clamp2 .cu-text { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.cu-post.clamp5 .cu-text { -webkit-line-clamp: 5; }
+.cu-post.clamp2 .cu-text { -webkit-line-clamp: 2; }
+.cu-post.clamp2 .cu-reply .cu-text { -webkit-line-clamp: 1; }
 .cu-post time { color: #6b7799; font-size: 12.5px; white-space: nowrap; }
 .cu-text { margin: 0; font-size: 15px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
 .cu-text a { color: #22e6f2; }

@@ -18,7 +18,8 @@ function ago(iso) {
 }
 
 function Text({ text }) {
-  const parts = String(text || '').split(/(https?:\/\/[^\s)]+[^\s).,])/g);
+  const clean = String(text || '').replace(/\n\s*\n(\s*\n)+/g, '\n\n').trim();   // no big blank gaps
+  const parts = clean.split(/(https?:\/\/[^\s)]+[^\s).,])/g);
   return (
     <p className="cu-text">
       {parts.map((p, i) => (/^https?:\/\//.test(p)
@@ -29,12 +30,16 @@ function Text({ text }) {
 }
 
 function Post({ item, open }) {
+  // collapsed: recent posts show up to 5 lines, older ones 2; "Read more" shows everything incl. earlier updates
   const [more, setMore] = useState(open);
   const replies = item.replies || [];
   const shown = more ? replies : replies.slice(-1);
+  const long = (item.text || '').length + replies.reduce((n, r) => n + (r.text || '').length, 0) > (item.recent ? 260 : 90)
+    || replies.length > 1;
   return (
-    <article className={`cu-post${item.recent ? ' recent' : ''}`}>
-      <header><b>📢 CMTV update</b><time dateTime={item.at}>{ago(item.at)}</time></header>
+    <article className={`cu-post${item.recent ? ' recent' : ''}${more || !long ? '' : item.recent ? ' clamp5' : ' clamp2'}`}>
+      {/* a div, not <header>: the account frame hides page <header>s */}
+      <div className="cu-head"><b>📢 CMTV update</b><time dateTime={item.last_at || item.at}>{ago(item.last_at || item.at)}</time></div>
       <Text text={item.text} />
       {shown.map((r) => (
         <div className="cu-reply" key={r.id}>
@@ -42,8 +47,10 @@ function Post({ item, open }) {
           <Text text={r.text} />
         </div>
       ))}
-      {!more && replies.length > 1 && (
-        <button type="button" className="cu-more" onClick={() => setMore(true)}>Show {replies.length - 1} earlier update{replies.length > 2 ? 's' : ''}</button>
+      {long && (
+        <button type="button" className="cu-more" onClick={() => setMore((v) => !v)} aria-expanded={more}>
+          {more ? 'Show less' : `Read more${replies.length > 1 ? ` · ${replies.length} updates` : ''}`}
+        </button>
       )}
     </article>
   );
