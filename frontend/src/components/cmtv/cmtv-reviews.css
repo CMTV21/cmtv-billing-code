@@ -1,0 +1,52 @@
+/* CMTV local addition 2026-09-28: the review form (pages/cmtv/ReviewPage.js) and Admin > Reviews (AdminReviewsPage.js). */
+.cmtv-review .rv-form { display: flex; flex-direction: column; gap: 16px; margin-top: 6px; }
+.rv-stars { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.rv-stars button { background: none; border: 0; font-size: 40px; line-height: 1; color: #33405f; cursor: pointer; padding: 0 2px; transition: transform .1s, color .1s; }
+.rv-stars button.on { color: #fbbf24; }
+.rv-stars button:hover { transform: scale(1.1); }
+.rv-label { margin-left: 10px; color: #9aa6c6; font-weight: 600; }
+.rv-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.rv-field > span { font-size: 13.5px; font-weight: 700; color: #c7d2ee; }
+.rv-field textarea, .rv-field input, .rv-field select { font: inherit; font-size: 15px; color: #e9edf8; background: #0a1020; border: 1px solid #27345a;
+  border-radius: 12px; padding: 10px 12px; width: 100%; box-sizing: border-box; }
+.rv-field textarea:focus, .rv-field input:focus, .rv-field select:focus { outline: none; border-color: #22e6f2; box-shadow: 0 0 0 3px rgba(34,230,242,.14); }
+.rv-field small { color: #6b7799; font-size: 12px; }
+.rv-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.rv-row .rv-field { min-width: 200px; }
+.rv-consent { display: flex; gap: 10px; align-items: flex-start; color: #c7d2ee; font-size: 14px; line-height: 1.45; }
+.rv-consent input { margin-top: 3px; width: 18px; height: 18px; accent-color: #22e6f2; flex: none; }
+.rv-error { color: #fca5a5; margin: 0; }
+.cmtv-review button.kb-btn { cursor: pointer; align-self: flex-start; }
+.cmtv-review button.kb-btn[disabled] { opacity: .6; }
+
+.rv-admin { color: #e9edf8; }
+.rv-admin h1 { font-size: 26px; font-weight: 800; margin: 0 0 4px; }
+.rv-admin-head p { color: #9aa6c6; margin: 0 0 16px; }
+.rv-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
+.rv-stats > div { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; }
+.rv-stats b { font-size: 22px; }
+.rv-stats span { color: #9aa6c6; font-size: 12.5px; }
+.rv-invites { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: #0f1728; border: 1px solid #27345a;
+  border-radius: 14px; padding: 14px 16px; margin-bottom: 18px; }
+.rv-invites > div { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 240px; }
+.rv-invites span { color: #9aa6c6; font-size: 13.5px; }
+.rv-btn { font: inherit; font-weight: 700; font-size: 13.5px; color: #e9edf8; background: transparent; border: 1px solid #27345a; border-radius: 10px; padding: 8px 14px; cursor: pointer; }
+.rv-btn.glow { background: linear-gradient(135deg, #22e6f2, #8b5cf6); color: #07101f; border: 0; }
+.rv-btn[disabled] { opacity: .45; cursor: not-allowed; }
+.rv-empty { color: #9aa6c6; }
+.rv-list { display: flex; flex-direction: column; gap: 10px; }
+.rv-item { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 14px 16px; }
+.rv-item.st-pending { border-color: rgba(251,191,36,.45); }
+.rv-item-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rv-stars-sm { color: #fbbf24; letter-spacing: 1px; }
+.rv-stars-sm i { color: #33405f; font-style: normal; }
+.rv-status { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; border-radius: 999px; padding: 2px 9px; border: 1px solid #27345a; color: #9aa6c6; }
+.rv-status.st-pending { color: #fbbf24; border-color: rgba(251,191,36,.45); }
+.rv-status.st-approved { color: #34d399; border-color: rgba(52,211,153,.45); }
+.rv-status.private { color: #fca5a5; border-color: rgba(252,165,165,.4); }
+.rv-date { margin-left: auto; color: #6b7799; font-size: 12.5px; }
+.rv-text { margin: 8px 0; font-size: 15px; line-height: 1.5; }
+.rv-meta { color: #9aa6c6; font-size: 13px; }
+.rv-meta a { color: #22e6f2; }
+.rv-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+@media (max-width: 640px) { .rv-stats { grid-template-columns: repeat(2, minmax(0,1fr)); } }
