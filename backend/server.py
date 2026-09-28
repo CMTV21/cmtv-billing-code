@@ -499,6 +499,26 @@ async def create_customer_for_imported_user(imported_user: dict) -> Optional[str
     if not username:
         return None
 
+    # CMTV local change 2026-09-28: a line that billing itself sold belongs to that customer. Sync never checked, so
+    # every line billing created got a second "<username>@panel.local" account + service at the next sync (167 found).
+    try:
+        owner_svc = await services_collection.find_one({
+            "$or": [{"xtream_username": username}, {"username": username}],
+            "panel_type": imported_user.get("panel_type", ""),
+            "created_via": {"$ne": "panel_sync"},
+            "status": {"$nin": ["failed", "duplicate"]},
+        }, sort=[("created_at", -1)])
+        owner = None
+        if owner_svc and owner_svc.get("user_id"):
+            owner = await users_collection.find_one({"_id": str_to_objectid(owner_svc["user_id"]),
+                                                     "created_via": {"$ne": "panel_sync"}})
+        if owner:
+            if imported_user.get("user_id") != str(owner["_id"]):
+                await imported_users_collection.update_one({"_id": imported_user["_id"]}, {"$set": {"user_id": str(owner["_id"])}})
+            return str(owner["_id"])
+    except Exception as e:
+        logger.warning(f"Panel sync owner check for {username} failed: {e}")
+
     # If already linked, verify the customer still exists
     existing_uid = imported_user.get("user_id")
     if existing_uid:
