@@ -19,7 +19,7 @@ const NAV = [
   { group: 'Customers', items: [
     { label: 'Customers', to: '/admin/customers', perm: 'customers' }, { label: 'Customer profile', to: '/admin/customer' },
     { label: 'Support', to: '/admin/tickets', count: 'tickets', crit: true, perm: 'tickets' },
-    { label: 'Referrals', to: '/admin/referrals' }, { label: 'Reviews', to: '/admin/reviews' }, { label: 'Resellers', to: '/admin/resellers' }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
+    { label: 'Referrals', to: '/admin/referrals' }, { label: 'Reviews', to: '/admin/reviews' }, { label: 'Resellers', to: '/admin/resellers' }, { label: 'Notices', to: '/admin/notices' }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
   ] },
   { group: 'Services', items: [
     { label: 'Products', to: '/admin/products' }, { label: 'Stremio', to: '/admin/stremio' }, { label: 'CMTVpn', to: '/admin/cmtvpn' },

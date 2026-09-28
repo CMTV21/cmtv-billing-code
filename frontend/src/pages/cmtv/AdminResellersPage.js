@@ -20,7 +20,7 @@ const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { year: 
 
 // 2026-09-28: a notice to every active reseller (email + Telegram if connected + their dashboard for 7 days).
 // "Check" is a dry run that lists who gets it; "Send" asks once more.
-function NoticeBox() {
+export function NoticeBox() {   // also on Admin > Notices
   const [text, setText] = useState('');
   const [check, setCheck] = useState(null);
   const [busy, setBusy] = useState(false);
