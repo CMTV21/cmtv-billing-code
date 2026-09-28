@@ -72,3 +72,35 @@
   border-radius: 10px; padding: 9px 16px; }
 .cmtv-kb .kb-btn.glow { background: var(--ring, linear-gradient(135deg, #22e6f2, #8b5cf6)); border: 0; color: #07101f; }
 .cmtv-kb .kb-related { margin-top: 26px; }
+
+/* 2026-09-28: "Your details" card on setup guides (components/cmtv/GuideLogin.js) */
+.cmtv-kb .kb-mine { margin: 4px 0 22px; padding: 16px 18px; border-radius: 14px; background: var(--deep, #0a1020);
+  border: 1px solid rgba(34,230,242,.35); box-shadow: 0 0 0 3px rgba(34,230,242,.06); }
+.cmtv-kb .kb-mine header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
+.cmtv-kb .kb-mine header b { font-family: var(--display, "Exo 2", sans-serif); font-style: italic; font-size: 17px; color: var(--cyan, #22e6f2); }
+.cmtv-kb .kb-mine header span { color: var(--muted, #9aa6c6); font-size: 13.5px; }
+.cmtv-kb .kb-mine-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.cmtv-kb .kb-mine-pick button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 1px;
+  background: var(--surface, #141d33); border: 1px solid var(--line, #27345a); color: var(--text, #e9edf8); border-radius: 10px; padding: 7px 12px; font-size: 13.5px; font-weight: 600; }
+.cmtv-kb .kb-mine-pick button small { color: var(--faint, #6b7799); font-weight: 500; font-size: 12px; }
+.cmtv-kb .kb-mine-pick button.on { border-color: var(--cyan, #22e6f2); background: var(--surface-2, #1a2542); }
+.cmtv-kb .kb-mine dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; align-items: center; }
+.cmtv-kb .kb-mine dt { color: var(--muted, #9aa6c6); font-size: 13.5px; }
+.cmtv-kb .kb-mine dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.cmtv-kb .kb-mine dd strong { color: #fff; }
+.cmtv-kb .kb-mine dd small { color: var(--faint, #6b7799); font-size: 12.5px; }
+.cmtv-kb .kb-mine dd em { color: var(--warn, #fbbf24); font-style: normal; }
+.cmtv-kb .kb-mine code { font: 600 15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #fff; background: var(--surface, #141d33);
+  border: 1px solid var(--line, #27345a); border-radius: 8px; padding: 4px 9px; overflow-wrap: anywhere; }
+.cmtv-kb .kb-copy { background: transparent; border: 1px solid var(--line, #27345a); color: var(--cyan, #22e6f2); border-radius: 8px;
+  padding: 4px 10px; font-size: 12.5px; font-weight: 700; }
+.cmtv-kb .kb-copy:hover { border-color: var(--cyan, #22e6f2); }
+.cmtv-kb .kb-mine-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.cmtv-kb .kb-mine-actions .kb-btn { cursor: pointer; }
+.cmtv-kb .kb-mine-actions .kb-btn[disabled] { opacity: .6; cursor: default; }
+.cmtv-kb .kb-mine-qr { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 14px; }
+.cmtv-kb .kb-mine-qr svg { border-radius: 10px; flex: none; }
+.cmtv-kb .kb-mine-qr span { flex: 1; min-width: 200px; color: var(--muted, #9aa6c6); font-size: 13.5px; }
+.cmtv-kb .kb-mine-guest { margin: 2px 0 18px; padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--line, #27345a); color: var(--muted, #9aa6c6); font-size: 14.5px; }
+.cmtv-kb .kb-mine-guest a { color: var(--cyan, #22e6f2); font-weight: 700; }
+@media (max-width: 520px) { .cmtv-kb .kb-mine dl { grid-template-columns: 1fr; gap: 2px 0; } .cmtv-kb .kb-mine dt { margin-top: 8px; } }

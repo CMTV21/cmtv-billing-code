@@ -162,6 +162,12 @@ app.include_router(cmtv_seo.router)
 import cmtv_etransfer
 app.include_router(cmtv_etransfer.router)
 
+# CMTV local change 2026-09-28: "Email me these steps" on the setup guides (cmtv_kb_email.py)
+import cmtv_kb_email
+cmtv_kb_email.D["get_current_user"] = get_current_user
+cmtv_kb_email.init_routes()
+app.include_router(cmtv_kb_email.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -771,6 +777,7 @@ async def startup_event():
     cmtv_etransfer.init(orders=orders_collection, users=users_collection, etransfers=db.cmtv_etransfers,
                         oid=str_to_objectid, provision=provision_order_services, get_settings=get_settings)
     await cmtv_etransfer.startup()
+    cmtv_kb_email.init(db=db, get_email_service=get_configured_email_service)  # CMTV local change 2026-09-28
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()

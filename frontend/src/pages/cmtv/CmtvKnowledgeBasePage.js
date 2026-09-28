@@ -11,6 +11,7 @@ import { Search } from 'lucide-react';
 import api from '../../api/api';
 import { useAuthStore } from '../../store/store';
 import { usePageMeta } from '../../components/cmtv/CmtvSEO';
+import GuideLogin from '../../components/cmtv/GuideLogin'; // 2026-09-28: "Your details" card on setup guides
 import '../../components/cmtv/cmtv-kb.css';
 
 const SUPPORT_BOT = 'https://t.me/Cmtv_support_bot';
@@ -142,6 +143,7 @@ export default function CmtvKnowledgeBasePage() {
         <article className="kb-article">
           <h1>{open.title}{!open.is_published && <span className="kb-draft">Draft</span>}</h1>
           {open.cmtv_summary && <p className="kb-lede">{open.cmtv_summary}</p>}
+          <GuideLogin articleId={open.id} user={user} />
           <div className="kb-body">{renderContent(user ? open.content : hidePrivateLinks(open.content))}</div>
         </article>
         {user ? (
