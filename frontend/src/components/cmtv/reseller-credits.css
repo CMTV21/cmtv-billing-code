@@ -104,4 +104,9 @@
 .rs-notice { margin: 0 0 18px; border: 1px solid #26314d; border-radius: 14px; padding: 14px 16px; background: #111a2e; }
 .rs-notice textarea { min-height: 90px; margin: 8px 0; }
 .rs-notice .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.rs-notice ul { margin: 10px 0 0; padding-left: 18px; color: #aab4c8; font-size: 13.5px; }
+.rs-notice ul { margin: 10px 0 0; padding-left: 18px; color: #aab4c8; font-size: 13.5px; }.rt-logo { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; }
+.rt-logo-box { width: 96px; height: 96px; border-radius: 14px; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.rt-logo-box img { max-width: 88px; max-height: 88px; object-fit: contain; }
+.rt-logo-box span { color: #5a6475; font-size: 12px; }
+.rt-file { position: relative; cursor: pointer; margin-right: 8px; }
+.rt-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }

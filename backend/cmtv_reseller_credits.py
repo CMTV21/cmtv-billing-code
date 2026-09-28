@@ -165,16 +165,23 @@ async def refresh_cctv_balances() -> int:
     return n
 
 
-async def reseller_rows(live_imperium=True):
-    """Every active reseller service with its balance: [{service, server, username, credits, as_of}]"""
+async def reseller_rows(live_imperium=True, include_demo=False):
+    """Every active reseller service with its balance: [{service, server, username, credits, as_of}]
+    2026-09-28: the demo reseller account's service (cmtv_demo: true, fake panel login, balance in cmtv_demo_credits) only
+    shows on its own dashboard (include_demo), never in Admin > Resellers or the alerts."""
     db = D["db"]
     imp = await imperium_sub_balances() if live_imperium else {}
     rows = []
-    async for s in db.services.find({"account_type": "reseller", "status": "active"}).sort("created_at", 1):
+    q = {"account_type": "reseller", "status": "active"}
+    if not include_demo:
+        q["cmtv_demo"] = {"$ne": True}
+    async for s in db.services.find(q).sort("created_at", 1):
         server = "imperium" if s.get("panel_type") in ("aether", "nxtdash") else "cctv"
         username = s.get("xtream_username") or s.get("username") or ""
         credits, as_of = None, None
-        if server == "cctv":
+        if s.get("cmtv_demo"):
+            credits, as_of = float(s.get("cmtv_demo_credits") or 0), datetime.utcnow()
+        elif server == "cctv":
             iu = await db.imported_users.find_one({"username": username, "account_type": "reseller"})
             if iu and iu.get("credits") is not None:
                 credits, as_of = float(iu["credits"]), iu.get("last_synced")
@@ -296,7 +303,7 @@ def init_routes():
     async def mine(current_user: dict = Depends(current)):
         """The customer's own reseller panels, with the credit balance (dashboard box)."""
         uid = current_user["sub"]
-        rows = [r for r in await reseller_rows(live_imperium=False) if str(r["service"].get("user_id")) == uid]
+        rows = [r for r in await reseller_rows(live_imperium=False, include_demo=True) if str(r["service"].get("user_id")) == uid]
         if any(r["server"] == "imperium" for r in rows):
             imp = await imperium_sub_balances()
             for r in rows:

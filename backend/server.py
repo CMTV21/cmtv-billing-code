@@ -1659,7 +1659,8 @@ async def forgot_password(data: ForgotPasswordRequest):
         }}
     )
 
-    reset_link = f"{os.getenv('SITE_URL', os.getenv('BACKEND_PUBLIC_URL', 'http://localhost:8001'))}/reset-password?token={reset_token}"
+    # CMTV local change 2026-09-28: token after "#" (never sent to the server, so it stays out of access logs); ?token= still works
+    reset_link = f"{os.getenv('SITE_URL', os.getenv('BACKEND_PUBLIC_URL', 'http://localhost:8001'))}/reset-password#token={reset_token}"
     try:
         email_service = await get_configured_email_service()
         if email_service and email_service.enabled:
@@ -1695,6 +1696,11 @@ async def check_reset_token(token: str):
     if not user:
         raise HTTPException(status_code=400, detail="This reset link is invalid or has expired. Please request a new one.")
     return {"email": _mask_email(user["email"]), "username": user.get("panel_username") or None}
+
+# CMTV local change 2026-09-28: same check with the token in the body (a GET query string ends up in the access log)
+@app.post("/api/auth/reset-password/check")
+async def check_reset_token_post(data: dict = Body(...)):
+    return await check_reset_token(str(data.get("token") or ""))
 
 @app.post("/api/auth/reset-password")
 async def reset_password(data: ResetPasswordRequest):

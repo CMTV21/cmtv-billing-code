@@ -9,7 +9,8 @@ import { AuthShell, Note, PasswordInput } from '../components/cmtv/AuthShell';
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const token = searchParams.get('token') || '';
+  // CMTV local change 2026-09-28: new emails put the token after "#" (kept out of server logs); older links use ?token=
+  const token = searchParams.get('token') || new URLSearchParams(window.location.hash.slice(1)).get('token') || '';
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState(token ? '' : 'This reset link is missing its token. Please use the link from your email, or request a new one.');

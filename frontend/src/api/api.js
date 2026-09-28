@@ -46,7 +46,7 @@ export const authAPI = {
   login: (data) => api.post('/api/auth/login', data),
   forgotPassword: (data) => api.post('/api/auth/forgot-password', data),
   resetPassword: (data) => api.post('/api/auth/reset-password', data),
-  checkResetToken: (token) => api.get('/api/auth/reset-password/check', { params: { token } }),
+  checkResetToken: (token) => api.post('/api/auth/reset-password/check', { token }), // CMTV 2026-09-28: POST, keeps the token out of logs
   getMe: () => api.get('/api/auth/me'),
 };
 

@@ -27,7 +27,22 @@ function wrap(ctx, text, maxW) {
   return lines;
 }
 
-function draw(canvas, fmt, b, facts, headline) {
+// 2026-09-28: the reseller's logo (same-origin PNG, so the canvas can still be downloaded)
+function useLogoImage(url) {
+  const [img, setImg] = useState(null);
+  useEffect(() => {
+    if (!url) { setImg(null); return undefined; }
+    const im = new Image();
+    let live = true;
+    im.onload = () => { if (live) setImg(im); };
+    im.onerror = () => { if (live) setImg(null); };
+    im.src = url;
+    return () => { live = false; };
+  }, [url]);
+  return img;
+}
+
+function draw(canvas, fmt, b, facts, headline, logo) {
   const [W, H] = FORMATS[fmt];
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -41,9 +56,21 @@ function draw(canvas, fmt, b, facts, headline) {
   const pad = 80;
   let y = fmt === 'story' ? 260 : 140;
   ctx.fillStyle = b.color; ctx.fillRect(pad, y - 50, 90, 10);
-  ctx.fillStyle = '#fff'; ctx.font = F(800, 64);
-  ctx.fillText(b.name || 'Your name', pad, y + 30);
-  y += fmt === 'story' ? 190 : 150;
+  let nameX = pad;
+  if (logo) {
+    const ratio = logo.width / logo.height;
+    let lh = 110;
+    let lw = lh * ratio;
+    if (lw > 260) { lw = 260; lh = lw / ratio; }
+    ctx.drawImage(logo, pad, y - 20 + (110 - lh) / 2, lw, lh);
+    nameX = pad + lw + 28;
+  }
+  ctx.fillStyle = '#fff';
+  let size = 64;
+  ctx.font = F(800, size);
+  while (size > 34 && ctx.measureText(b.name || 'Your name').width > W - nameX - pad) { size -= 4; ctx.font = F(800, size); }
+  ctx.fillText(b.name || 'Your name', nameX, y + 60);
+  y += fmt === 'story' ? 230 : 190;
   ctx.font = F(800, fmt === 'story' ? 92 : 78);
   wrap(ctx, headline, W - pad * 2).forEach((l) => { ctx.fillText(l, pad, y); y += fmt === 'story' ? 108 : 92; });
   y += 40;
@@ -74,13 +101,14 @@ function SocialImage({ brand, facts }) {
   const ref = useRef(null);
   const [fmt, setFmt] = useState('square');
   const [h, setH] = useState(0);
+  const logo = useLogoImage(brand.logo);
   useEffect(() => {
     let live = true;
-    const go = () => { if (live && ref.current) draw(ref.current, fmt, brand, facts, HEADLINES[h]); };
+    const go = () => { if (live && ref.current) draw(ref.current, fmt, brand, facts, HEADLINES[h], logo); };
     go();
     if (document.fonts?.ready) document.fonts.ready.then(go);
     return () => { live = false; };
-  }, [fmt, h, brand, facts]);
+  }, [fmt, h, brand, facts, logo]);
   const download = () => {
     const a = document.createElement('a');
     a.download = `${(brand.name || 'post').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${fmt}.png`;
@@ -114,6 +142,39 @@ function captions(b, facts) {
 }
 
 const EMPTY_SERVER = { name: '', url: '' };
+
+// 2026-09-28: logo upload (PNG/JPG/WebP up to 2 MB; the server re-saves it as a PNG, max 600 px)
+function LogoPicker({ logo, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const upload = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      const r = await api.post('/api/cmtv/reseller/brand/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      onChange(r.data.logo);
+      toast.success('Logo saved');
+    } catch (err) { toast.error(err.response?.data?.detail || 'Could not upload that image'); }
+    setBusy(false);
+  };
+  const remove = async () => {
+    try { await api.delete('/api/cmtv/reseller/brand/logo'); onChange(null); } catch { toast.error('Could not remove it'); }
+  };
+  return (
+    <div className="rt-logo">
+      <div className="rt-logo-box">{logo ? <img src={logo} alt="Your logo" /> : <span>No logo</span>}</div>
+      <div>
+        <label className="ca-btn ca-ghost rt-file">{busy ? 'Uploading…' : logo ? 'Change logo' : 'Upload your logo'}
+          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={upload} disabled={busy} /></label>
+        {logo && <button type="button" className="ca-icon" onClick={remove}>Remove</button>}
+        <p className="rt-note" style={{ margin: '6px 0 0' }}>PNG, JPG or WebP, up to 2 MB. It shows on your guide, flyer and images.</p>
+      </div>
+    </div>
+  );
+}
 
 export default function ResellerToolsPage() {
   const qc = useQueryClient();
@@ -156,6 +217,7 @@ export default function ResellerToolsPage() {
 
       <section className="ca-panel">
         <h2 className="ca-h2">1. Your brand</h2>
+        <LogoPicker logo={b.logo} onChange={(logo) => setB({ ...b, logo })} />
         <div className="rt-form">
           <label>Business name<input value={b.name} maxLength={40} onChange={set('name')} placeholder="e.g. Northern Streams" /></label>
           <label>How customers reach you<input value={b.contact} maxLength={120} onChange={set('contact')} placeholder="e.g. Telegram @northernstreams or text 555-123-4567" /></label>

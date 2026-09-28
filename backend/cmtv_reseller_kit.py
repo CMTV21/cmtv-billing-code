@@ -18,7 +18,10 @@ import re
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import Body, Depends, HTTPException
+import io
+import os
+
+from fastapi import Body, Depends, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 import cmtv_reseller_credits as RC
@@ -27,6 +30,8 @@ log = logging.getLogger("server")
 D = RC.D
 FACTS = {"cctv": ("11,000", "20,000", "6,000"), "imperium": ("40,000", "30,000", "8,000")}
 DEFAULT_URL = {"cctv": "https://portal.cmtv.info", "imperium": "https://imperium.esq"}
+LOGO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", "reseller-logos")   # served at /api/uploads/
+LOGO_MAX_BYTES = 2 * 1024 * 1024
 URL_RE = re.compile(r"^https?://[A-Za-z0-9.-]+(:\d{1,5})?/?$")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 e = html.escape
@@ -87,6 +92,28 @@ def _clean(body: dict) -> dict:
     return out
 
 
+def save_logo(uid: str, data: bytes) -> str:
+    """Any PNG/JPEG/WebP/GIF -> re-encoded PNG (max 600 px, first frame), so nothing but plain pixels is ever served."""
+    from PIL import Image
+    if len(data) > LOGO_MAX_BYTES:
+        raise HTTPException(400, "That image is over 2 MB. Please use a smaller one.")
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.format not in ("PNG", "JPEG", "WEBP", "GIF"):
+            raise ValueError(img.format)
+        img.seek(0)
+        img = img.convert("RGBA")
+        img.thumbnail((600, 600))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, "Use a PNG, JPG or WebP image.")
+    os.makedirs(LOGO_DIR, exist_ok=True)
+    name = f"{uid}-{secrets.token_hex(4)}.png"
+    img.save(os.path.join(LOGO_DIR, name), "PNG", optimize=True)
+    return f"/api/uploads/reseller-logos/{name}"
+
+
 def _slugify(name):
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:20] or "guide"
     return f"{base}-{secrets.token_hex(2)}"
@@ -101,7 +128,8 @@ def _notice_out(n):
 CSS = """
 :root{--a:%(color)s}*{box-sizing:border-box}body{margin:0;font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
 color:#1c2230;background:#f3f5f9}.wrap{max-width:760px;margin:0 auto;padding:24px 16px 48px}
-header{background:var(--a);color:#fff;padding:28px 16px}header .in{max-width:760px;margin:0 auto}header h1{margin:0;font-size:28px}
+header{background:var(--a);color:#fff;padding:28px 16px}header .in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:16px}
+.logo{height:64px;max-width:160px;object-fit:contain;background:#fff;border-radius:12px;padding:6px}header h1{margin:0;font-size:28px}
 header p{margin:6px 0 0;opacity:.9}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.tabs button{border:2px solid var(--a);
 background:#fff;color:#1c2230;border-radius:999px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
 .tabs button.on{background:var(--a);color:#fff}.card{background:#fff;border-radius:14px;padding:20px 22px;margin:0 0 16px;
@@ -123,6 +151,13 @@ def _page(b, title, body, extra_css=""):
         "<link rel=\"icon\" href=\"data:,\">"
         f"<style>{CSS % {'color': color}}{extra_css}</style></head><body>{body}</body></html>",
         headers={"Cache-Control": "no-cache", "X-Robots-Tag": "noindex"})
+
+
+def _logo(b, cls):
+    url = b.get("logo") or ""
+    if not re.match(r"^/api/uploads/reseller-logos/[A-Za-z0-9-]+\.png$", url):
+        return ""
+    return f"<img class=\"{cls}\" src=\"{url}\" alt=\"\">"
 
 
 def _servers_html(b):
@@ -179,7 +214,7 @@ def guide_html(b):
           "document.querySelectorAll('.dev').forEach(function(s){s.hidden=s.id!=='d-'+t.dataset.t})}});"
           "document.querySelectorAll('[data-copy]').forEach(function(bt){bt.onclick=function(){"
           "navigator.clipboard.writeText(bt.dataset.copy).then(function(){bt.textContent='Copied'})}});</script>")
-    body = (f"<header><div class=\"in\"><h1>{e(name)}</h1><p>Set up your TV service in a few minutes</p></div></header>"
+    body = (f"<header><div class=\"in\">{_logo(b, 'logo')}<div><h1>{e(name)}</h1><p>Set up your TV service in a few minutes</p></div></div></header>"
             f"<main class=\"wrap\"><p>Pick your device:</p><div class=\"tabs\">{tabs}</div>{secs}"
             f"<div class=\"card help\">{contact}</div><button type=\"button\" class=\"print\" onclick=\"window.print()\">"
             f"Print these steps</button></main>{js}")
@@ -188,7 +223,7 @@ def guide_html(b):
 
 FLYER_CSS = """
 .fly{max-width:760px;margin:24px auto;background:#101522;color:#fff;border-radius:18px;overflow:hidden}
-.fly .top{background:var(--a);padding:34px 32px}.fly h1{margin:0;font-size:40px}.fly .top p{margin:8px 0 0;font-size:20px}
+.fly .top{background:var(--a);padding:34px 32px}.fly .logo{height:84px;max-width:220px;margin:0 0 14px;display:block}.fly h1{margin:0;font-size:40px}.fly .top p{margin:8px 0 0;font-size:20px}
 .fly .mid{padding:26px 32px}.nums{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 18px}.nums div{flex:1;min-width:150px;
 background:#1b2335;border-radius:12px;padding:14px}.nums b{display:block;font-size:30px;color:var(--a)}.fly ul{font-size:18px}
 .fly .foot{border-top:1px solid #2a3450;padding:20px 32px;font-size:20px}.fly .foot b{color:var(--a)}
@@ -201,7 +236,7 @@ def flyer_html(b):
     nums = (f"<div class=\"nums\"><div><b>{f[0]}+</b>live channels</div><div><b>{f[1]}+</b>movies</div>"
             f"<div><b>{f[2]}+</b>series</div></div>") if f else ""
     contact = f"<div class=\"foot\">Get started: <b>{e(b['contact'])}</b></div>" if b.get("contact") else ""
-    body = (f"<div class=\"fly\"><div class=\"top\"><h1>{e(b['name'])}</h1><p>Live TV, movies &amp; series on every screen</p></div>"
+    body = (f"<div class=\"fly\"><div class=\"top\">{_logo(b, 'logo')}<h1>{e(b['name'])}</h1><p>Live TV, movies &amp; series on every screen</p></div>"
             f"<div class=\"mid\">{nums}<ul><li>Canadian &amp; US channels, sports and PPV</li><li>Firestick, Android TV, Google TV, "
             "phones and tablets</li><li>Set up in minutes, with step-by-step help</li></ul></div>"
             f"{contact}</div><button type=\"button\" class=\"print\" onclick=\"window.print()\">Print this flyer</button>")
@@ -213,7 +248,7 @@ def flyer_html(b):
 async def send_notice(text: str, by: str, dry_run: bool = True):
     db = D["db"]
     users = {}
-    async for s in db.services.find({"account_type": "reseller", "status": "active"}):
+    async for s in db.services.find({"account_type": "reseller", "status": "active", "cmtv_demo": {"$ne": True}}):
         uid = str(s.get("user_id"))
         if uid not in users:
             users[uid] = await db.users.find_one({"_id": RC._oid(uid)}) or {}
@@ -282,6 +317,20 @@ def init_routes(router):
         await D["db"].cmtv_reseller_brands.update_one(
             {"_id": uid}, {"$set": {**data, "slug": slug, "updated_at": datetime.utcnow()}}, upsert=True)
         return {"ok": True, "slug": slug}
+
+    @router.post("/brand/logo")
+    async def upload_logo(file: UploadFile = File(...), current_user: dict = Depends(current)):
+        await _require_reseller(current_user)
+        uid = current_user["sub"]
+        url = save_logo(uid, await file.read(LOGO_MAX_BYTES + 1))
+        await D["db"].cmtv_reseller_brands.update_one({"_id": uid}, {"$set": {"logo": url, "updated_at": datetime.utcnow()}}, upsert=True)
+        return {"logo": url}
+
+    @router.delete("/brand/logo")
+    async def remove_logo(current_user: dict = Depends(current)):
+        await _require_reseller(current_user)
+        await D["db"].cmtv_reseller_brands.update_one({"_id": current_user["sub"]}, {"$unset": {"logo": ""}})
+        return {"logo": None}
 
     @router.get("/notices")
     async def notices(current_user: dict = Depends(current)):

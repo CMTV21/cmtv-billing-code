@@ -26,6 +26,15 @@ export function AccountHeader() {
     enabled: !!user,
     staleTime: 60000,
   });
+  // 2026-09-28: customers with a reseller panel get a "Reseller" tab and menu item (same query as the dashboard box)
+  const { data: rp } = useQuery({
+    queryKey: ['my-reseller-panels'],
+    queryFn: async () => (await api.get('/api/cmtv/reseller/mine')).data,
+    enabled: !!user && user.role === 'user',
+    staleTime: 60000,
+  });
+  const isReseller = (rp?.panels || []).length > 0;
+  const tabs = user ? (isReseller ? [...TABS.slice(0, 1), ['/reseller', 'Reseller'], ...TABS.slice(1)] : TABS) : GUEST_TABS;
   useEffect(() => {
     const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('click', close);
@@ -37,7 +46,7 @@ export function AccountHeader() {
       <div className="ca-bar-in">
         <Link className="ca-brand" to="/" aria-label="CMTV home"><img src={BRAND.siteLogo} alt="" /><span>CMTV</span></Link>
         <nav className="ca-tabs" aria-label="Account">
-          {(user ? TABS : GUEST_TABS).map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard' || to === '/'}>{label}</NavLink>)}
+          {tabs.map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard' || to === '/'}>{label}</NavLink>)}
         </nav>
         {user ? (
           <div className="ca-who" ref={ref}>
@@ -49,6 +58,7 @@ export function AccountHeader() {
               <div className="ca-menu" role="menu">
                 <p>{user.name || user.email}</p>
                 <Link to="/" role="menuitem">Shop plans</Link>
+                {isReseller && <Link to="/reseller" role="menuitem">Reseller tools</Link>}
                 <button type="button" role="menuitem" onClick={() => { logout(); navigate('/login'); }}>Log out</button>
               </div>
             )}
