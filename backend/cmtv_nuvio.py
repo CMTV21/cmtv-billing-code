@@ -375,13 +375,40 @@ def _oid(v):
     return ObjectId(v) if ObjectId.is_valid(str(v)) else None
 
 
+async def repair_addons() -> list:
+    """Hourly (CMTV 2026-09-29): the app lets customers remove add-ons, and ours look like any other there (the owner's
+    own test removed them while tidying up). Put back any managed add-on missing from a live account's main profile;
+    the customer's own add-ons are kept (push_addons)."""
+    managed = [a for a in await addon_config() if a.get("enabled", True)]
+    if not managed:
+        return []
+    fixed = []
+    async for acc in _db().cmtv_nuvio_accounts.find({"deleted": {"$ne": True}}):
+        if not is_live(acc):
+            continue
+        want = {personal_url(acc["token"], a["slug"]) for a in managed}
+        st, rows = await nv("GET", f"/rest/v1/addons?select=url&user_id=eq.{acc['nuvio_id']}&profile_id=eq.1")
+        if st != 200:
+            continue
+        if want - {r.get("url") for r in rows or []}:
+            await push_addons(acc)
+            await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$inc": {"addons_repaired": 1},
+                                                                            "$set": {"addons_repaired_at": datetime.utcnow()}})
+            fixed.append(acc["_id"])
+        await asyncio.sleep(0.1)
+    if fixed:
+        logger.info(f"Nuvio: put missing add-ons back on {len(fixed)} account(s): {', '.join(fixed[:10])}")
+    return fixed
+
+
 async def _loop():
     await asyncio.sleep(120)
     while True:
-        try:
-            await share_check()
-        except Exception as e:
-            logger.error(f"Nuvio share check failed: {e}")
+        for job in (share_check, repair_addons):
+            try:
+                await job()
+            except Exception as e:
+                logger.error(f"Nuvio {job.__name__} failed: {e}")
         await asyncio.sleep(3600)
 
 
