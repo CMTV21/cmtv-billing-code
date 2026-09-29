@@ -851,6 +851,9 @@ async def startup_event():
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
                                get_email_service=get_configured_email_service)  # CMTV 2026-09-28: reseller credits + alerts
     await cmtv_reseller_credits.startup()   # hourly CCTV reseller balance refresh
+    import cmtv_ghostapk   # CMTV 2026-09-29: CMTVGhost codes for existing CCTV lines (hourly)
+    cmtv_ghostapk.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service)
+    await cmtv_ghostapk.startup()
     cmtv_lineups.init(db=db, get_settings=get_settings)  # CMTV 2026-09-29: Imperium line-ups
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,

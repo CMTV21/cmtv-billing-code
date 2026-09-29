@@ -153,6 +153,10 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
               <button type="button" className="ca-icon" onClick={() => copy(d.password, 'Password')}>Copy</button></div></div>}
             {d.server && <div className="ca-field"><label>Server</label><div className="val"><code>{d.server}</code>
               <button type="button" className="ca-icon" onClick={() => copy(d.server, 'Server')}>Copy</button></div></div>}
+            {/* 2026-09-29: the CMTVGhost app's login code (GhostAPK pin from the CCTV panel; cmtv_ghostapk.py fills older lines) */}
+            {d.s.ghostapk_code && <div className="ca-field ca-ghost"><label>CMTVGhost code</label><div className="val"><code>{d.s.ghostapk_code}</code>
+              <button type="button" className="ca-icon" onClick={() => copy(d.s.ghostapk_code, 'CMTVGhost code')}>Copy</button></div>
+              <small style={{ display: 'block', color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>Open CMTVGhost and enter this code instead of your username and password.</small></div>}
           </div>
         )}
         {d.ended && d.isTrial && !d.canRenew && (
