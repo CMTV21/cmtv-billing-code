@@ -24,3 +24,8 @@
 .cu-modal { margin: 16px 24px 0; padding: 14px 16px; border-radius: 14px; background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.35);
   max-height: 38vh; overflow: auto; }
 .cu-modal .cu-post { background: #0f1728; }
+
+/* 2026-09-29: Uptime Kuma problems (StatusBanner) */
+.cu-status { border: 1px solid rgba(251,191,36,.55); background: rgba(251,191,36,.1); border-radius: 12px; padding: 10px 14px; margin: 0 0 12px; }
+.cu-status p { margin: 0; font-size: 14px; line-height: 1.5; }
+.cu-status p + p { margin-top: 6px; }

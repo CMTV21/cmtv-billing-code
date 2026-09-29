@@ -56,24 +56,47 @@ function Post({ item, open }) {
   );
 }
 
+function StatusBanner({ issues }) {
+  const since = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return (
+    <div className="cu-status" role="status">
+      {issues.map((x) => (
+        <p key={x.service}><b>⚠️ {x.service}:</b> we've detected a problem since {since(x.since)} and we're working on it. This clears by itself when it's fixed.</p>
+      ))}
+    </div>
+  );
+}
+
 export default function CmtvUpdates({ variant = 'dashboard' }) {
   const { data } = useQuery({
     queryKey: ['cmtv-updates'], queryFn: async () => (await api.get('/api/cmtv/updates')).data,
     staleTime: 60000, refetchInterval: 120000,
   });
+  // 2026-09-29: live problems detected by Uptime Kuma (GET /api/cmtv/status, cmtv_status.py), shown above the posts
+  const { data: st } = useQuery({
+    queryKey: ['cmtv-status'], queryFn: async () => (await api.get('/api/cmtv/status')).data,
+    staleTime: 30000, refetchInterval: 60000,
+  });
+  const issues = st?.issues || [];
   const items = data?.items || [];
   const recent = items.filter((x) => x.recent);
+  const banner = issues.length > 0 && <StatusBanner issues={issues} />;
 
   if (variant === 'dashboard') {
-    if (!recent.length) return null;
-    return <section className="cu cu-dash" aria-label="Latest from CMTV"><Post item={recent[0]} open={false} /></section>;
+    if (!recent.length && !issues.length) return null;
+    return (
+      <section className="cu cu-dash" aria-label="Latest from CMTV">
+        {banner}{recent.length > 0 && <Post item={recent[0]} open={false} />}
+      </section>
+    );
   }
   if (variant === 'modal') {
-    if (!recent.length) return null;
+    if (!recent.length && !issues.length) return null;
     return (
       <section className="cu cu-modal" aria-label="Known issues right now">
         <h3>Known issues right now</h3>
         <p className="cu-lede">If your problem is one of these, there's no need to open a ticket. We're already on it and post here when it's fixed.</p>
+        {banner}
         {recent.slice(0, 2).map((x) => <Post key={x.id} item={x} open={false} />)}
       </section>
     );
@@ -81,12 +104,13 @@ export default function CmtvUpdates({ variant = 'dashboard' }) {
   return (
     <section className="cu cu-tickets" aria-label="Latest from CMTV">
       <h2>Latest from CMTV</h2>
+      {banner}
       {items.length ? (
         <>
           <p className="cu-lede">Check here first: if something's down, we've usually posted about it already.</p>
           {items.map((x) => <Post key={x.id} item={x} open={false} />)}
         </>
-      ) : <p className="cu-lede">✅ No known issues right now.</p>}
+      ) : !issues.length && <p className="cu-lede">✅ No known issues right now.</p>}
     </section>
   );
 }

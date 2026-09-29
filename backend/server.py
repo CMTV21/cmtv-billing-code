@@ -187,6 +187,12 @@ import cmtv_updates
 app.include_router(cmtv_updates.router)
 app.include_router(cmtv_updates.bridge)
 
+# CMTV local change 2026-09-29: service status from Uptime Kuma (webhook) -> banners for customers (cmtv_status.py)
+import cmtv_status
+cmtv_status.D["get_current_admin_user"] = get_current_admin_user
+cmtv_status.init_routes()
+app.include_router(cmtv_status.router)
+
 # CMTV local change 2026-09-28: customer reviews collected by billing, shown on cmtv.info once approved (cmtv_reviews.py)
 import cmtv_reviews
 cmtv_reviews.D["get_current_admin_user"] = get_current_admin_user
@@ -826,6 +832,7 @@ async def startup_event():
     cmtv_telegram_alerts.init(db=db)  # CMTV local change 2026-09-28: Telegram alerts
     await cmtv_telegram_alerts.startup()
     cmtv_updates.init(db=db)  # CMTV local change 2026-09-28: CMTV Updates on the website
+    cmtv_status.init(db=db)   # CMTV local change 2026-09-29: Uptime Kuma status
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
