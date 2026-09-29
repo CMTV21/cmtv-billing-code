@@ -153,6 +153,12 @@ cmtv_trial_winback.D["get_current_admin_user"] = get_current_admin_user
 cmtv_trial_winback.init_routes()
 app.include_router(cmtv_trial_winback.router)
 
+# CMTV local change 2026-09-28: 15% come-back email 14 days after a paid line ended, once per customer (cmtv_lapsed_winback.py)
+import cmtv_lapsed_winback
+cmtv_lapsed_winback.D["get_current_admin_user"] = get_current_admin_user
+cmtv_lapsed_winback.init_routes()
+app.include_router(cmtv_lapsed_winback.router)
+
 # CMTV local change 2026-09-27: sitemap of the billing site's real public pages + guides (cmtv_seo.py; nginx /sitemap.xml)
 import cmtv_seo
 app.include_router(cmtv_seo.router)
@@ -809,6 +815,8 @@ async def startup_event():
     cmtv_trial_winback.init(db=db, users=users_collection, services=services_collection, orders=orders_collection,
                             products=products_collection, get_email_service=get_configured_email_service)
     await cmtv_trial_winback.startup()
+    cmtv_lapsed_winback.init(db=db, get_email_service=get_configured_email_service)
+    await cmtv_lapsed_winback.startup()
 
     # CMTV local change 2026-09-28: e-Transfer emails
     cmtv_etransfer.init(orders=orders_collection, users=users_collection, etransfers=db.cmtv_etransfers,

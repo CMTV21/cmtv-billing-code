@@ -103,9 +103,11 @@ function AutoRenewSwitch({ d, enabled }) {
   }
   return (
     <button type="button" className="ca-toggle" aria-pressed={on} disabled={busy}
-      title={on ? 'Renews automatically with PayPal the day before it ends' : 'Renew automatically with PayPal (you approve it in PayPal)'}
+      title={on ? 'Renews automatically with PayPal the day before it ends'
+        : 'Renew automatically with PayPal and pay 10% less (you approve it in PayPal; a lower member price wins)'}
       onClick={() => (on ? setConfirmOff(true) : start())}>
-      <span className="ca-switch" />{busy ? 'Opening PayPal…' : 'Auto-renew'}
+      {/* 2026-09-28: auto-renew is 10% off */}
+      <span className="ca-switch" />{busy ? 'Opening PayPal…' : on ? 'Auto-renew' : 'Auto-renew · save 10%'}
     </button>
   );
 }

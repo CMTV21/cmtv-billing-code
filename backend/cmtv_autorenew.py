@@ -90,6 +90,17 @@ def _first_price(product):
     return max(1, int(term)), float(price)
 
 
+# 2026-09-28 (the user's choice): auto-renew costs 10% less. A referral-tier price wins if it's lower (no stacking).
+AUTORENEW_DISCOUNT = 10
+
+
+def autorenew_price(product, member=None):
+    """What an auto-renew subscription charges per cycle: 10% off the list price, or the member price if that's lower."""
+    _, list_price = _first_price(product)
+    ar = round(list_price * (100 - AUTORENEW_DISCOUNT) / 100.0, 2)
+    return min(ar, round(float(member), 2)) if member is not None else ar
+
+
 def eligible(product):
     """Plans that can auto-renew: priced, not a trial, not a reseller package or bundle"""
     if not product or product.get("is_trial") or product.get("is_bundle") or product.get("account_type") == "reseller":
@@ -263,10 +274,17 @@ async def _pay_checkout_order(order_id, sub_id, sale_id, plan, amount):
         await _notify_admin(f"⚠️ PayPal auto-renew first payment doesn't match its order {order_id} (subscription {sub_id}). Check by hand.")
         return {"ok": False, "why": "order mismatch"}
     if order.get("status") != "paid":
-        await D["orders"].update_one({"_id": order["_id"]}, {"$set": {
-            "status": "paid", "paid_at": datetime.utcnow(), "payment_method": "paypal_autorenew",
-            "payment_id": sale_id or f"{sub_id}:1", "paypal_subscription_id": sub_id}})
-        await D["invoices"].update_one({"order_id": order_id}, {"$set": {"status": "paid", "paid_date": datetime.utcnow()}})
+        paid = {"status": "paid", "paid_at": datetime.utcnow(), "payment_method": "paypal_autorenew",
+                "payment_id": sale_id or f"{sub_id}:1", "paypal_subscription_id": sub_id}
+        inv = {"status": "paid", "paid_date": datetime.utcnow()}
+        # 2026-09-28: the auto-renew plan charged less than the order total (10% auto-renew discount): record what was paid
+        if float(plan["price"]) + 0.009 < float(order.get("total") or 0):
+            subtotal = float(order.get("subtotal") or order.get("total") or 0)
+            paid.update(total=float(plan["price"]), discount_amount=round(subtotal - float(plan["price"]), 2),
+                        discount_source="autorenew", cmtv_autorenew_discount=AUTORENEW_DISCOUNT)
+            inv["total"] = float(plan["price"])
+        await D["orders"].update_one({"_id": order["_id"]}, {"$set": paid})
+        await D["invoices"].update_one({"order_id": order_id}, {"$set": inv})
         user = await D["users"].find_one({"_id": _oid(order["user_id"])})
         await D["provision_order_services"](order_id, await D["orders"].find_one({"_id": order["_id"]}), user)
     # Link the subscription to the service the order created (or renewed)
@@ -377,7 +395,8 @@ async def _own_service(service_id, user_id):
 @router.get("/config")
 async def config():
     s = await D["get_settings"]()
-    return {"enabled": bool((s.get("paypal") or {}).get("enabled")), "currency": s.get("currency", "USD")}
+    return {"enabled": bool((s.get("paypal") or {}).get("enabled")), "currency": s.get("currency", "USD"),
+            "discount_percent": AUTORENEW_DISCOUNT}
 
 
 async def _poll_first_payment(sub_id, tries=8, wait=40):
@@ -415,6 +434,8 @@ def init_routes():
             raise HTTPException(status_code=400, detail="This plan can't auto-renew. Please renew it as usual.")
         import cmtv_referral   # referral tier price (2026-09-25)
         price = await cmtv_referral.member_price(current_user["sub"], product, renewal_service_id=str(svc["_id"]))
+        if price > 0:
+            price = autorenew_price(product, member=price)   # 2026-09-28: 10% off, or the tier price if lower
         if price <= 0:
             raise HTTPException(status_code=400, detail="This plan is free for you as an Ambassador, so there's nothing to "
                                                         "auto-renew. Renew it at $0 from My Services when it's due.")
@@ -472,13 +493,17 @@ def init_routes():
         if not eligible(product):
             raise HTTPException(status_code=400, detail="This plan can't renew automatically")
         # A referral-tier discount renews at the same member price; a coupon or credits don't carry over
-        tier_only = order.get("discount_source") == "tier" and not float(order.get("credits_used") or 0)
-        if tier_only and float(order.get("total") or 0) <= 0:
-            raise HTTPException(status_code=400, detail="This plan is free for you, so there's nothing to renew automatically")
-        plan = await get_plan(product, price=float(order["total"]) if tier_only else None)
-        if abs(float(order.get("total") or 0) - plan["price"]) > 0.009:
+        if float(order.get("credits_used") or 0) > 0 or \
+                (float(order.get("discount_amount") or 0) > 0.009 and order.get("discount_source") != "tier"):
             raise HTTPException(status_code=400, detail="Auto-renew isn't available with a coupon or credits")
-        return {"plan_id": plan["plan_id"], "custom_id": f"ord:{order['_id']}"}
+        total = float(order.get("total") or 0)
+        if total <= 0:
+            raise HTTPException(status_code=400, detail="This plan is free for you, so there's nothing to renew automatically")
+        # 2026-09-28: 10% off with auto-renew (or the tier price if lower). The order itself is NOT changed here: the
+        # discount is recorded only when PayPal's first payment arrives (_pay_checkout_order), so backing out and
+        # paying another way costs the full price.
+        plan = await get_plan(product, price=autorenew_price(product, member=total))
+        return {"plan_id": plan["plan_id"], "custom_id": f"ord:{order['_id']}", "price": plan["price"]}
 
     @router.post("/checkout-approved")
     async def checkout_approved(data: dict, background_tasks: BackgroundTasks, current_user: dict = Depends(get_user)):

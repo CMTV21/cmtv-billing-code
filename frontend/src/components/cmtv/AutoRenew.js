@@ -10,6 +10,11 @@ const firstPrice = (p) => {
   const [term, price] = Object.entries(p?.prices || {})[0] || ['1', 0];
   return { term: parseInt(term, 10) || 1, price: parseFloat(price) || 0 };
 };
+// 2026-09-28: auto-renew is 10% off (cfg.discount_percent); a lower referral-tier price wins (the server decides)
+const arPrice = (price, pct, member = null) => {
+  const ar = Math.round(price * (100 - (pct || 0))) / 100;
+  return member != null ? Math.min(ar, Number(member)) : ar;
+};
 const every = (m) => (m === 1 ? 'every month' : m === 12 ? 'every year' : `every ${m} months`);
 const errText = (e, fallback) => e?.response?.data?.detail || fallback;
 
@@ -85,9 +90,10 @@ export function AutoRenewControl({ service, products }) {
   return (
     <div className={`${box} border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20`}>
       <div className="flex-1 text-blue-900 dark:text-blue-200">
-        <p className="font-semibold flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Never miss a renewal</p>
+        <p className="font-semibold flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Never miss a renewal{cfg.discount_percent ? `, and save ${cfg.discount_percent}%` : ''}</p>
         <p className="text-blue-800 dark:text-blue-300">
-          Renew automatically with PayPal: {cfg.currency} ${price.toFixed(2)} {every(term)}, first charge {firstCharge}. Turn it off any time.
+          Renew automatically with PayPal: {cfg.currency} ${arPrice(price, cfg.discount_percent).toFixed(2)} {every(term)}
+          {cfg.discount_percent ? ` (${cfg.discount_percent}% off, or your member price if that's lower)` : ''}, first charge {firstCharge}. Turn it off any time.
           {ar.status === 'APPROVAL_PENDING' && ' (Your last attempt wasn\'t finished in PayPal.)'}
         </p>
       </div>
@@ -123,6 +129,7 @@ export function AutoRenewReturn() {
 // ---------------- Checkout: "Renew automatically" option for PayPal ----------------
 // Shown only for a single, full-price plan (no coupon or credits). Otherwise the normal PayPal buttons show unchanged.
 // memberPrice: the referral-tier price when the tier discount applies (2026-09-25); it renews at that price.
+// 2026-09-28: the subscription is 10% off (or the member price if lower) from the first payment.
 export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null, clientId, onDone, onError, children }) {
   const { data: cfg } = useAutoRenewConfig();
   const [auto, setAuto] = useState(false);
@@ -149,9 +156,10 @@ export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null
       <label className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 cursor-pointer">
         <input type="checkbox" className="mt-1" checked={auto} onChange={(e) => setAuto(e.target.checked)} id="cmtv-autorenew" />
         <span className="text-sm text-blue-900 dark:text-blue-200">
-          <span className="font-semibold">Renew automatically with PayPal</span><br />
-          {cfg.currency} ${Number(memberPrice ?? item.price).toFixed(2)} {every(Number(item.term_months) || 1)}
-          {memberPrice != null ? ' (your member price)' : ''}. Turn it off any time in My Services.
+          <span className="font-semibold">Renew automatically with PayPal{cfg.discount_percent ? ` and save ${cfg.discount_percent}%` : ''}</span><br />
+          {cfg.currency} ${arPrice(Number(item.price), cfg.discount_percent, memberPrice).toFixed(2)} {every(Number(item.term_months) || 1)}
+          {memberPrice != null && Number(memberPrice) <= arPrice(Number(item.price), cfg.discount_percent) ? ' (your member price)'
+            : cfg.discount_percent ? ` (${cfg.discount_percent}% off), starting today` : ''}. PayPal charges this price instead of the total above. Turn it off any time in My Services.
         </span>
       </label>
       {!auto ? children : (
