@@ -33,7 +33,7 @@ class GhostPayService:
             return {"success": False, "error": str(e)}
     
     async def create_payment(self, crypto: str, amount: float, external_id: str,
-                             fiat: str = "USD", callback_url: str = "") -> Dict[str, Any]:
+                             fiat: str = "USD", callback_url: str = "", return_url: str = "") -> Dict[str, Any]:
         """Create a payment invoice
         POST /api/v1/{crypto}/payment_request
         """
@@ -45,6 +45,8 @@ class GhostPayService:
             }
             if callback_url:
                 params["callback_url"] = callback_url
+            if return_url:
+                params["return_url"] = return_url
             
             async with httpx.AsyncClient(follow_redirects=True) as client:
                 resp = await client.post(

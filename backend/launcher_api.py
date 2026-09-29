@@ -424,6 +424,7 @@ async def get_launcher_account(
         "username": service.get("xtream_username") or service.get("vpn_username", ""),
         "password": service.get("xtream_password") or service.get("vpn_password", ""),
         "streaming_url": service.get("streaming_url", ""),
+        "ghostapk_code": service.get("ghostapk_code", ""),
         "expires_at": live["expires_at"],
         "days_remaining": live["days_remaining"],
         "package": service.get("product_name", ""),
@@ -973,6 +974,7 @@ async def get_launcher_order(order_id: str, key: dict = Depends(_verify_launcher
                 result["username"] = service.get("xtream_username") or service.get("vpn_username", "")
                 result["password"] = service.get("xtream_password") or service.get("vpn_password", "")
                 result["streaming_url"] = service.get("streaming_url", "")
+                result["ghostapk_code"] = service.get("ghostapk_code", "")
                 result["connections"] = live["connections"]
                 
                 # Issue device token if not already issued for this order

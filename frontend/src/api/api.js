@@ -61,6 +61,7 @@ export const ordersAPI = {
   create: (data) => api.post('/api/orders', data),
   getAll: () => api.get('/api/orders'),
   getOne: (id) => api.get(`/api/orders/${id}`),
+  checkGhostPay: (id) => api.post(`/api/orders/${id}/ghostpay/check`),
 };
 
 // Services API
@@ -116,6 +117,10 @@ export const adminAPI = {
   fixProductDisplayOrder: () => api.post('/api/admin/products/fix-display-order'),
   suspendService: (id) => api.post(`/api/admin/services/${id}/suspend`),
   unsuspendService: (id) => api.post(`/api/admin/services/${id}/unsuspend`),
+  refreshGhostApkCode: (id) => api.post(`/api/admin/services/${id}/ghostapk-refresh`),
+  xtreamGhostApkStatus: (panelIndex) => api.get(`/api/admin/xtream/${panelIndex}/ghostapk-status`),
+  xtreamGhostApkSyncAll: (panelIndex) => api.post(`/api/admin/xtream/${panelIndex}/ghostapk-sync-all`),
+  xtreamGhostApkSyncStatus: (panelIndex) => api.get(`/api/admin/xtream/${panelIndex}/ghostapk-sync-status`),
   cancelService: (id) => api.post(`/api/admin/services/${id}/cancel`),
   createManualService: (data) => api.post('/api/admin/services/create-manual', data),
   getSettings: () => api.get('/api/admin/settings'),

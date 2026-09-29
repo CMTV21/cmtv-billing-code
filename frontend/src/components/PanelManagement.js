@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/api';
 import api from '../api/api';
-import { Save, Plus, Edit, Trash2, Server, X, Check, Package, BookOpen, Users, Upload } from 'lucide-react';
+import { Save, Plus, Edit, Trash2, Server, X, Check, Package, BookOpen, Users, Upload, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function PanelManagement({ settings }) {
@@ -14,6 +14,7 @@ export default function PanelManagement({ settings }) {
   const [syncingPackages, setSyncingPackages] = useState(null);
   const [syncingBouquets, setSyncingBouquets] = useState(null);
   const [syncingUsers, setSyncingUsers] = useState(null);
+  const [ghostApkSyncing, setGhostApkSyncing] = useState(null);
   const [showImportModal, setShowImportModal] = useState(null); // panel index
 
   const updateMutation = useMutation({
@@ -85,6 +86,46 @@ export default function PanelManagement({ settings }) {
       setSyncingUsers(null);
     },
   });
+
+  const pollGhostApkSync = (panelIndex, panelName, attempt = 0) => {
+    setTimeout(async () => {
+      try {
+        const res = await adminAPI.xtreamGhostApkSyncStatus(panelIndex);
+        const job = res.data;
+        if (job.status === 'running' && attempt < 120) {
+          pollGhostApkSync(panelIndex, panelName, attempt + 1);
+          return;
+        }
+        setGhostApkSyncing(null);
+        if (job.status === 'completed') {
+          const errs = job.errors?.length ? `\n• ${job.errors.length} errors` : '';
+          toast.success(`✓ GhostAPK sync for ${panelName}:\n• ${job.created} lines created\n• ${job.updated} updated\n• ${job.codes_generated} pins generated${errs}`);
+        } else if (job.status === 'failed') {
+          toast.error(`GhostAPK sync failed: ${job.error || 'Unknown error'}`);
+        } else {
+          toast.info('GhostAPK sync is still running in the background. Pins will appear when it finishes.');
+        }
+      } catch (error) {
+        setGhostApkSyncing(null);
+        toast.error(`GhostAPK status check failed: ${error.response?.data?.detail || error.message}`);
+      }
+    }, 5000);
+  };
+
+  const handleGhostApkSyncAll = async (panel, index) => {
+    if (!window.confirm(`Sync ALL lines of "${panel.admin_username}" on ${panel.name} to GhostAPK? This generates login pins for every line and may take a few minutes.`)) {
+      return;
+    }
+    setGhostApkSyncing(index);
+    try {
+      await adminAPI.xtreamGhostApkSyncAll(index);
+      toast.info(`GhostAPK sync started for ${panel.name}…`);
+      pollGhostApkSync(index, panel.name);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || `GhostAPK sync failed: ${error.message}`);
+      setGhostApkSyncing(null);
+    }
+  };
 
   const handleAddPanel = () => {
     setEditingPanel({
@@ -230,6 +271,16 @@ export default function PanelManagement({ settings }) {
                   >
                     <Users className="w-4 h-4" />
                     {syncingUsers === index ? 'Syncing...' : 'Sync Users'}
+                  </button>
+                  <button
+                    onClick={() => handleGhostApkSyncAll(panel, index)}
+                    disabled={ghostApkSyncing === index}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 disabled:opacity-50 border border-violet-200"
+                    title="Sync all of this reseller's lines to GhostAPK and pull the login pins"
+                    data-testid={`ghostapk-sync-all-btn-${index}`}
+                  >
+                    <Smartphone className="w-4 h-4" />
+                    {ghostApkSyncing === index ? 'Syncing...' : 'Sync GhostAPK'}
                   </button>
                   {panel.api_key && (
                     <button

@@ -71,6 +71,17 @@ export default function CheckoutPage() {
 
   // GhostPay state
   const [ghostpayLoading, setGhostpayLoading] = useState(false);
+  const [ghostpayCrypto, setGhostpayCrypto] = useState('');
+  const { data: ghostpayCryptos = [] } = useQuery({
+    queryKey: ['ghostpay-cryptos'],
+    queryFn: async () => {
+      const authToken = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
+      const res = await axios.get(`${API_URL}/api/ghostpay/cryptos`, { headers: { Authorization: `Bearer ${authToken}` } });
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    enabled: paymentMethod === 'ghostpay',
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Helcim payment state
   const [helcimLoading, setHelcimLoading] = useState(false);
@@ -1516,32 +1527,53 @@ export default function CheckoutPage() {
                   )
                 ) : paymentMethod === 'ghostpay' && settings?.ghostpay?.enabled ? (
                   <div className="space-y-3">
+                    {ghostpayCryptos.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Choose cryptocurrency</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" data-testid="ghostpay-crypto-options">
+                          {ghostpayCryptos.map((c) => {
+                            const symbol = c.name || c.symbol || c.crypto;
+                            const selected = (ghostpayCrypto || ghostpayCryptos[0]?.name) === symbol;
+                            return (
+                              <button
+                                key={symbol}
+                                type="button"
+                                onClick={() => setGhostpayCrypto(symbol)}
+                                data-testid={`ghostpay-crypto-${symbol}`}
+                                className={`flex items-center justify-between px-3 py-2 rounded-lg border-2 text-sm transition ${
+                                  selected ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-purple-400'
+                                }`}
+                              >
+                                <span className="font-semibold">{symbol}</span>
+                                <span className="text-xs opacity-70 truncate ml-2">{c.display_name || c.crypto_name || ''}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     <button
                       onClick={async () => {
                         try {
                           setError('');
                           setGhostpayLoading(true);
                           const authToken = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
+                          const headers = { Authorization: `Bearer ${authToken}` };
                           // Create order first
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
                             items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */ })),
                             total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
-                            payment_method: 'ghostpay' // CMTV local change 2026-09-25
-                          }, { headers: { Authorization: `Bearer ${authToken}` }});
+                            payment_method: 'ghostpay' // CMTV local change 2026-09-25 (kept in the 2026-09-29 merge)
+                          }, { headers });
                           const orderId = orderRes.data.order_id || orderRes.data.id;
-                          // Redirect to GhostPay hosted checkout
-                          const gpApiKey = settings?.ghostpay?.api_key || '';
-                          // CMTV local change 2026-09-25: charge the order's total (after coupon, credits and member
-                          // discount), not the full cart price
-                          const amount = Number(orderRes.data.total ?? getTotal()).toFixed(2);
-                          const siteUrl = window.location.origin;
-                          const fiat = typeof settings?.currency === 'string' ? settings.currency : settings?.currency?.code || 'USD';
-                          const callbackUrl = encodeURIComponent(`${API_URL}/api/webhooks/ghostpay`);
-                          const returnUrl = encodeURIComponent(`${siteUrl}/orders?payment=success&order_id=${orderId}`);
+                          // Create the GhostPay invoice through our backend so it is tracked and polled server-side
+                          const crypto = ghostpayCrypto || ghostpayCryptos[0]?.name || 'BTC';
+                          const returnUrl = `${window.location.origin}/orders?payment=ghostpay&order_id=${orderId}`;
+                          const payRes = await axios.post(`${API_URL}/api/orders/${orderId}/pay/ghostpay`, { crypto, return_url: returnUrl }, { headers });
                           clearCart();
-                          window.location.href = `https://gateway.ghostpay.cash/checkout?amount=${amount}&fiat=${fiat}&orderId=${orderId}&apiKey=${gpApiKey}&callbackUrl=${callbackUrl}&returnUrl=${returnUrl}`;
+                          window.location.href = payRes.data.payment_url;
                         } catch (err) {
-                          setError(err.response?.data?.detail || 'Failed to create order');
+                          setError(err.response?.data?.detail || 'Failed to start crypto payment');
                           setGhostpayLoading(false);
                         }
                       }}
@@ -1550,9 +1582,9 @@ export default function CheckoutPage() {
                       data-testid="ghostpay-pay-btn"
                     >
                       <Bitcoin className="w-5 h-5" />
-                      {ghostpayLoading ? 'Redirecting to GhostPay...' : 'Pay with Crypto (GhostPay)'}
+                      {ghostpayLoading ? 'Redirecting to GhostPay...' : `Pay with ${ghostpayCrypto || ghostpayCryptos[0]?.name || 'Crypto'} (GhostPay)`}
                     </button>
-                    <p className="text-xs text-center text-gray-500 dark:text-gray-400">You will be redirected to GhostPay to select your cryptocurrency and complete payment</p>
+                    <p className="text-xs text-center text-gray-500 dark:text-gray-400">You will be redirected to GhostPay to complete payment. Your order activates automatically once the payment confirms.</p>
                   </div>
                 ) : paymentMethod === 'tagadapay' && settings?.tagadapay?.enabled ? (
                   <div className="space-y-3">

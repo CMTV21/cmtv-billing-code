@@ -693,6 +693,11 @@ export default function AdminImportedUsers() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-mono text-gray-600 dark:text-gray-300">{user.password || '••••••'}</div>
+                          {user.ghostapk_code && (
+                            <div className="text-xs font-mono font-semibold tracking-[0.15em] text-violet-700 dark:text-violet-300" title="GhostAPK login pin" data-testid={`imported-ghostapk-pin-${user.id}`}>
+                              Pin {user.ghostapk_code}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
                           {user.panel_name}
@@ -770,6 +775,9 @@ export default function AdminImportedUsers() {
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.username}</div>
                           <div className="text-xs font-mono text-gray-500 dark:text-gray-400">{user.password || '••••••'}</div>
+                          {user.ghostapk_code && (
+                            <div className="text-xs font-mono font-semibold tracking-[0.15em] text-violet-700 dark:text-violet-300">Pin {user.ghostapk_code}</div>
+                          )}
                         </div>
                       </div>
                       <span className={`px-2 py-0.5 text-xs font-semibold rounded-full flex-shrink-0 ${getStatusColor(user.status)}`}>
@@ -1266,6 +1274,12 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
                 <p className="text-sm text-gray-500 dark:text-gray-400">Password</p>
                 <p className="font-mono font-semibold text-gray-900 dark:text-white">{createdUser.password}</p>
               </div>
+              {createdUser.ghostapk_code && (
+                <div data-testid="created-user-ghostapk-pin">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">GhostAPK Login Pin</p>
+                  <p className="font-mono font-semibold tracking-[0.2em] text-violet-700 dark:text-violet-300">{createdUser.ghostapk_code}</p>
+                </div>
+              )}
               {createdUser.expiry_date && (
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Expiry Date</p>
