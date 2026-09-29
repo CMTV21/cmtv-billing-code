@@ -270,8 +270,12 @@ async def _note_stream(acc: dict, ip: str):
     await _db().cmtv_nuvio_hits.insert_one({"username": acc["_id"], "ip": ip, "at": datetime.utcnow()})
 
 
-def _upstream_base(addon_url: str) -> str:
-    return addon_url[: -len("manifest.json")] if addon_url.endswith("manifest.json") else addon_url.rstrip("/") + "/"
+def _upstream_base(addon_url: str):
+    """-> (base ending in "/", the add-on's own query). Some add-ons put a tag after manifest.json (Binge Cat:
+    ?bcv=3); it's sent along on every request to that add-on (CMTV 2026-09-29)."""
+    path, _, query = addon_url.partition("?")
+    base = path[: -len("manifest.json")] if path.endswith("manifest.json") else path.rstrip("/") + "/"
+    return base, query
 
 
 async def _relay_get(url: str):
@@ -307,8 +311,8 @@ async def relay_get(token: str, slug: str, rest: str, request: Request):
             logger.warning(f"Nuvio relay: couldn't note a stream request: {e}")
     if rest.startswith("subtitles/") and not is_live(acc):
         return JSONResponse({"subtitles": []}, headers=cors)
-    base = _upstream_base(addon["url"])
-    query = request.scope.get("query_string", b"").decode("latin-1")
+    base, addon_query = _upstream_base(addon["url"])
+    query = "&".join(q for q in (addon_query, request.scope.get("query_string", b"").decode("latin-1")) if q)
     url = base + rest + (("?" + query) if query else "")
     try:
         r = await _relay_get(url)
@@ -438,8 +442,8 @@ def init_routes():
         taken, out = set(), []
         for a in body.get("addons") or []:
             name, url = (a.get("name") or "").strip()[:60], (a.get("url") or "").strip()
-            if not name or not re.match(r"^https://[^\s]+/manifest\.json$", url):
-                raise HTTPException(400, f"{name or 'An add-on'}: the link must start with https:// and end with /manifest.json")
+            if not name or not re.match(r"^https://[^\s?#]+/manifest\.json(\?[^\s#]*)?$", url):
+                raise HTTPException(400, f"{name or 'An add-on'}: the link must start with https:// and contain /manifest.json")
             slug = a.get("slug") if a.get("slug") in old else _slug(name, set(old) | taken)
             taken.add(slug)
             out.append({"slug": slug, "name": name, "url": url, "enabled": bool(a.get("enabled", True))})
