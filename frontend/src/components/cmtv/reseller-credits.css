@@ -44,7 +44,7 @@
 .rs-admin h1 { font-size: 26px; font-weight: 800; margin: 0 0 4px; }
 .rs-sub, .rs-note { color: #9aa6c6; margin: 0 0 16px; font-size: 14px; }
 .rs-note { font-size: 12.5px; margin-top: 12px; }
-.rs-top { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.3fr); gap: 12px; margin-bottom: 18px; }
+.rs-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 18px; } /* 2026-09-29: CCTV + Imperium + alert levels */
 .rs-own, .rs-levels { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
 .rs-own span { color: #9aa6c6; font-size: 13px; font-weight: 700; }
 .rs-own b { font-family: "Exo 2", sans-serif; font-style: italic; font-size: 34px; line-height: 1; }
