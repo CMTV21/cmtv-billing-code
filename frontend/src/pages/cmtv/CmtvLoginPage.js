@@ -50,12 +50,13 @@ export default function CmtvLoginPage() {
         setAuth(response.data.user, response.data.access_token);
         const params = new URLSearchParams(window.location.search);
         const redirectTo = params.get('redirect');
-        if (redirectTo) {
+        // CMTV 2026-09-28: signed in with a TV line login -> finish the account first (then back to where they were going)
+        if (response.data.needs_email_link && response.data.user.role !== 'admin' && redirectTo !== '/link-email') {
+          navigate(`/link-email${redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`);
+        } else if (redirectTo) {
           navigate(redirectTo);
         } else if (response.data.user.role === 'admin') {
           navigate('/admin');
-        } else if (response.data.needs_email_link) {
-          navigate('/link-email');
         } else {
           navigate('/dashboard');
         }
@@ -150,6 +151,8 @@ export default function CmtvLoginPage() {
         </button>
       </form>
 
+      {/* CMTV 2026-09-28: customers set up by hand can sign in with their TV login, then finish their account */}
+      <p className="ab-alt">Already a customer but never used this website? Sign in with your TV app's <b>username</b> and <b>password</b>.</p>
       <p className="ab-alt">New to CMTV? <Link to="/register">Create an account</Link></p>
       <RecaptchaLegal enabled={recaptchaConfig?.enabled} />
     </AuthShell>

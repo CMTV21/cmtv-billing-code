@@ -27,7 +27,8 @@ import AdminReviewsPage from './pages/cmtv/AdminReviewsPage'; // CMTV local chan
 import AdminResellersPage from './pages/cmtv/AdminResellersPage'; // CMTV local change 2026-09-28: Admin > Resellers
 import ResellerToolsPage from './pages/cmtv/ResellerToolsPage'; // CMTV local change 2026-09-28: /reseller tools for resellers
 import AdminNoticesPage from './pages/cmtv/AdminNoticesPage'; // CMTV local change 2026-09-28: Admin > Notices
-import LinkEmailPage from './pages/LinkEmailPage';
+import LinkEmailPage from './pages/LinkEmailPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-28: replaced by CmtvLinkEmailPage
+import CmtvLinkEmailPage from './pages/cmtv/CmtvLinkEmailPage'; // CMTV local change 2026-09-28: finish / join a TV-login account
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ProductsPage from './pages/ProductsPage';
@@ -228,7 +229,7 @@ function App() {
             <Route path="/register" element={<CmtvRegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/link-email" element={<LinkEmailPage />} />
+            <Route path="/link-email" element={<CmtvLinkEmailPage />} />
             <Route path="/verify-email" element={<EmailVerificationPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/order/:productId" element={<OrderProductPage />} />

@@ -194,6 +194,12 @@ cmtv_reseller_credits.D["get_current_admin_user"] = get_current_admin_user
 cmtv_reseller_credits.init_routes()
 app.include_router(cmtv_reseller_credits.router)
 
+# CMTV local change 2026-09-28: panel-only customers finish their account / join it to an existing one (cmtv_claim.py)
+import cmtv_claim
+cmtv_claim.D["get_current_user"] = get_current_user
+cmtv_claim.init_routes()
+app.include_router(cmtv_claim.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -817,6 +823,10 @@ async def startup_event():
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
                                get_email_service=get_configured_email_service)  # CMTV 2026-09-28: reseller credits + alerts
     await cmtv_reseller_credits.startup()   # hourly CCTV reseller balance refresh
+    cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
+                    find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
+                    create_access_token=create_access_token,
+                    site_url=os.getenv('SITE_URL', os.getenv('BACKEND_PUBLIC_URL', '')))   # CMTV 2026-09-28: account claiming
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()
@@ -1776,8 +1786,20 @@ async def login(credentials: UserLogin):
     else:
         # Username login — check panel_username field
         user = await users_collection.find_one({"panel_username": login_id})
-    
-    if not user or not verify_password(credentials.password, user["password"]):
+        # CMTV local change 2026-09-28: TV line usernames are typed with any capitals (only when exactly one account matches)
+        if not user:
+            same = await users_collection.find({"panel_username": {"$regex": f"^{re.escape(login_id)}$", "$options": "i"},
+                                                "role": {"$ne": "merged"}}).to_list(2)
+            user = same[0] if len(same) == 1 else None
+
+    password_ok = bool(user) and verify_password(credentials.password, user["password"])
+    # CMTV local change 2026-09-28: a panel-only (placeholder) account also accepts its TV line's CURRENT password, in case
+    # it changed on the panel after the account was made; the website password is then updated to match
+    if user and not password_ok and "@" not in login_id and cmtv_claim.is_placeholder(user) \
+            and await cmtv_claim.line_password_ok(user, credentials.password):
+        password_ok = True
+        await users_collection.update_one({"_id": user["_id"]}, {"$set": {"password": get_password_hash(credentials.password)}})
+    if not password_ok:
         raise HTTPException(status_code=401, detail="Invalid email/username or password")
     
     # Step 3: Check email verification (except for admin and panel-synced users)
