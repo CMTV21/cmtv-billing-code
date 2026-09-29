@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import TelegramAlerts from '../../components/cmtv/TelegramAlerts'; // 2026-09-28: Telegram alerts panel
+import NuvioDevices from '../../components/cmtv/NuvioDevices'; // 2026-09-29: devices on a Nuvio service card
 import ResellerPanels from '../../components/cmtv/ResellerPanels'; // 2026-09-28: reseller login, balance, top-up slider
 import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: latest CMTV Updates post
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
@@ -20,7 +21,7 @@ import { paymentLabel } from '../../components/cmtv/paymentMethod';
 
 const DAY = 86400000;
 const SOON = 7;
-const MODULE_PRODUCT = { nuvio: 'Stremio', vpn: 'CMTVpn', audiobooks: 'CMTV Audiobooks' };
+const MODULE_PRODUCT = { nuvio: 'Stremio', vpn: 'CMTVpn', audiobooks: 'CMTV Audiobooks', nuviocloud: 'Nuvio' };
 const errText = (e, fb) => e?.response?.data?.detail || fb;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 const termText = (m) => (m === 12 ? 'yr' : m === 1 ? 'mo' : `${m} mo`);
@@ -157,6 +158,7 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
             {d.s.ghostapk_code && <div className="ca-field ca-ghost"><label>CMTVGhost code</label><div className="val"><code>{d.s.ghostapk_code}</code>
               <button type="button" className="ca-icon" onClick={() => copy(d.s.ghostapk_code, 'CMTVGhost code')}>Copy</button></div>
               <small style={{ display: 'block', color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>Open CMTVGhost and enter this code instead of your username and password.</small></div>}
+            {s.cockpit_module === 'nuviocloud' && d.username && <NuvioDevices username={d.username} />}
           </div>
         )}
         {d.ended && d.isTrial && !d.canRenew && (

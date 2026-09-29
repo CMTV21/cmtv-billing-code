@@ -226,6 +226,7 @@ app.include_router(cmtv_claim.router)
 # CMTV local change 2026-09-29: Nuvio accounts on CMTV's own Nuvio server + the add-on relay (cmtv_nuvio.py)
 import cmtv_nuvio
 cmtv_nuvio.D["get_current_admin_user"] = get_current_admin_user
+cmtv_nuvio.D["get_current_user"] = get_current_user
 cmtv_nuvio.init_routes()
 app.include_router(cmtv_nuvio.router)
 app.include_router(cmtv_nuvio.relay)

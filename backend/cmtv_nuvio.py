@@ -456,6 +456,42 @@ def _slug(name: str, taken: set) -> str:
 
 def init_routes():
     admin = D["get_current_admin_user"]
+    customer = D["get_current_user"]
+
+    # ---- the customer's own devices (dashboard, 2026-09-29): only accounts linked to one of their services
+    async def _own(username: str, current_user: dict) -> dict:
+        rx = {"$regex": f"^{re.escape(username)}$", "$options": "i"}
+        svc = await D["services"].find_one({"user_id": str(current_user.get("_id") or current_user.get("id")),
+                                             "cockpit_module": MODULE, "username": rx})
+        acc = await get_account(username) if svc else None
+        if not acc:
+            raise HTTPException(404, "Not your account")
+        return acc
+
+    @router.get("/mine/{username}/devices")
+    async def my_devices(username: str, current_user: dict = Depends(customer)):
+        acc = await _own(username, current_user)
+        try:
+            st, data = await nv("POST", "/rest/v1/rpc/cmtv_devices", {"p_user": acc["nuvio_id"]})
+        except NuvioError:
+            raise HTTPException(502, "Couldn't reach the Nuvio server, try again in a minute")
+        keep = ("session_id", "signed_in_at", "last_used_at", "counts", "app", "platform", "device")
+        devices = [{k: d.get(k) for k in keep} for d in (data if st == 200 and isinstance(data, list) else [])]
+        return {"devices": devices, "max_devices": acc.get("max_devices") or DEFAULT_MAX_DEVICES,
+                "in_use": sum(1 for d in devices if d.get("counts"))}
+
+    @router.post("/mine/{username}/devices/sign-out")
+    async def my_sign_out(username: str, body: dict, current_user: dict = Depends(customer)):
+        acc = await _own(username, current_user)
+        if not body.get("session_id"):
+            raise HTTPException(400, "Choose a device")
+        try:
+            st, n = await nv("POST", "/rest/v1/rpc/cmtv_sign_out", {"p_user": acc["nuvio_id"], "p_session": body["session_id"]})
+        except NuvioError:
+            raise HTTPException(502, "Couldn't reach the Nuvio server, try again in a minute")
+        if st != 200:
+            raise HTTPException(502, "That didn't work, try again in a minute")
+        return {"signed_out": n}
 
     @router.get("/addons")
     async def get_addons(current_user: dict = Depends(admin)):
