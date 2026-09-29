@@ -61,8 +61,18 @@ async def record(name: str, up: bool, msg: str = "", at: datetime = None):
     return changed
 
 
+async def kuma_blind():
+    """2026-09-29: most monitors down at once = almost certainly Kuma's own connection (it runs on a home server),
+    not every service failing together. Then nothing goes public; only Ops Critical hears about it."""
+    total = await D["db"].cmtv_status_monitors.count_documents({})
+    down = await D["db"].cmtv_status_monitors.count_documents({"status": "down"})
+    return total >= 4 and down >= max(4, (total * 6 + 9) // 10)   # 4+ and at least 60%
+
+
 async def public_issues(now=None):
     now = now or datetime.utcnow()
+    if await kuma_blind():
+        return []
     names = await monitor_map()
     out = []
     async for m in D["db"].cmtv_status_monitors.find({"status": "down", "_id": {"$in": list(names)}}):
@@ -132,12 +142,25 @@ async def announce(now=None):
     env = _support_env()
     token, chat, thread, channel = env.get("BOT_TOKEN"), env.get("CMTV_CHAT_ID"), env.get("CMTV_STATUS_THREAD_ID"), env.get("UPDATES_CHANNEL_ID")
     posted = []
+    blind = await kuma_blind()
+    state = await db.cmtv_config.find_one({"_id": "status_state"}) or {}
+    if blind and not state.get("blind_since"):
+        await cmtv_notify.ops("🟠 Uptime Kuma sees most of its monitors down at the same time. That's almost certainly Kuma's own "
+                              "connection (it runs on the home server), not every service at once, so nothing is being posted to "
+                              "customers. Check the Asus / home internet.", "critical", silent=True)
+        await db.cmtv_config.update_one({"_id": "status_state"}, {"$set": {"blind_since": now}}, upsert=True)
+    elif not blind and state.get("blind_since"):
+        await cmtv_notify.ops("🟢 Uptime Kuma is seeing normally again.", "critical", silent=True)
+        await db.cmtv_config.update_one({"_id": "status_state"}, {"$unset": {"blind_since": ""}})
     async for m in db.cmtv_status_monitors.find({}):
         name, public = m["_id"], names.get(m["_id"])
         since = m.get("since")
         if m.get("status") == "down" and not m.get("announced_at") and isinstance(since, datetime) \
                 and now - since >= timedelta(minutes=PUBLIC_AFTER_MIN):
             ids = {}
+            if blind:   # covered by the single "Kuma can't see" note above; nothing public
+                await db.cmtv_status_monitors.update_one({"_id": name}, {"$set": {"announced_at": now, "announced_ids": {}, "quiet": True}})
+                continue
             await cmtv_notify.ops(f"🔴 {name} is down (since {_local(since)} ET).\nUptime Kuma: {m.get('last_msg') or '-'}",
                                   "critical", silent=True)
             if public and token:
@@ -153,9 +176,12 @@ async def announce(now=None):
             down_since = await db.cmtv_status_events.find_one({"monitor": name, "status": "down", "at": {"$lte": m.get("since") or now}},
                                                               sort=[("at", -1)])
             took = _mins(down_since["at"], m.get("since") or now) if down_since else None
-            await cmtv_notify.ops(f"🟢 {name} is back up{f' after {took}' if took else ''}.", "critical", silent=True)
             ids = m.get("announced_ids") or {}
-            if public and token:
+            if m.get("quiet"):   # it went down while Kuma couldn't see: nothing was posted, so nothing to clear
+                await db.cmtv_status_monitors.update_one({"_id": name}, {"$unset": {"announced_at": "", "announced_ids": "", "quiet": ""}})
+                continue
+            await cmtv_notify.ops(f"🟢 {name} is back up{f' after {took}' if took else ''}.", "critical", silent=True)
+            if public and token and any(ids.values()):
                 text = f"✅ <b>{html.escape(public)}</b> is back to normal{f' (down for {took})' if took else ''}. Thanks for your patience."
                 if chat and thread:
                     await _send(token, chat, text, thread=thread, reply_to=ids.get("group"))
