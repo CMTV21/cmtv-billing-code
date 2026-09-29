@@ -34,7 +34,8 @@ QUESTIONS = [
      "items": ["Picture quality (little buffering)", "Live channels", "Sports", "Movies and series", "TV guide", "Support"]},
     {"id": "improve", "type": "multi", "other": True, "text": "What should we add or improve?",
      "options": ["More sports and PPV", "More international channels", "More 4K", "Catch-up and replays", "Kids content",
-                 "Better apps", "Longer plans at a better price", "A plan for more than one home"]},
+                 "Better apps", "A music app", "A different server option", "Better pricing", "More updates about the service",
+                 "Better guides"]},   # 2026-09-29: the user's list (longer plans / multi-home plan removed)
     {"id": "addons", "type": "addons", "text": "What about our add-ons?", "items": ["Stremio", "CMTVpn", "Audiobooks"],
      "choices": ["I have it", "Interested", "Not interested"]},
     {"id": "leave", "type": "multi", "other": True, "text": "What could make you not renew?",
