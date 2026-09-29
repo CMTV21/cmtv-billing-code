@@ -28,14 +28,17 @@ def _ops_env():
     return vals.get("BOT_TOKEN", ""), vals.get("OPS_CHAT_ID", "")
 
 
-async def ops(text: str, kind: str = "critical", settings: dict = None) -> bool:
-    """Send an alert to the Ops group. kind: "critical" (problems) or "billing" (routine). Never raises."""
+async def ops(text: str, kind: str = "critical", settings: dict = None, silent: bool = False) -> bool:
+    """Send an alert to the Ops group. kind: "critical" (problems) or "billing" (routine). Never raises.
+    silent (2026-09-29): posted without a notification sound (Uptime Kuma status posts)."""
     token, chat = _ops_env()
     if not token or not chat:
         logger.warning("CMTV alert not sent: Ops bot token or chat missing")
         return False
     topic = ((settings or {}).get("cmtv_telegram_topics") or {}).get(kind) or TOPICS.get(kind)
     msg = {"chat_id": chat, "text": text[:4000], "disable_web_page_preview": True}
+    if silent:
+        msg["disable_notification"] = True
     if topic:
         msg["message_thread_id"] = int(topic)
     try:

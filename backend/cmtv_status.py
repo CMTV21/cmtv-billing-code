@@ -9,12 +9,19 @@ PUBLIC_AFTER_MIN minutes (a one-check blip never shows). No IPs or error message
   POST /api/cmtv/status/admin/clear {monitor} admin: mark a stuck monitor as up
 Map monitors to public names in cmtv_config {_id: "status_monitors", map: {kuma monitor name: public service name}}.
 Collections: cmtv_status_monitors (_id = monitor name), cmtv_status_events.
+2026-09-29: also posts SILENTLY (no notification sound) to the Ops Critical topic (all monitors) and, for customer
+services, the customer group's Status/Outages topic + the CMTV Updates channel; recovery replies to those posts
+(announce(), every minute). Kuma's own Telegram alert now only covers the "Billing" monitor (billing can't report itself).
 """
+import asyncio
+import html
 import hmac
 import logging
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
 
 log = logging.getLogger("server")
@@ -63,6 +70,116 @@ async def public_issues(now=None):
         if isinstance(since, datetime) and now - since >= timedelta(minutes=PUBLIC_AFTER_MIN):
             out.append({"service": names[m["_id"]], "since": _iso(since)})
     return sorted(out, key=lambda x: x["since"])
+
+
+# ---------- silent Telegram posts (2026-09-29, the user's choice: no notification sound, Kuma's own alert replaced) ----------
+# Once a monitor has been down PUBLIC_AFTER_MIN minutes: Ops group Critical topic (every monitor, with Kuma's message) and,
+# for customer services, the customer group's Status/Outages topic + the CMTV Updates channel (via the support bot, which
+# already posts there). On recovery, "back to normal" is posted as a reply to each of those posts.
+SUPPORT_ENV = "/opt/cmtv-bots/support/.env"
+TZ = ZoneInfo("America/Toronto")
+logging.getLogger("httpx").setLevel(logging.WARNING)   # request URLs contain bot tokens
+
+
+def _support_env():
+    vals = {}
+    try:
+        with open(SUPPORT_ENV) as f:
+            for line in f:
+                if "=" in line and not line.lstrip().startswith("#"):
+                    k, v = line.split("=", 1)
+                    vals[k.strip()] = v.strip().strip("'\"")
+    except OSError as e:
+        log.warning(f"status: can't read the support bot settings ({e})")
+    return vals
+
+
+async def _send(token, chat, text, thread=None, reply_to=None):
+    """Silent Telegram message; returns its message_id or None. Never raises."""
+    msg = {"chat_id": chat, "text": text, "parse_mode": "HTML", "disable_notification": True, "disable_web_page_preview": True}
+    if thread:
+        msg["message_thread_id"] = int(thread)
+    if reply_to:
+        msg["reply_parameters"] = {"message_id": int(reply_to), "allow_sending_without_reply": True}
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(f"https://api.telegram.org/bot{token}/sendMessage", json=msg)
+        j = r.json() if r.content else {}
+        if not j.get("ok"):
+            log.warning(f"status: Telegram said {r.status_code} {j.get('description', '')}")
+            return None
+        return j["result"]["message_id"]
+    except Exception as e:
+        log.warning(f"status: Telegram failed ({type(e).__name__})")
+        return None
+
+
+def _local(dt):
+    return dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(TZ).strftime("%-I:%M %p")
+
+
+def _mins(a, b):
+    m = max(1, int((b - a).total_seconds() // 60))
+    return f"{m} min" if m < 90 else f"{m // 60} h {m % 60} min"
+
+
+async def announce(now=None):
+    """Post new outages (down PUBLIC_AFTER_MIN+ minutes) and recoveries of announced ones. Returns what was posted."""
+    import cmtv_notify
+    db = D["db"]
+    now = now or datetime.utcnow()
+    names = await monitor_map()
+    env = _support_env()
+    token, chat, thread, channel = env.get("BOT_TOKEN"), env.get("CMTV_CHAT_ID"), env.get("CMTV_STATUS_THREAD_ID"), env.get("UPDATES_CHANNEL_ID")
+    posted = []
+    async for m in db.cmtv_status_monitors.find({}):
+        name, public = m["_id"], names.get(m["_id"])
+        since = m.get("since")
+        if m.get("status") == "down" and not m.get("announced_at") and isinstance(since, datetime) \
+                and now - since >= timedelta(minutes=PUBLIC_AFTER_MIN):
+            ids = {}
+            await cmtv_notify.ops(f"🔴 {name} is down (since {_local(since)} ET).\nUptime Kuma: {m.get('last_msg') or '-'}",
+                                  "critical", silent=True)
+            if public and token:
+                text = (f"⚠️ <b>{html.escape(public)}</b>: we've detected a problem since {_local(since)} ET and we're working on it. "
+                        "We'll post here when it's back.")
+                if chat and thread:
+                    ids["group"] = await _send(token, chat, text, thread=thread)
+                if channel:
+                    ids["channel"] = await _send(token, channel, text)
+            await db.cmtv_status_monitors.update_one({"_id": name}, {"$set": {"announced_at": now, "announced_ids": ids}})
+            posted.append(("down", name))
+        elif m.get("status") == "up" and m.get("announced_at"):
+            down_since = await db.cmtv_status_events.find_one({"monitor": name, "status": "down", "at": {"$lte": m.get("since") or now}},
+                                                              sort=[("at", -1)])
+            took = _mins(down_since["at"], m.get("since") or now) if down_since else None
+            await cmtv_notify.ops(f"🟢 {name} is back up{f' after {took}' if took else ''}.", "critical", silent=True)
+            ids = m.get("announced_ids") or {}
+            if public and token:
+                text = f"✅ <b>{html.escape(public)}</b> is back to normal{f' (down for {took})' if took else ''}. Thanks for your patience."
+                if chat and thread:
+                    await _send(token, chat, text, thread=thread, reply_to=ids.get("group"))
+                if channel:
+                    await _send(token, channel, text, reply_to=ids.get("channel"))
+            await db.cmtv_status_monitors.update_one({"_id": name}, {"$unset": {"announced_at": "", "announced_ids": ""}})
+            posted.append(("up", name))
+    return posted
+
+
+async def _loop():
+    await asyncio.sleep(60)
+    while True:
+        try:
+            done = await announce()
+            if done:
+                log.info(f"status: posted {done}")
+        except Exception as e:
+            log.warning(f"status announce failed: {e}")
+        await asyncio.sleep(60)
+
+
+async def startup():
+    asyncio.create_task(_loop())
 
 
 def init_routes():

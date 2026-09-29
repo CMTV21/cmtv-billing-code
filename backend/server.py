@@ -833,6 +833,7 @@ async def startup_event():
     await cmtv_telegram_alerts.startup()
     cmtv_updates.init(db=db)  # CMTV local change 2026-09-28: CMTV Updates on the website
     cmtv_status.init(db=db)   # CMTV local change 2026-09-29: Uptime Kuma status
+    await cmtv_status.startup()   # CMTV 2026-09-29: silent outage posts (Ops Critical, Status/Outages, Updates channel)
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
