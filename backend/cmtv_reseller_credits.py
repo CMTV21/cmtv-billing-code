@@ -34,8 +34,9 @@ DEFAULT_TIERS = {
     "cctv": [{"min": 50, "rate": 3.00}, {"min": 250, "rate": 2.75}, {"min": 500, "rate": 2.50}, {"min": 1000, "rate": 2.25}],
     "imperium": [{"min": 50, "rate": 4.00}, {"min": 250, "rate": 3.80}, {"min": 500, "rate": 3.70}, {"min": 1000, "rate": 3.50}],
 }
-DEFAULT_ALERTS = {"reseller_low": 50, "own_imperium_low": 300}
+DEFAULT_ALERTS = {"reseller_low": 50, "own_imperium_low": 300, "own_cctv_low": 100}
 _imp = {"balance": None, "at": None}
+_cctv = {"balance": None, "at": None}   # 2026-09-29: CMTV's own CCTV balance (CCTV reseller credits come out of it too)
 
 
 def init(**deps):
@@ -128,15 +129,36 @@ async def custom_price(product: dict, credits: int):
         raise ValueError("This pack can't be bought in a custom amount")
     if not (MIN_CREDITS <= int(credits) <= MAX_CREDITS):
         raise ValueError(f"Choose between {MIN_CREDITS} and {MAX_CREDITS} credits (message us for more)")
-    if server == "imperium":
-        bal = await imperium_balance(max_age=60)
-        if bal is not None and int(credits) > bal:
-            raise ValueError(f"Only {int(bal)} Imperium credits can be bought online right now. Message us for more.")
+    bal = await (imperium_balance if server == "imperium" else cctv_balance)(max_age=60)   # 2026-09-29: CCTV capped too
+    if bal is not None and int(credits) > bal:
+        raise ValueError(f"Only {int(bal)} {LABEL[server]} credits can be bought online right now. Message us for more.")
     rate = rate_for(await tiers_for(server), int(credits))
     return round(int(credits) * rate, 2), f"{LABEL[server]} Reseller Credits - {int(credits)} credits"
 
 
 # ---------- balances ----------
+
+async def cctv_balance(max_age: int = 600):
+    """CMTV's own credit balance on the CCTV (XtreamUI) panel, cached. It's what the panel dashboard shows
+    (api.php?action=reseller_dashboard -> credits). None if the panel can't be reached. (2026-09-29)"""
+    if _cctv["at"] and (datetime.utcnow() - _cctv["at"]).total_seconds() < max_age:
+        return _cctv["balance"]
+    bal = None
+    try:
+        panels = ((await D["get_settings"]()).get("xtream") or {}).get("panels") or []
+        svc = D["get_xtream_service"](panels[0]) if panels else None
+        if svc:
+            def _read():
+                sc = svc._get_session_client()
+                if not sc.logged_in and not sc.login():
+                    return None
+                r = sc.session.get(f"{sc.panel_url}/api.php?action=reseller_dashboard", auth=sc.http_auth, timeout=15)
+                return float(r.json().get("credits"))
+            bal = await asyncio.to_thread(_read)
+    except Exception as e:
+        log.warning(f"CCTV balance: {e}")
+    _cctv.update(balance=bal, at=datetime.utcnow())
+    return bal
 
 async def refresh_cctv_balances() -> int:
     """Reseller balances on the CCTV (XtreamUI) panels -> imported_users.credits. The developer's automatic sync only
@@ -271,6 +293,23 @@ async def own_imperium_alert():
     return True
 
 
+async def own_cctv_alert():
+    """CMTV's CCTV balance under the level -> one Critical alert a day while it stays low (2026-09-29)."""
+    db = D["db"]
+    level = (await alert_levels())["own_cctv_low"]
+    bal = await cctv_balance(max_age=0)
+    if bal is None or bal >= level:
+        return False
+    st = await db.cmtv_config.find_one({"_id": "reseller_alerts_state"}) or {}
+    last = st.get("own_cctv_alerted_at")
+    if last and datetime.utcnow() - last < timedelta(hours=24):
+        return False
+    await _ops(f"🟠 CMTV's own CCTV balance is {bal:g} credits (alert level {level:g}).\n\nCCTV reseller credits and new lines "
+               f"come out of it: resellers can buy at most {int(bal)} online until you top it up on the CCTV panel.", "critical")
+    await db.cmtv_config.update_one({"_id": "reseller_alerts_state"}, {"$set": {"own_cctv_alerted_at": datetime.utcnow()}}, upsert=True)
+    return True
+
+
 async def _balance_loop():
     await asyncio.sleep(120)
     while True:
@@ -279,6 +318,7 @@ async def _balance_loop():
             log.info(f"reseller balances refreshed: {n}")
             await low_balance_alerts()
             await own_imperium_alert()
+            await own_cctv_alert()
         except Exception as e:
             log.warning(f"reseller balance refresh failed: {e}")
         await asyncio.sleep(3600)
@@ -362,7 +402,8 @@ def init_routes():
                         "as_of": _iso(r["as_of"]), "low": r["credits"] is not None and r["credits"] < levels["reseller_low"],
                         "spent": round(spent, 2), "orders": n, "last_topup": _iso(last_topup),
                         "placeholder": str(u.get("email", "")).lower().endswith("@panel.local")})
-        return {"resellers": out, "levels": levels, "own": {"imperium": await imperium_balance(max_age=60)}}
+        return {"resellers": out, "levels": levels,
+                "own": {"imperium": await imperium_balance(max_age=60), "cctv": await cctv_balance(max_age=60)}}
 
     @router.post("/admin/alerts")
     async def admin_alerts(data: dict = Body(...), current_user: dict = Depends(admin)):
@@ -394,10 +435,9 @@ async def pricing():
         if not base:
             continue
         mx = MAX_CREDITS
-        if server == "imperium":
-            bal = await imperium_balance()
-            if bal is not None:
-                mx = min(MAX_CREDITS, int(bal // 10 * 10) if bal >= MIN_CREDITS else int(bal))
+        bal = await (imperium_balance if server == "imperium" else cctv_balance)()   # 2026-09-29: both servers capped
+        if bal is not None:
+            mx = min(MAX_CREDITS, int(bal // 10 * 10) if bal >= MIN_CREDITS else int(bal))
         out[server] = {"label": LABEL[server], "product_id": str(base["_id"]), "tiers": await tiers_for(server),
                        "max": mx, "available": mx >= MIN_CREDITS}
     return {"min": MIN_CREDITS, "max": MAX_CREDITS, "servers": out}

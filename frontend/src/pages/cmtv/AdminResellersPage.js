@@ -76,15 +76,19 @@ function Applications() {
 export default function AdminResellersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cmtv-resellers-admin'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin')).data });
-  const [levels, setLevels] = useState({ reseller_low: '', own_imperium_low: '' });
+  const [levels, setLevels] = useState({ reseller_low: '', own_imperium_low: '', own_cctv_low: '' });
   useEffect(() => { if (data?.levels) setLevels(data.levels); }, [data]);
   const rows = data?.resellers || [];
   const imp = data?.own?.imperium;
   const impLow = imp !== null && imp !== undefined && data?.levels && imp < data.levels.own_imperium_low;
+  const cctv = data?.own?.cctv;   // 2026-09-29: CMTV's own CCTV balance too
+  const cctvLow = cctv !== null && cctv !== undefined && data?.levels && cctv < data.levels.own_cctv_low;
+  const fmt = (v) => (v === null || v === undefined ? '–' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
   const save = async () => {
     try {
-      await api.post('/api/cmtv/reseller/admin/alerts', { reseller_low: levels.reseller_low, own_imperium_low: levels.own_imperium_low });
+      await api.post('/api/cmtv/reseller/admin/alerts', { reseller_low: levels.reseller_low, own_imperium_low: levels.own_imperium_low,
+        own_cctv_low: levels.own_cctv_low });
       qc.invalidateQueries({ queryKey: ['cmtv-resellers-admin'] });
       toast.success('Alert levels saved');
     } catch { toast.error('Could not save'); }
@@ -96,14 +100,20 @@ export default function AdminResellersPage() {
       <p className="rs-sub">Reseller panels, their credit balances and what they've spent. Balances: CCTV refreshes hourly from the panel, Imperium is live.</p>
 
       <div className="rs-top">
+        <div className={`rs-own${cctvLow ? ' low' : ''}`}>
+          <span>Your CCTV credits</span>
+          <b>{fmt(cctv)}</b>
+          <small>{cctvLow ? 'Below your alert level. ' : ''}New CCTV lines and the CCTV credits resellers buy come out of this. Resellers can buy at most this many online.</small>
+        </div>
         <div className={`rs-own${impLow ? ' low' : ''}`}>
           <span>Your Imperium credits</span>
-          <b>{imp === null || imp === undefined ? '–' : Number(imp).toLocaleString()}</b>
+          <b>{fmt(imp)}</b>
           <small>{impLow ? 'Below your alert level. ' : ''}Imperium credits resellers buy come out of this. Customers can buy at most this many online.</small>
         </div>
         <div className="rs-levels">
           <b>Alert levels</b>
           <label>Warn a reseller under <input type="number" min="0" value={levels.reseller_low} onChange={(e) => setLevels({ ...levels, reseller_low: e.target.value })} /> credits</label>
+          <label>Warn me when my CCTV balance is under <input type="number" min="0" value={levels.own_cctv_low} onChange={(e) => setLevels({ ...levels, own_cctv_low: e.target.value })} /> credits</label>
           <label>Warn me when my Imperium balance is under <input type="number" min="0" value={levels.own_imperium_low} onChange={(e) => setLevels({ ...levels, own_imperium_low: e.target.value })} /> credits</label>
           <button type="button" className="rv-btn glow" onClick={save}>Save</button>
         </div>
