@@ -128,6 +128,7 @@ class OrderItemCreate(BaseModel):
     renewal_service_id: Optional[str] = None  # Service ID to extend (if action_type='extend')
     action_type: Optional[str] = None  # 'extend' or 'create_new'
     credits: Optional[int] = None  # CMTV local change 2026-09-28: chosen reseller credit amount (cmtv_reseller_credits.py)
+    lineup: Optional[str] = None  # CMTV local change 2026-09-29: Imperium channel line-up (cmtv_lineups.py)
 
 class OrderCreate(BaseModel):
     items: List[OrderItemCreate]

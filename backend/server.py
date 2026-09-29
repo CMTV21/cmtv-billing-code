@@ -212,6 +212,10 @@ cmtv_reseller_credits.D["get_current_admin_user"] = get_current_admin_user
 cmtv_reseller_credits.init_routes()
 app.include_router(cmtv_reseller_credits.router)
 
+# CMTV local change 2026-09-29: Imperium channel line-ups (Full / no adult / North America) (cmtv_lineups.py)
+import cmtv_lineups
+app.include_router(cmtv_lineups.router)
+
 # CMTV local change 2026-09-28: panel-only customers finish their account / join it to an existing one (cmtv_claim.py)
 import cmtv_claim
 cmtv_claim.D["get_current_user"] = get_current_user
@@ -846,6 +850,7 @@ async def startup_event():
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
                                get_email_service=get_configured_email_service)  # CMTV 2026-09-28: reseller credits + alerts
     await cmtv_reseller_credits.startup()   # hourly CCTV reseller balance refresh
+    cmtv_lineups.init(db=db, get_settings=get_settings)  # CMTV 2026-09-29: Imperium line-ups
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
                     create_access_token=create_access_token,
@@ -3608,6 +3613,10 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if abs(float(item.price or 0) - actual_price) > 0.009:
             logger.warning(f"Order item {item.product_name}: client price ${item.price} replaced by product price ${actual_price}")
         item.price = actual_price
+        # CMTV local change 2026-09-29: a line-up choice only means something on an Imperium (Aether) subscriber plan
+        if getattr(item, "lineup", None) and (item.lineup not in cmtv_lineups.LINEUPS or product.get("panel_type") != "aether"
+                                             or product.get("account_type", "subscriber") != "subscriber"):
+            item.lineup = None
         actual_total += item.price
 
     subtotal = actual_total
@@ -5139,6 +5148,8 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
             # with that many credits (every reseller path reads product["reseller_credits"])
             if item.get("credits") and product.get("account_type") == "reseller":
                 product = {**product, "reseller_credits": float(item["credits"])}
+            # CMTV local change 2026-09-29: Imperium line-up -> the matching package (renewals keep the line's line-up)
+            product = await cmtv_lineups.apply(product, item)
 
             # Bundle product - provision each included product separately
             if product.get("is_bundle") and product.get("bundle_product_ids"):
@@ -5240,6 +5251,10 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
         failures.append(f"provisioning stopped with an error: {e}"[:300])
     finally:
         _provision_log.reset(log_token)
+        try:
+            await cmtv_lineups.remember(order_id, order)   # CMTV 2026-09-29: new Imperium lines keep their line-up
+        except Exception as e:
+            logger.warning(f"line-up remember failed: {e}")
         # Mark provisioning complete (release lock but keep flag for idempotency)
         update = {"provisioned": True, "provisioned_at": datetime.utcnow()}
         if acquired:

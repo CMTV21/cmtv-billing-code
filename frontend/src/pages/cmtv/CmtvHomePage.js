@@ -5,6 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { rememberPlan, pendingPlan, pendingCredits, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
 import ResellerCredits, { creditPrice } from '../../components/cmtv/ResellerCredits'; // 2026-09-28: any credit amount
+import { LINEUPS, lineupName } from '../../components/cmtv/lineups'; // 2026-09-29: Imperium channel line-ups
 import api from '../../api/api';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -267,6 +268,7 @@ function PlanCard({ card, family, grouped, allProducts }) {
   const { symbol, convertPrice } = useCurrencyStore();
   const [open, setOpen] = useState(false);
   const [channels, setChannels] = useState(null);
+  const [lineup, setLineup] = useState('full');   // 2026-09-29: Imperium channel line-up (same price)
   const products = card.products;
   const first = products[0];
   const money = (v) => `${symbol}${convertPrice(v).toFixed(2)}`;
@@ -288,7 +290,9 @@ function PlanCard({ card, family, grouped, allProducts }) {
     // 2026-09-28: remember the plan through sign-in (it used to be forgotten)
     if (!user) { rememberPlan(p.id); window.location.href = '/login?redirect=/'; return; }
     const { term, price } = firstPrice(p);
-    addItem({ product_id: p.id, product_name: p.name, term_months: term, price, account_type: p.account_type });
+    const withLineup = family === 'imperium' && p.account_type === 'subscriber' && !p.is_trial;
+    addItem({ product_id: p.id, product_name: withLineup ? lineupName(p.name, lineup) : p.name, term_months: term, price,
+              account_type: p.account_type, ...(withLineup ? { lineup } : {}) });
     window.location.href = '/checkout';
   };
   const showChannels = async () => {
@@ -315,6 +319,16 @@ function PlanCard({ card, family, grouped, allProducts }) {
       </div>
       <div className="rows">
         {showIntro && <div className="desc"><FormattedText text={intro} /></div>}
+        {family === 'imperium' && first?.account_type === 'subscriber' && !first?.is_trial && (
+          <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>
+            <span style={{ fontWeight: 700, color: 'var(--text)' }}>Channel line-up</span>
+            <select value={lineup} onChange={(e) => setLineup(e.target.value)} aria-label="Channel line-up"
+              style={{ background: 'var(--deep, #0a1020)', color: 'var(--text, #e9edf8)', border: '1px solid var(--gold, #d8b35a)', borderRadius: 10, padding: '8px 10px', fontSize: 14 }}>
+              {LINEUPS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+            </select>
+            <small>{LINEUPS.find((l) => l.key === lineup)?.note} Same price.</small>
+          </label>
+        )}
         {products.map((p) => {
           const { term, price } = firstPrice(p);
           const perMonth = term > 1 && price > 0 ? price / term : null;

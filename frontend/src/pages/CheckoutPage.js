@@ -217,7 +217,7 @@ export default function CheckoutPage() {
           items: items.map(i => ({
             product_id: i.product_id, product_name: i.product_name,
             term_months: i.term_months, price: i.price, account_type: i.account_type,
-            action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */
+            action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */
           })),
           total: getTotal(),
           coupon_code: appliedCouponCode,
@@ -283,7 +283,7 @@ export default function CheckoutPage() {
         items: items.map(i => ({
           product_id: i.product_id, product_name: i.product_name,
           term_months: i.term_months, price: i.price, account_type: i.account_type,
-          action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */
+          action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */
         })),
         total: getTotal(),
         coupon_code: appliedCouponCode,
@@ -429,7 +429,7 @@ export default function CheckoutPage() {
         items: items.map(i => ({
           product_id: i.product_id, product_name: i.product_name,
           term_months: i.term_months, price: i.price, account_type: i.account_type,
-          action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */
+          action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */
         })),
         total: getTotal(),
         coupon_code: appliedCouponCode,
@@ -1524,7 +1524,7 @@ export default function CheckoutPage() {
                           const authToken = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
                           // Create order first
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
-                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */ })),
+                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */ })),
                             total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
                             payment_method: 'ghostpay' // CMTV local change 2026-09-25
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
@@ -1580,7 +1580,7 @@ export default function CheckoutPage() {
                           // Send card data to backend for server-side tokenization & payment
                           const authToken = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
-                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */ })),
+                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */ })),
                             total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
                             reseller_credentials: cmtvResellerCreds(),
                             payment_method: 'tagadapay' // CMTV local change 2026-09-25
