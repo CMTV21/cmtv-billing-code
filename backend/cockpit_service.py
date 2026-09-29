@@ -17,7 +17,8 @@ from dateutil.relativedelta import relativedelta
 logger = logging.getLogger(__name__)
 
 HELPER = "/opt/backend/cockpit_helper.py"
-MODULES = {"nuvio": "Stremio", "vpn": "CMTVpn", "audiobooks": "Audiobooks"}
+MODULES = {"nuvio": "Stremio", "vpn": "CMTVpn", "audiobooks": "Audiobooks", "nuviocloud": "Nuvio"}
+# CMTV local change 2026-09-29: "nuviocloud" = accounts on CMTV's own Nuvio server (cmtv_nuvio.py, nuvio.cmtv.info)
 # CMTV local change 2026-09-25: "audiobooks" isn't Cockpit. It goes to abadmin on the Asus server
 # (https://abadmin.cmtv.info/api/billing/..., token in .env as ABADMIN_TOKEN), which creates the Audiobookshelf and
 # ReadMeABook users and switches them off after their expiry date. Same request/answer shapes as the Cockpit helper.
@@ -69,6 +70,9 @@ async def _call(request: dict) -> dict:
     """Run cockpit_helper.py as www-data with one JSON request; always returns a dict with 'success'"""
     if request.get("module") == "audiobooks":
         return await _abadmin(request)
+    if request.get("module") == "nuviocloud":   # CMTV local change 2026-09-29
+        import cmtv_nuvio
+        return await cmtv_nuvio.handle(request)
     try:
         proc = await asyncio.create_subprocess_exec(
             "runuser", "-u", "www-data", "--", "/usr/bin/python3", HELPER, stdin=PIPE, stdout=PIPE, stderr=PIPE)

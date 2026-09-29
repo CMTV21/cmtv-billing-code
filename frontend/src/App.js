@@ -15,6 +15,7 @@ import FinancesPage from './pages/cmtv/FinancesPage'; // CMTV local change 2026-
 import AdminReferralsPage from './pages/cmtv/AdminReferralsPage'; // CMTV local change 2026-09-25: Admin > Referrals
 import AdminAudiobooksPage from './pages/cmtv/AdminAudiobooksPage'; // CMTV local change 2026-09-25: Admin > Audiobooks
 import AdminCustomerPage from './pages/cmtv/AdminCustomerPage'; // CMTV local change 2026-09-27: customer profile page
+import AdminNuvioPage from './pages/cmtv/AdminNuvioPage'; // CMTV local change 2026-09-29: Admin > Nuvio (own Nuvio server)
 import AdminAddonsPage from './pages/cmtv/AdminAddonsPage'; // CMTV local change 2026-09-26: Admin > Add-ons (Cockpit: Stremio, CMTVpn)
 import LoginPage from './pages/LoginPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvLoginPage
 import RegisterPage from './pages/RegisterPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvRegisterPage
@@ -496,6 +497,7 @@ function App() {
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAddonsPage key="vpn" module="vpn" /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route path="/admin/addons" element={<Navigate to="/admin/stremio" replace />} />
+            <Route path="/admin/nuvio" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminNuvioPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
             <Route
               path="/admin/audiobooks"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAudiobooksPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}

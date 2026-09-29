@@ -223,6 +223,14 @@ cmtv_claim.D["get_current_user"] = get_current_user
 cmtv_claim.init_routes()
 app.include_router(cmtv_claim.router)
 
+# CMTV local change 2026-09-29: Nuvio accounts on CMTV's own Nuvio server + the add-on relay (cmtv_nuvio.py)
+import cmtv_nuvio
+cmtv_nuvio.D["get_current_admin_user"] = get_current_admin_user
+cmtv_nuvio.init_routes()
+app.include_router(cmtv_nuvio.router)
+app.include_router(cmtv_nuvio.relay)
+app.include_router(cmtv_nuvio.short_relay)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -855,6 +863,9 @@ async def startup_event():
     cmtv_ghostapk.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service)
     await cmtv_ghostapk.startup()
     cmtv_lineups.init(db=db, get_settings=get_settings)  # CMTV 2026-09-29: Imperium line-ups
+    cmtv_nuvio.init(db=db, users=users_collection, services=services_collection, products=products_collection,
+                    get_email_service=get_configured_email_service)  # CMTV 2026-09-29: Nuvio server accounts
+    await cmtv_nuvio.startup()   # sharing check (hourly)
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
                     create_access_token=create_access_token,
@@ -5428,7 +5439,7 @@ async def provision_cockpit_service(order_id: str, order: dict, user: dict, item
         "product_name": product.get("name", label),
         "account_type": "subscriber",       # shows login, expiry and the Renew button on My Services
         "panel_type": "manual",
-        "panel_name": "abadmin (Audiobooks)" if module == "audiobooks" else f"Cockpit ({label})",  # CMTV 2026-09-25
+        "panel_name": "abadmin (Audiobooks)" if module == "audiobooks" else ("CMTV Nuvio server" if module == "nuviocloud" else f"Cockpit ({label})"),  # CMTV 2026-09-25, nuviocloud 2026-09-29
         "cockpit_module": module,
         "cockpit_account_id": result.get("id"),
         "username": result["username"],
