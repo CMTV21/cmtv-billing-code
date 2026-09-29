@@ -1,0 +1,48 @@
+/* CMTV local addition 2026-09-29: /survey (SurveyPage.js) and Admin > Survey (AdminSurveyPage.js). Inside .cmtv-kb / .cmtv-adm. */
+.sv { max-width: 760px; margin: 0 auto; }
+.sv h1 { margin-bottom: 6px; }
+.sv-q { border: 1px solid var(--line, #27345a); border-radius: 16px; padding: 14px 16px 16px; margin: 0 0 14px; background: rgba(20,29,51,.6); min-width: 0; }
+.sv-q legend { display: flex; gap: 10px; align-items: baseline; font-weight: 700; font-size: 16px; padding: 0 6px; }
+.sv-n { font: italic 800 15px var(--display, inherit); color: var(--cyan, #22e6f2); }
+.sv-req { color: var(--cyan, #22e6f2); }
+.sv-nps { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
+.sv-nps button, .sv-scale button { border: 1px solid var(--line, #27345a); background: var(--deep, #0a1020); color: inherit; border-radius: 10px;
+  padding: 9px 0; font-weight: 800; cursor: pointer; font-variant-numeric: tabular-nums; }
+.sv-nps button.on, .sv-scale button.on { background: var(--cyan, #22e6f2); color: #07101f; border-color: var(--cyan, #22e6f2); }
+.sv-hint { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted, #9aa6c6); margin-top: 6px; }
+.sv-stars { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.sv-stars button { background: none; border: 0; font-size: 34px; line-height: 1; color: var(--line, #27345a); cursor: pointer; padding: 0 2px; }
+.sv-stars button.on { color: #fbbf24; }
+.sv-word { margin-left: 10px; color: var(--muted, #9aa6c6); font-weight: 600; }
+.sv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sv-chips button { border: 1px solid var(--line, #27345a); background: var(--deep, #0a1020); color: inherit; border-radius: 999px; padding: 7px 13px;
+  font-size: 14px; font-weight: 600; cursor: pointer; }
+.sv-chips button.on { border-color: var(--cyan, #22e6f2); background: rgba(34,230,242,.14); }
+.sv-other, .sv-text { width: 100%; margin-top: 10px; background: var(--deep, #0a1020); border: 1px solid var(--line, #27345a); border-radius: 10px;
+  padding: 9px 11px; color: inherit; font: inherit; }
+.sv-grid { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.sv-grid-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sv-grid-row > span { font-weight: 600; min-width: 0; }
+.sv-grid-row .sv-chips { margin-top: 0; }
+.sv-scale { display: grid; grid-template-columns: repeat(5, 40px); gap: 4px; }
+.sv-hint-line { font-size: 12.5px; color: var(--muted, #9aa6c6); margin: 2px 0 0; }
+.sv-error { color: #f87171; font-weight: 600; }
+.sv-submit { margin-top: 6px; }
+.sv-note { font-size: 13px; color: var(--muted, #9aa6c6); }
+.sv-done p { margin: 0 0 14px; }
+@media (max-width: 520px) { .sv-nps { grid-template-columns: repeat(6, minmax(0, 1fr)); } .sv-scale { grid-template-columns: repeat(5, 36px); } }
+
+/* admin */
+.sv-admin .sv-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0; }
+.sv-admin .sv-kpi { border: 1px solid #26314d; background: #111a2e; border-radius: 14px; padding: 12px 14px; }
+.sv-admin .sv-kpi span { color: #9aa6c6; font-size: 13px; }
+.sv-admin .sv-kpi b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+.sv-admin .sv-box { border: 1px solid #26314d; background: #111a2e; border-radius: 14px; padding: 14px 16px; margin: 0 0 14px; }
+.sv-admin table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sv-admin th, .sv-admin td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #1f2a45; }
+.sv-admin .sv-barrow { display: grid; grid-template-columns: minmax(0, 1fr) 160px 36px; gap: 10px; align-items: center; font-size: 14px; margin: 5px 0; }
+.sv-admin .sv-bar { height: 8px; border-radius: 999px; background: #0a1020; overflow: hidden; }
+.sv-admin .sv-bar i { display: block; height: 100%; background: linear-gradient(90deg, #22e6f2, #8b5cf6); }
+.sv-admin .sv-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.sv-admin .sv-cmt { border-top: 1px solid #1f2a45; padding: 8px 0; font-size: 14px; }
+.sv-admin .sv-cmt small { color: #9aa6c6; }

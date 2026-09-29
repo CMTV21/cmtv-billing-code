@@ -27,6 +27,8 @@ import AdminReviewsPage from './pages/cmtv/AdminReviewsPage'; // CMTV local chan
 import AdminResellersPage from './pages/cmtv/AdminResellersPage'; // CMTV local change 2026-09-28: Admin > Resellers
 import ResellerToolsPage from './pages/cmtv/ResellerToolsPage'; // CMTV local change 2026-09-28: /reseller tools for resellers
 import AdminNoticesPage from './pages/cmtv/AdminNoticesPage'; // CMTV local change 2026-09-28: Admin > Notices
+import SurveyPage from './pages/cmtv/SurveyPage'; // CMTV local change 2026-09-29: customer survey (/survey?t=)
+import AdminSurveyPage from './pages/cmtv/AdminSurveyPage'; // CMTV local change 2026-09-29: Admin > Survey
 import LinkEmailPage from './pages/LinkEmailPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-28: replaced by CmtvLinkEmailPage
 import CmtvLinkEmailPage from './pages/cmtv/CmtvLinkEmailPage'; // CMTV local change 2026-09-28: finish / join a TV-login account
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -225,6 +227,7 @@ function App() {
             <Route path="/terms" element={<CmtvAccountFrame><TermsPage /></CmtvAccountFrame>} />
             <Route path="/privacy" element={<CmtvAccountFrame><PrivacyPage /></CmtvAccountFrame>} />
             <Route path="/review" element={<CmtvAccountFrame><ReviewPage /></CmtvAccountFrame>} />
+            <Route path="/survey" element={<CmtvAccountFrame><SurveyPage /></CmtvAccountFrame>} />
             <Route path="/login" element={<CmtvLoginPage />} />
             <Route path="/register" element={<CmtvRegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -461,6 +464,10 @@ function App() {
             <Route
               path="/admin/finances"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><FinancesPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/survey"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminSurveyPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/notices"

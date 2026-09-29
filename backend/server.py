@@ -199,6 +199,12 @@ cmtv_reviews.D["get_current_admin_user"] = get_current_admin_user
 cmtv_reviews.init_routes()
 app.include_router(cmtv_reviews.router)
 
+# CMTV local change 2026-09-29: customer survey with a $5 credit for finishing it (cmtv_survey.py)
+import cmtv_survey
+cmtv_survey.D["get_current_admin_user"] = get_current_admin_user
+cmtv_survey.init_routes()
+app.include_router(cmtv_survey.router)
+
 # CMTV local change 2026-09-28: reseller credits in any amount 50-1000, priced per credit (cmtv_reseller_credits.py)
 import cmtv_reseller_credits
 cmtv_reseller_credits.D["get_current_user"] = get_current_user
@@ -836,6 +842,7 @@ async def startup_event():
     await cmtv_status.startup()   # CMTV 2026-09-29: silent outage posts (Ops Critical, Status/Outages, Updates channel)
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
+    cmtv_survey.init(db=db, get_email_service=get_configured_email_service, credit_service=credit_service)  # CMTV 2026-09-29: survey
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
                                get_email_service=get_configured_email_service)  # CMTV 2026-09-28: reseller credits + alerts
     await cmtv_reseller_credits.startup()   # hourly CCTV reseller balance refresh
