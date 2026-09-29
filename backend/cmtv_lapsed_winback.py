@@ -54,8 +54,20 @@ async def config():
 
 
 def _paid_tv(s):
-    return not s.get("is_trial") and s.get("account_type", "subscriber") != "reseller" and s.get("panel_type") not in (None, "", "manual") \
+    # older trial services have no is_trial flag, only a name like "24 HOUR CCTV TRIAL" (caught 2026-09-28 before any send)
+    if s.get("is_trial") or "trial" in str(s.get("product_name") or "").lower():
+        return False
+    return s.get("account_type", "subscriber") != "reseller" and s.get("panel_type") not in (None, "", "manual") \
         and not s.get("cmtv_demo")
+
+
+async def _paid_product(s):
+    """The service's product, if it still exists, must be a priced, non-trial plan."""
+    p = await D["db"].products.find_one({"_id": _oid(s.get("product_id"))}) if s.get("product_id") else None
+    if not p:
+        return True
+    prices = [float(v or 0) for v in (p.get("prices") or {}).values()]
+    return not p.get("is_trial") and "trial" not in str(p.get("name") or "").lower() and (not prices or max(prices) > 0)
 
 
 async def _line_active_on_panel(s, now):
@@ -78,7 +90,7 @@ async def candidates(cfg, now=None):
     lo = hi - timedelta(hours=CATCH_UP_HOURS)
     out, seen = [], set()
     async for s in db.services.find({"expiry_date": {"$gte": lo, "$lte": hi}, "status": {"$nin": ["duplicate", "failed"]}}).sort("expiry_date", -1):
-        if not _paid_tv(s):
+        if not _paid_tv(s) or not await _paid_product(s):
             continue
         uid = str(s.get("user_id") or "")
         if not uid or uid in seen:
