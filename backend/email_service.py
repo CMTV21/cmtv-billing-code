@@ -479,7 +479,8 @@ class EmailService:
         streaming_url: str,
         max_connections: int,
         expiry_date: str,
-        customer_id: str = None
+        customer_id: str = None,
+        ghostapk_code: str = ""
     ):
         """Send service activated email with credentials"""
         if self.db is None:
@@ -493,6 +494,13 @@ class EmailService:
         if not template:
             return False
         
+        ghostapk_section = ""
+        if ghostapk_code:
+            ghostapk_section = (
+                '<p style="margin: 0 0 8px; font-size: 14px;"><strong>GhostAPK Login Pin:</strong> '
+                f'<span style="font-family: monospace; font-size: 16px; letter-spacing: 2px;">{ghostapk_code}</span></p>'
+            )
+
         variables = {
             "customer_name": customer_name,
             "service_name": service_name,
@@ -501,11 +509,17 @@ class EmailService:
             "streaming_url": streaming_url,
             "max_connections": str(max_connections),
             "expiry_date": expiry_date,
-            "dashboard_link": f"{self.backend_url}/dashboard"
+            "dashboard_link": f"{self.backend_url}/dashboard",
+            "ghostapk_code": ghostapk_code or "",
+            "ghostapk_section": ghostapk_section
         }
         
         subject = template["subject"]
         content = template["html_content"]
+
+        # Older custom templates have no GhostAPK placeholder: append the pin block so it is never lost
+        if ghostapk_section and "{{ghostapk_section}}" not in content and "{{ghostapk_code}}" not in content:
+            content += f'\n<div style="margin: 16px 0;">{ghostapk_section}</div>'
         
         for key, value in variables.items():
             subject = subject.replace(f"{{{{{key}}}}}", value)

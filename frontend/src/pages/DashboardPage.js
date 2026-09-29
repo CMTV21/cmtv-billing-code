@@ -299,6 +299,19 @@ function ServiceCard({ service, navigate, expired }) {
           </div>
         )}
 
+        {/* GhostAPK Login Pin */}
+        {service.ghostapk_code && (
+          <div data-testid={`dashboard-ghostapk-pin-${service.id}`}>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">GhostAPK Login Pin</p>
+            <div className="flex items-center gap-1">
+              <code className="text-sm font-mono font-semibold tracking-[0.2em] text-violet-700 dark:text-violet-300">{service.ghostapk_code}</code>
+              <button onClick={() => copy(service.ghostapk_code, `g-${service.id}`)} className="text-gray-400 hover:text-blue-600 shrink-0">
+                {copied === `g-${service.id}` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* VPN Download Links */}
         {isVPN && (
           <div className="pt-1">

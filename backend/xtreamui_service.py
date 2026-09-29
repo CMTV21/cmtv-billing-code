@@ -147,6 +147,7 @@ class XtreamUIService:
             
             # Get reseller member_id by fetching the form page
             member_id = '0'
+            soup = None
             try:
                 from bs4 import BeautifulSoup
                 page_url = f"{self.panel_url}/user_reseller.php?trial" if is_trial else f"{self.panel_url}/user_reseller.php"
@@ -178,6 +179,12 @@ class XtreamUIService:
                 'reseller_notes': reseller_notes,
                 'bouquets_selected': json.dumps(bouquets),
             }
+
+            # GhostAPK: if the reseller has it connected, the form exposes a 'ghostapk_sync' checkbox
+            ghostapk_enabled = bool(soup and soup.find('input', {'name': 'ghostapk_sync'}))
+            if ghostapk_enabled:
+                form_data['ghostapk_sync'] = '1'
+                logger.info("GhostAPK connected for reseller - requesting login pin generation")
             
             # Trial form has a hidden 'trial' field and submit value is 'Purchase'
             if is_trial:
@@ -205,10 +212,14 @@ class XtreamUIService:
                 if 'user_reseller.php?id=' in redirect_url:
                     user_id = redirect_url.split('id=')[1].split('&')[0] if '=' in redirect_url else 'unknown'
                     logger.info(f"User created successfully: {username} (ID: {user_id})")
+                    ghostapk_code = ""
+                    if ghostapk_enabled:
+                        ghostapk_code = self.get_ghostapk_code(username, password, login=False)
                     return {
                         'success': True,
                         'user_id': user_id,
                         'username': username,
+                        'ghostapk_code': ghostapk_code,
                         'message': f'User created under reseller (ID: {user_id})'
                     }
             
@@ -220,6 +231,72 @@ class XtreamUIService:
             
         except Exception as e:
             logger.error(f"Form POST error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _session_login(self) -> bool:
+        """Login the reseller web session (HTTP basic auth is already on the session)"""
+        self.session.post(
+            f"{self.panel_url}/login.php",
+            data={'username': self.admin_username, 'password': self.admin_password},
+            timeout=30
+        )
+        return 'PHPSESSID' in self.session.cookies
+
+    def get_ghostapk_status(self) -> Dict[str, Any]:
+        """Check whether this reseller has GhostAPK connected on the panel"""
+        try:
+            if not self._session_login():
+                return {'connected': False, 'error': 'Login failed'}
+            resp = self.session.get(f"{self.panel_url}/api.php", params={'action': 'ghostapk_status'}, timeout=15)
+            if resp.status_code != 200 or not resp.text.strip():
+                return {'connected': False, 'error': f'HTTP {resp.status_code}'}
+            data = resp.json()
+            return {'connected': bool(data.get('connected')), 'panel_url': data.get('panel_url', '')}
+        except Exception as e:
+            logger.warning(f"GhostAPK status check failed: {e}")
+            return {'connected': False, 'error': str(e)}
+
+    def get_ghostapk_code(self, username: str, password: str, login: bool = True) -> str:
+        """Fetch the GhostAPK login pin for a line (empty string if none)"""
+        try:
+            if login and not self._session_login():
+                return ""
+            resp = self.session.get(
+                f"{self.panel_url}/api.php",
+                params={'action': 'get_label_data', 'username': username, 'password': password},
+                timeout=15
+            )
+            if resp.status_code != 200 or not resp.text.strip():
+                return ""
+            data = resp.json()
+            code = str(data.get('gapk_code') or "").strip()
+            if code:
+                logger.info(f"GhostAPK pin retrieved for {username}")
+            return code
+        except Exception as e:
+            logger.warning(f"GhostAPK code fetch failed for {username}: {e}")
+            return ""
+
+    def ghostapk_sync_all(self) -> Dict[str, Any]:
+        """Ask the panel to sync all of this reseller's lines to GhostAPK (generates pins)"""
+        try:
+            if not self._session_login():
+                return {'success': False, 'error': 'Login failed'}
+            resp = self.session.get(f"{self.panel_url}/api.php", params={'action': 'ghostapk_sync_all'}, timeout=310)
+            if resp.status_code != 200 or not resp.text.strip():
+                return {'success': False, 'error': f'HTTP {resp.status_code}'}
+            data = resp.json()
+            if not data.get('result'):
+                return {'success': False, 'error': data.get('message', 'Sync failed')}
+            return {
+                'success': True,
+                'created': data.get('created', 0),
+                'updated': data.get('updated', 0),
+                'codes_generated': data.get('codes_generated', 0),
+                'errors': data.get('errors', []),
+            }
+        except Exception as e:
+            logger.error(f"GhostAPK sync-all failed: {e}")
             return {'success': False, 'error': str(e)}
     
 

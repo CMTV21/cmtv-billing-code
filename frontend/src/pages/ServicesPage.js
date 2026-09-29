@@ -291,6 +291,26 @@ function ServiceCard({ service, navigate, products, refundsEnabled }) {
                 </div>
               )}
 
+              {/* GhostAPK Login Pin */}
+              {service.ghostapk_code && (
+                <div data-testid="service-ghostapk-pin">
+                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">GhostAPK Login Pin</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-violet-50 dark:bg-violet-900/30 text-violet-800 dark:text-violet-200 px-3 py-2 rounded text-base font-mono tracking-[0.25em] font-semibold">
+                      {service.ghostapk_code}
+                    </code>
+                    <button
+                      onClick={() => copyToClipboard(service.ghostapk_code, 'ghostapk')}
+                      className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600"
+                      data-testid="copy-ghostapk-pin-btn"
+                    >
+                      {copied === 'ghostapk' ? <Check className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Enter this pin in the GhostAPK app to sign in without typing your credentials.</p>
+                </div>
+              )}
+
               {/* VPN Download Links */}
               {service.panel_type === 'ghostsurf' && (
                 <div>

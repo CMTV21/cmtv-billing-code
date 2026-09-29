@@ -1,11 +1,17 @@
 import { formatDate } from "../utils/timezone";
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ordersAPI } from '../api/api';
-import { ArrowLeft, ShoppingBag, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function OrdersPage() {
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const returnedOrderId = searchParams.get('payment') === 'ghostpay' ? searchParams.get('order_id') : null;
+  const [checkingPayment, setCheckingPayment] = useState(!!returnedOrderId);
+
   const { data: orders, isLoading } = useQuery({
     queryKey: ['orders'],
     queryFn: async () => {
@@ -13,6 +19,35 @@ export default function OrdersPage() {
       return response.data;
     },
   });
+
+  // Returning from GhostPay: re-check the invoice a few times so the order flips to paid without waiting for the webhook
+  useEffect(() => {
+    if (!returnedOrderId) return;
+    let attempts = 0;
+    let cancelled = false;
+    const check = async () => {
+      attempts += 1;
+      try {
+        const res = await ordersAPI.checkGhostPay(returnedOrderId);
+        if (cancelled) return;
+        if (res.data.order_status === 'paid') {
+          toast.success('Crypto payment confirmed! Your service is being activated.');
+          queryClient.invalidateQueries(['orders']);
+          setCheckingPayment(false);
+          setSearchParams({}, { replace: true });
+          return;
+        }
+      } catch (e) { /* keep polling */ }
+      if (attempts < 12) {
+        setTimeout(check, 5000);
+      } else {
+        setCheckingPayment(false);
+        toast.info('Payment not confirmed yet. We keep checking in the background and will activate your order automatically once it confirms.');
+      }
+    };
+    check();
+    return () => { cancelled = true; };
+  }, [returnedOrderId, queryClient, setSearchParams]);
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -53,6 +88,13 @@ export default function OrdersPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-8">My Orders</h1>
+
+        {checkingPayment && (
+          <div className="mb-6 flex items-center gap-3 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 text-purple-800 dark:text-purple-200 rounded-lg px-4 py-3" data-testid="ghostpay-confirming-banner">
+            <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+            <p className="text-sm">Confirming your crypto payment with GhostPay… your order will activate automatically once the payment is confirmed.</p>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="text-center py-12">

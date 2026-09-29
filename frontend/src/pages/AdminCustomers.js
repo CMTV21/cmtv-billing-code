@@ -328,6 +328,7 @@ export default function AdminCustomers() {
 // Customer Details Modal Component
 function CustomerDetailsModal({ customer, onClose }) {
   const [showManualServiceModal, setShowManualServiceModal] = useState(false);
+  const queryClient = useQueryClient();
   
   const { data, isLoading } = useQuery({
     queryKey: ['customer-details', customer.id],
@@ -335,6 +336,15 @@ function CustomerDetailsModal({ customer, onClose }) {
       const response = await adminAPI.getCustomerDetails(customer.id);
       return response.data;
     },
+  });
+
+  const refreshGhostApk = useMutation({
+    mutationFn: (serviceId) => adminAPI.refreshGhostApkCode(serviceId),
+    onSuccess: (res) => {
+      toast.success(`GhostAPK pin: ${res.data.ghostapk_code}`);
+      queryClient.invalidateQueries(['customer-details', customer.id]);
+    },
+    onError: (err) => toast.error(err.response?.data?.detail || 'Failed to fetch GhostAPK pin'),
   });
 
   return (
@@ -426,6 +436,25 @@ function CustomerDetailsModal({ customer, onClose }) {
                           <p className="text-sm text-gray-600 dark:text-gray-300">
                             Password: <span className="font-mono">{service.xtream_password}</span>
                           </p>
+                          {service.panel_type === 'xtream' && service.account_type !== 'reseller' && (
+                            <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2 mt-1" data-testid={`admin-ghostapk-row-${service.id}`}>
+                              GhostAPK Pin:{' '}
+                              {service.ghostapk_code ? (
+                                <span className="font-mono font-semibold tracking-[0.2em] text-violet-700 dark:text-violet-300">{service.ghostapk_code}</span>
+                              ) : (
+                                <span className="text-gray-400 italic">none</span>
+                              )}
+                              <button
+                                onClick={() => refreshGhostApk.mutate(service.id)}
+                                disabled={refreshGhostApk.isPending}
+                                title="Fetch GhostAPK pin from panel"
+                                className="text-gray-400 hover:text-violet-600 disabled:opacity-50"
+                                data-testid={`admin-ghostapk-refresh-${service.id}`}
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${refreshGhostApk.isPending && refreshGhostApk.variables === service.id ? 'animate-spin' : ''}`} />
+                              </button>
+                            </p>
+                          )}
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           service.status === 'active' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
