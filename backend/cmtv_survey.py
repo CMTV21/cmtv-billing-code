@@ -141,7 +141,28 @@ async def send_invite(u):
     es = await D["get_email_service"]()
     um = getattr(es, "unsubscribe_manager", None)
     emailed = False
-    if es and getattr(es, "enabled", False) and not (um and not await um.can_send_marketing(u["email"])):
+    tpl = await db.email_templates.find_one({"template_type": "cmtv_survey", "is_active": True})
+    if tpl and es and getattr(es, "enabled", False) and not (um and not await um.can_send_marketing(u["email"])):
+        # 2026-09-29: the CMTV website look (template "cmtv_survey", editable in Admin > Email Templates), sent as a
+        # complete navy page with its own unsubscribe link (so the plain wrapper's white footer isn't added)
+        vals = {"first_name": html.escape(_first(u)), "survey_link": link, "reward": f"${REWARD:.0f}",
+                "unsubscribe_link": f"{es.backend_url}/api/unsubscribe?email={u['email']}"}
+        page, subject = tpl["html_content"], tpl.get("subject") or "Quick CMTV survey: 2 minutes, {{reward}} credit"
+        for k, v in vals.items():
+            page, subject = page.replace("{{" + k + "}}", v), subject.replace("{{" + k + "}}", v)
+        page = ("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
+                "<meta name=\"color-scheme\" content=\"dark\"></head>"
+                f"<body style=\"margin:0; padding:0; background-color:#0a1020;\">{page}</body></html>")
+        text = (f"Hi {_first(u)},\n\nWe're planning what to improve next at CMTV and we'd love your honest opinion. It takes about "
+                f"2 minutes, and we'll add ${REWARD:.0f} credit to your account when you finish.\n\nTake the survey: {link}\n\n"
+                f"The CMTV Team\n\nUnsubscribe from offers and surveys: {vals['unsubscribe_link']}")
+        try:
+            emailed = bool(await es.send_email(
+                to_email=u["email"], subject=subject, html_content=page, text_content=text,
+                email_type="marketing", template_type="cmtv_survey", customer_id=uid, recipient_name=u.get("name") or ""))
+        except Exception as e:
+            log.warning(f"survey email to {u.get('email')} failed: {e}")
+    elif es and getattr(es, "enabled", False) and not (um and not await um.can_send_marketing(u["email"])):
         first = html.escape(_first(u))
         body = (f"<h2 style=\"margin:0 0 8px\">2 minutes, $5 credit</h2>"
                 f"<p>Hi {first}, we're planning what to improve next at CMTV and we'd love your honest opinion: what works, "
