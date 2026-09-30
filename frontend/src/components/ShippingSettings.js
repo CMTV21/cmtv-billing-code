@@ -97,7 +97,7 @@ export default function ShippingSettings({ onGoToCurrency }) {
           </div>
           <button onClick={() => setForm({ ...form, methods: [...form.methods, newMethod()] })} className="flex items-center gap-1.5 text-sm bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-3 py-2 rounded-lg" data-testid="add-shipping-method-btn"><Plus className="w-4 h-4" /> Add method</button>
         </div>
-        {form.methods.length === 0 && <p className="text-sm text-gray-500 italic bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-dashed border-gray-300 dark:border-gray-600">No shipping methods yet — customers won't be able to check out with physical items until you add at least one.</p>}
+        {form.methods.length === 0 && <p className="text-sm text-gray-500 italic bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-dashed border-gray-300 dark:border-gray-600" data-testid="no-methods-hint">{form.shippo?.enabled ? 'No fallback methods — if carriers return no live rate for an address, customers will be unable to check out. Add at least one flat-rate row as a safety net.' : "No shipping methods yet — customers won't be able to check out with physical items until you add at least one."}</p>}
         <div className="space-y-3">
           {form.methods.map((m, i) => (
             <div key={m.id || i} className={`rounded-lg border p-4 ${m.enabled ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 opacity-70'}`} data-testid={`shipping-method-${i}`}>

@@ -33,7 +33,7 @@ export function CheckoutShipping({ items, address, setAddress, rates, setRates, 
       });
       setRates(res.data);
       if (res.data.options?.length === 1) setSelectedMethod(res.data.options[0]);
-      if (!res.data.options?.length) setError('No shipping options are available for this address. Please contact support.');
+      if (!res.data.options?.length) setError('No carrier could quote this address right now. Please double-check the address and try again, or contact support and we will arrange shipping for you.');
     } catch (e) {
       setError(e.response?.data?.detail || 'Could not calculate shipping. Please try again.');
     } finally {

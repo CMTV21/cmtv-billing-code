@@ -60,6 +60,14 @@ export function ShippoSettings({ shippo, onChange, currency = { code: 'USD', sym
       </div>
       <p className="text-[11px] text-gray-500 mt-1">Test connection uses the <strong>saved</strong> key — save first after pasting a new key.</p>
 
+      {shippo.api_token_set && shippo.mode === 'test' && (
+        <div className="mt-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-200 space-y-1" data-testid="shippo-test-mode-warning">
+          <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Test key limitations</p>
+          <p>Shippo's built-in <strong>test</strong> carrier accounts only quote shipments that <strong>start in the US</strong> (UPS / USPS / FedEx master accounts). A Canadian ship-from returns no rates in test mode — Canada Post's sandbox rejects the master account, and Purolator has no test account.</p>
+          <p>To quote from Canada: paste your <strong>shippo_live_</strong> key (Canada Post works instantly through Shippo's account), and connect Purolator / UPS Canada / FedEx under <span className="font-mono">Carriers</span> in Shippo. Until then, add a flat-rate row to the rate table above so customers can still check out.</p>
+        </div>
+      )}
+
       {carriers && (
         <div className="mt-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 text-sm" data-testid="shippo-carriers">
           <p className="font-medium text-gray-900 dark:text-white flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-green-600" /> {carriers.message}</p>

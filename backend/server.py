@@ -4978,6 +4978,9 @@ async def shippo_quote(settings: dict, entries: list, ship_to: dict, user_id: st
         logger.error(f"Shippo quote failed: {e} {e.detail or ''}")
         return {"options": [], "messages": [f"Live rates unavailable right now ({e})"]}
     options = normalize_shippo_rates(shipment, cfg, await store_currency_code(), CURRENCY_RATES)
+    msgs = shippo_shipment_messages(shipment)
+    if not options:
+        logger.warning(f"Shippo returned no rates for {ship_to.get('city')}, {ship_to.get('state')} {ship_to.get('country')} (from {settings['ship_from'].get('country')}): {msgs}")
     now = datetime.utcnow()
     for opt in options:
         await shipping_quotes_collection.update_one(
@@ -4986,7 +4989,7 @@ async def shippo_quote(settings: dict, entries: list, ship_to: dict, user_id: st
                       "parcel": parcel, "item_ids": sorted(str(e["item"]["_id"]) for e in entries), "created_at": now}},
             upsert=True,
         )
-    return {"options": options, "messages": shippo_shipment_messages(shipment) if not options else []}
+    return {"options": options, "messages": msgs if not options else []}
 
 
 async def resolve_shipping_method(settings: dict, entries: list, ship_to: dict, method_id: str, user_id: str) -> Optional[dict]:

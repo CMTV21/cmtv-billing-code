@@ -47,17 +47,43 @@ def money(value) -> float:
     return float(Decimal(str(value or "0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
+REGION_CODES = {
+    "CA": {"alberta": "AB", "british columbia": "BC", "manitoba": "MB", "new brunswick": "NB", "newfoundland and labrador": "NL", "newfoundland": "NL",
+           "nova scotia": "NS", "northwest territories": "NT", "nunavut": "NU", "ontario": "ON", "prince edward island": "PE", "pei": "PE",
+           "quebec": "QC", "québec": "QC", "saskatchewan": "SK", "yukon": "YT"},
+    "US": {"alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+           "district of columbia": "DC", "washington dc": "DC", "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID", "illinois": "IL", "indiana": "IN",
+           "iowa": "IA", "kansas": "KS", "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD", "massachusetts": "MA", "michigan": "MI",
+           "minnesota": "MN", "mississippi": "MS", "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ",
+           "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK", "oregon": "OR", "pennsylvania": "PA",
+           "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT", "virginia": "VA",
+           "washington": "WA", "west virginia": "WV", "wisconsin": "WI", "wyoming": "WY", "puerto rico": "PR"},
+}
+
+
+def normalize_region(state: str, country: str) -> str:
+    """Carriers want 2-letter codes for US/CA ('Ontario' → 'ON'); other countries pass through."""
+    s = (state or "").strip()
+    table = REGION_CODES.get((country or "").upper())
+    if not table or not s:
+        return s
+    if len(s) == 2:
+        return s.upper()
+    return table.get(s.lower().replace(".", ""), s)
+
+
 def to_shippo_address(addr: dict, email: str = "") -> dict:
     addr = addr or {}
+    country = (addr.get("country") or "").upper()
     out = {
         "name": addr.get("name") or addr.get("company") or "Customer",
         "company": addr.get("company") or "",
         "street1": addr.get("address1") or addr.get("street1") or "",
         "street2": addr.get("address2") or addr.get("street2") or "",
         "city": addr.get("city") or "",
-        "state": addr.get("state") or "",
-        "zip": addr.get("postal_code") or addr.get("zip") or "",
-        "country": (addr.get("country") or "").upper(),
+        "state": normalize_region(addr.get("state") or "", country),
+        "zip": (addr.get("postal_code") or addr.get("zip") or "").upper(),
+        "country": country,
         "phone": addr.get("phone") or "",
         "email": addr.get("email") or email or "",
     }
