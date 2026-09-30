@@ -96,6 +96,9 @@ export default function HomePage() {
     } else if (panelType === 'aether') {
       panel = (panelData?.aether_panels || []).find(p => p.index === Number(panelIndex));
       return panel?.name || `Aether ${Number(panelIndex) + 1}`;
+    } else if (panelType === 'gold') {
+      panel = (panelData?.gold_panels || []).find(p => p.index === Number(panelIndex));
+      return panel?.name || `Gold ${Number(panelIndex) + 1}`;
     } else {
       panel = panels.find(p => p.index === Number(panelIndex));
       return panel?.name || `Server ${Number(panelIndex) + 1}`;

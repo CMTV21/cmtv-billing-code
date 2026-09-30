@@ -24,6 +24,7 @@ import OneStreamPanelManagement from '../components/OneStreamPanelManagement';
 import NxtDashPanelManagement from '../components/NxtDashPanelManagement';
 import GhostSurfPanelManagement from '../components/GhostSurfPanelManagement';
 import AetherPanelManagement from '../components/AetherPanelManagement';
+import GoldPanelManagement from '../components/GoldPanelManagement';
 import InvoiceSettings from '../components/InvoiceSettings';
 import SEOSettings from '../components/SEOSettings';
 import ShippingSettings from '../components/ShippingSettings';
@@ -108,6 +109,18 @@ export default function AdminSettings() {
                 Aether Panels
                 <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
                   activeTab === 'aether' ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                }`}>New</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('gold')}
+                data-testid="settings-tab-gold"
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center justify-between ${
+                  activeTab === 'gold' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                Gold Panels
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                  activeTab === 'gold' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
                 }`}>New</span>
               </button>
               <button
@@ -319,6 +332,11 @@ export default function AdminSettings() {
             {/* Aether Tab */}
             {activeTab === 'aether' && (
               <AetherPanelManagement settings={settings} />
+            )}
+
+            {/* Gold Tab */}
+            {activeTab === 'gold' && (
+              <GoldPanelManagement settings={settings} />
             )}
 
             {/* Shipping Tab */}
