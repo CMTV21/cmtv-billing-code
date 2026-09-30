@@ -238,6 +238,6 @@ def init_routes():
         rows = []
         async for r in D["db"].cmtv_lapsed_winback.find({"code": {"$ne": None}}).sort("sent_at", -1).limit(200):
             used = await D["db"].coupon_usage.find_one({"coupon_code": r["code"]})
-            rows.append({"email": r.get("email"), "code": r["code"], "plan": r.get("plan"), "sent_at": r["sent_at"].isoformat(),
+            rows.append({"email": r.get("email"), "code": r["code"], "plan": r.get("plan"), "sent_at": r["sent_at"].isoformat() + "Z",
                          "used": bool(used), "order_id": (used or {}).get("order_id")})
         return {"config": await config(), "sent": rows, "used": sum(1 for r in rows if r["used"])}

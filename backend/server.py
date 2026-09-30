@@ -88,6 +88,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI
+# CMTV local change 2026-09-30: billing keeps UTC times without a zone; send them with a "Z" so browsers convert them
+# to local time (without it every time on the site showed 4 hours late in Toronto)
+import fastapi.encoders as _cmtv_fe
+_cmtv_fe.ENCODERS_BY_TYPE[datetime] = lambda d: d.isoformat() + ("Z" if d.tzinfo is None else "")
+
 app = FastAPI(title="IPTV Billing System", version="1.0.0")
 
 # CORS middleware

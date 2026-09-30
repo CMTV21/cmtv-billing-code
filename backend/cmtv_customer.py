@@ -26,7 +26,8 @@ def _oid(v):
 
 
 def _iso(v):
-    return v.isoformat() if isinstance(v, datetime) else v
+    # 2026-09-30: UTC times go out with a Z so the browser shows local time
+    return (v.isoformat() + ("Z" if v.tzinfo is None else "")) if isinstance(v, datetime) else v
 
 
 def _label(order):

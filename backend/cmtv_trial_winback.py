@@ -263,12 +263,12 @@ def init_routes():
         async for r in D["db"].cmtv_trial_winback.find({"code": {"$ne": None}}).sort("sent_at", -1).limit(200):
             used = await D["db"].coupon_usage.find_one({"coupon_code": r["code"]})
             rows.append({"email": r.get("email"), "code": r["code"], "trial": r.get("trial_name"),
-                         "sent_at": r["sent_at"].isoformat(), "used": bool(used), "order_id": (used or {}).get("order_id")})
+                         "sent_at": r["sent_at"].isoformat() + "Z", "used": bool(used), "order_id": (used or {}).get("order_id")})
         cfg = await config()
         return {"config": cfg, "sent": rows, "used": sum(1 for r in rows if r["used"])}
 
     @router.get("/preview")
     async def preview(current_user: dict = Depends(admin)):
         """Who would get the email on the next run (nothing is sent)."""
-        return [{"email": u.get("email"), "trial": s.get("product_name"), "trial_ended": s["expiry_date"].isoformat()}
+        return [{"email": u.get("email"), "trial": s.get("product_name"), "trial_ended": s["expiry_date"].isoformat() + "Z"}
                 for u, s in await candidates(await config())]

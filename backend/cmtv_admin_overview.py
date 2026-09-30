@@ -156,7 +156,7 @@ def init_routes():
                     week_no_ar += 1
                 c = await who(s.get("user_id"))
                 expiring.append({"customer": c["name"], "email": c["email"], "service": s.get("product_name"), "family": fam,
-                                 "ends": exp.isoformat(), "auto_renew": ar, "user_id": s.get("user_id")})
+                                 "ends": exp.isoformat() + "Z", "auto_renew": ar, "user_id": s.get("user_id")})
         expiring.sort(key=lambda e: e["ends"])
 
         # ---- customers ----
@@ -199,7 +199,7 @@ def init_routes():
                 {"recipient_email": 1, "subject": 1, "error_message": 1, "created_at": 1}).sort("created_at", -1).limit(20):
             email_failed.append({"to": e.get("recipient_email"), "subject": (e.get("subject") or "")[:90],
                                  "error": (e.get("error_message") or "")[:140],
-                                 "at": e["created_at"].isoformat() if isinstance(e.get("created_at"), datetime) else None})
+                                 "at": e["created_at"].isoformat() + "Z" if isinstance(e.get("created_at"), datetime) else None})
 
         # ---- trials -> paying, and the come-back offer (2026-09-27) ----
         async def trial_conversion(days):
@@ -235,7 +235,7 @@ def init_routes():
             c = await who(o.get("user_id"))
             recent.append({"id": str(o["_id"]), "customer": c["name"], "user_id": o.get("user_id"), "items": ", ".join(i.get("product_name", "") for i in o.get("items") or []),
                            "method": _label(o), "total": float(o.get("total") or 0), "status": o.get("status"),
-                           "provisioning": o.get("provisioning_status"), "created_at": o["created_at"].isoformat() if isinstance(o.get("created_at"), datetime) else None})
+                           "provisioning": o.get("provisioning_status"), "created_at": o["created_at"].isoformat() + "Z" if isinstance(o.get("created_at"), datetime) else None})
 
         return {
             "now": now.isoformat(), "month": month_start.strftime("%B"),
