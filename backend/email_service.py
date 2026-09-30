@@ -1142,6 +1142,43 @@ class EmailService:
             recipient_name=customer_name
         )
     
+    async def send_order_shipped(self, customer_email: str, customer_name: str, order_id: str, carrier_name: str,
+                                 tracking_number: str, tracking_url: str, items: list, shipping_address: dict, customer_id: str = None):
+        """Order shipped notification (physical items)"""
+        if self.db is None:
+            return False
+        template = await self.db.email_templates.find_one({"template_type": "order_shipped", "is_active": True})
+        if not template:
+            logger.warning("Order shipped template not found")
+            return False
+        items_html = "".join(f'<li style="margin: 0 0 4px;">{i.get("quantity", 1)} × {i.get("name", "")}</li>' for i in items or [])
+        addr = shipping_address or {}
+        address_html = "<br>".join(p for p in [addr.get("name"), addr.get("address1"), addr.get("address2"),
+                                                 " ".join(x for x in [addr.get("city"), addr.get("state"), addr.get("postal_code")] if x),
+                                                 addr.get("country")] if p)
+        tracking_link = f'<a href="{tracking_url}" style="color: #2563eb;">{tracking_number}</a>' if tracking_url else (tracking_number or "N/A")
+        variables = {
+            "customer_name": customer_name,
+            "order_id": order_id[-8:].upper() if order_id else "",
+            "carrier": carrier_name,
+            "tracking_number": tracking_number or "N/A",
+            "tracking_url": tracking_url or "",
+            "tracking_link": tracking_link,
+            "items": f"<ul style=\"margin: 8px 0; padding-left: 18px;\">{items_html}</ul>",
+            "shipping_address": address_html,
+            "dashboard_link": f"{self.backend_url}/orders",
+        }
+        subject = template["subject"]
+        content = template["html_content"]
+        for key, value in variables.items():
+            subject = subject.replace(f"{{{{{key}}}}}", str(value))
+            content = content.replace(f"{{{{{key}}}}}", str(value))
+        wrapped_content = self._wrap_email(content, template["name"], customer_email, "transactional")
+        return await self.send_email(
+            to_email=customer_email, subject=subject, html_content=wrapped_content,
+            email_type="transactional", template_type="order_shipped", customer_id=customer_id, recipient_name=customer_name,
+        )
+
     async def send_service_renewed(
         self,
         customer_email: str,

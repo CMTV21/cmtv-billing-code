@@ -3,13 +3,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ordersAPI, servicesAPI } from '../api/api';
 import { useCartStore, useAuthStore } from '../store/store';
-import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign, Minus, Package } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { CheckoutAutoRenew } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25
 import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
+import { CheckoutShipping, EMPTY_ADDRESS } from '../components/CheckoutShipping';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -21,10 +22,29 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { items, addItem, removeItem, clearCart, getTotal, updateItemAction } = useCartStore();
+  const { items, addItem, removeItem, clearCart, getTotal, updateItemAction, updateQuantity } = useCartStore();
   // CMTV local change 2026-09-25: add-ons only offer to extend the same add-on; TV plans never offer to extend an add-on
   const addonIds = new Set(useAddonProducts().map((p) => p.id));
   const trialOf = useTrialOf();
+  const hasPhysicalItems = items.some((i) => i.item_type === 'physical');
+  const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
+  const [shippingRates, setShippingRates] = useState(null);
+  const [shippingMethod, setShippingMethod] = useState(null);
+  const shippingCost = hasPhysicalItems && shippingMethod ? Number(shippingMethod.price || 0) : 0;
+  const getGrandTotal = () => getTotal() + shippingCost;
+  const buildOrderItems = () => items.map(i => ({
+    product_id: i.product_id, product_name: i.product_name,
+    term_months: i.term_months || 0, price: i.price, account_type: i.account_type,
+    action_type: i.action_type, renewal_service_id: i.renewal_service_id,
+    item_type: i.item_type || 'service', quantity: i.quantity || 1,
+    credits: i.credits, lineup: i.lineup, // CMTV 2026-09-28/29: reseller credit amount, Imperium line-up
+  }));
+  const shippingPayload = () => hasPhysicalItems ? { shipping_address: shippingAddress, shipping_method_id: shippingMethod?.method_id } : {};
+  const validateShipping = () => {
+    if (!hasPhysicalItems) return true;
+    if (!shippingMethod) { setError('Please enter your shipping address and choose a shipping method.'); return false; }
+    return true;
+  };
   const { symbol: currencySymbol, convertPrice, code: currencyCode } = useCurrencyStore();
   const [error, setError] = React.useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -42,7 +62,7 @@ export default function CheckoutPage() {
   const tierWins = tierQuote.amount > discountAmount + 0.009;
   const effectiveDiscount = tierWins ? tierQuote.amount : discountAmount;
   const creditsApplied = Math.min(creditsUsed, Math.max(0, getTotal() - effectiveDiscount));
-  const payTotal = Math.max(0, Math.round((getTotal() - effectiveDiscount - creditsApplied) * 100) / 100);
+  const payTotal = Math.max(0, Math.round((getTotal() + shippingCost - effectiveDiscount - creditsApplied) * 100) / 100); // + shipping (3.9.0 merge)
 
   // Reseller credentials state
   const [resellerUsername, setResellerUsername] = useState('');
@@ -212,9 +232,12 @@ export default function CheckoutPage() {
       return;
     }
     
+    if (!validateShipping()) return;
+    
     createOrderMutation.mutate({
-      items: items,
-      total: getTotal(),
+      items: buildOrderItems(),
+      total: getGrandTotal(),
+      ...shippingPayload(),
       coupon_code: appliedCouponCode,
       use_credits: creditsApplied,
       reseller_credentials: cmtvResellerCreds()
@@ -225,12 +248,9 @@ export default function CheckoutPage() {
     try {
       if (!currentOrderId) {
         const orderData = {
-          items: items.map(i => ({
-            product_id: i.product_id, product_name: i.product_name,
-            term_months: i.term_months, price: i.price, account_type: i.account_type,
-            action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */
-          })),
-          total: getTotal(),
+          items: buildOrderItems(),
+          total: getGrandTotal(),
+          ...shippingPayload(),
           coupon_code: appliedCouponCode,
           use_credits: creditsApplied,
           reseller_credentials: cmtvResellerCreds()
@@ -291,12 +311,9 @@ export default function CheckoutPage() {
   const handleStripePay = async () => {
     try {
       const orderData = {
-        items: items.map(i => ({
-          product_id: i.product_id, product_name: i.product_name,
-          term_months: i.term_months, price: i.price, account_type: i.account_type,
-          action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */
-        })),
-        total: getTotal(),
+        items: buildOrderItems(),
+        total: getGrandTotal(),
+        ...shippingPayload(),
         coupon_code: appliedCouponCode,
         use_credits: creditsApplied,
         reseller_credentials: cmtvResellerCreds()
@@ -333,7 +350,7 @@ export default function CheckoutPage() {
     // Square form will handle payment
     if (!currentOrderId) {
       // Create order first
-      const orderData = { items: items, total: getTotal() };
+      const orderData = { items: buildOrderItems(), total: getGrandTotal(), ...shippingPayload() };
       createOrderMutation.mutate(orderData);
     }
   };
@@ -357,7 +374,7 @@ export default function CheckoutPage() {
       console.log('Starting Blockonomics Bitcoin payment...');
       
       // Create order first
-      const orderData = { items: items, total: getTotal() };
+      const orderData = { items: buildOrderItems(), total: getGrandTotal(), ...shippingPayload() };
       const orderResponse = await createOrder(orderData);
       const orderId = orderResponse.data.order_id;
       setCurrentOrderId(orderId);
@@ -437,12 +454,9 @@ export default function CheckoutPage() {
       setHelcimLoading(true);
 
       const orderData = {
-        items: items.map(i => ({
-          product_id: i.product_id, product_name: i.product_name,
-          term_months: i.term_months, price: i.price, account_type: i.account_type,
-          action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */
-        })),
-        total: getTotal(),
+        items: buildOrderItems(),
+        total: getGrandTotal(),
+        ...shippingPayload(),
         coupon_code: appliedCouponCode,
         use_credits: creditsApplied,
         reseller_credentials: cmtvResellerCreds()
@@ -661,15 +675,28 @@ export default function CheckoutPage() {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <h3 className="font-semibold text-gray-900 dark:text-white">{item.product_name}</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                          {item.term_months} {item.term_months === 1 ? 'Month' : 'Months'}
-                        </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          {item.account_type === 'subscriber' ? 'Subscriber' : 'Reseller'}
-                        </p>
+                        {item.item_type === 'physical' ? (
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/30 px-2 py-0.5 rounded-full"><Package className="w-3 h-3" /> Physical item · ships to you</span>
+                            <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg">
+                              <button onClick={() => updateQuantity(item.product_id, (item.quantity || 1) - 1)} className="p-1 text-gray-600 dark:text-gray-300 hover:text-blue-600" data-testid={`cart-qty-minus-${index}`}><Minus className="w-3.5 h-3.5" /></button>
+                              <span className="w-7 text-center text-sm font-semibold text-gray-900 dark:text-white" data-testid={`cart-qty-${index}`}>{item.quantity || 1}</span>
+                              <button onClick={() => updateQuantity(item.product_id, (item.quantity || 1) + 1)} className="p-1 text-gray-600 dark:text-gray-300 hover:text-blue-600" data-testid={`cart-qty-plus-${index}`}><Plus className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              {item.term_months} {item.term_months === 1 ? 'Month' : 'Months'}
+                            </p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              {item.account_type === 'subscriber' ? 'Subscriber' : 'Reseller'}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-xl font-bold text-gray-900 dark:text-white">{currencySymbol}{convertPrice(item.price).toFixed(2)}</span>
+                        <span className="text-xl font-bold text-gray-900 dark:text-white">{currencySymbol}{convertPrice(item.price * (item.quantity || 1)).toFixed(2)}</span>
                         <button
                           onClick={() => removeItem(item.product_id, item.term_months)}
                           className="text-red-600 hover:text-red-700"
@@ -891,6 +918,15 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
+                {hasPhysicalItems && (
+                  <div className="flex justify-between" data-testid="summary-shipping-line">
+                    <span className="text-gray-600 dark:text-gray-300">Shipping</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      {shippingMethod ? (shippingCost === 0 ? 'Free' : `${currencySymbol}${convertPrice(shippingCost).toFixed(2)}`) : <span className="text-xs text-gray-500 font-normal">calculated below</span>}
+                    </span>
+                  </div>
+                )}
+                
                 <div className="flex justify-between text-lg font-bold border-t pt-4">
                   <span className="text-gray-900 dark:text-white">Total</span>
                   <span className="text-blue-600">{currencySymbol}{convertPrice(payTotal).toFixed(2)}</span>
@@ -1404,7 +1440,7 @@ export default function CheckoutPage() {
                 ) : paymentMethod === 'square' && settings?.square?.enabled ? (
                   currentOrderId ? (
                     <SquarePaymentForm
-                      amount={getTotal()}
+                      amount={getGrandTotal()}
                       orderId={currentOrderId}
                       settings={settings.square}
                       onSuccess={handleSquareSuccess}
@@ -1561,8 +1597,8 @@ export default function CheckoutPage() {
                           const headers = { Authorization: `Bearer ${authToken}` };
                           // Create order first
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
-                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */ })),
-                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
+                            items: buildOrderItems(),
+                            total: getGrandTotal(), ...shippingPayload(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
                             payment_method: 'ghostpay' // CMTV local change 2026-09-25 (kept in the 2026-09-29 merge)
                           }, { headers });
                           const orderId = orderRes.data.order_id || orderRes.data.id;
@@ -1612,8 +1648,8 @@ export default function CheckoutPage() {
                           // Send card data to backend for server-side tokenization & payment
                           const authToken = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
-                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id, credits: i.credits /* CMTV 2026-09-28 */, lineup: i.lineup /* CMTV 2026-09-29 */ })),
-                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
+                            items: buildOrderItems(),
+                            total: getGrandTotal(), ...shippingPayload(), coupon_code: appliedCouponCode, use_credits: creditsApplied,
                             reseller_credentials: cmtvResellerCreds(),
                             payment_method: 'tagadapay' // CMTV local change 2026-09-25
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
@@ -1641,7 +1677,7 @@ export default function CheckoutPage() {
                       data-testid="tagadapay-pay-btn"
                     >
                       <CreditCard className="w-5 h-5" />
-                      {ghostpayLoading ? 'Processing...' : `Pay $${getTotal().toFixed(2)}`}
+                      {ghostpayLoading ? 'Processing...' : `Pay $${getGrandTotal().toFixed(2)}`}
                     </button>
                   </div>
                 ) : (

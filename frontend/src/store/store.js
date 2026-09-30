@@ -20,8 +20,21 @@ export const useCartStore = create(
   persist(
     (set, get) => ({
       items: [],
-      // Add item with optional renewal info
-      addItem: (item) => set((state) => ({ items: [...state.items, item] })),
+      // Add item with optional renewal info (physical items merge into one line with a quantity)
+      addItem: (item) => set((state) => {
+        if (item.item_type === 'physical') {
+          const existing = state.items.find((i) => i.item_type === 'physical' && i.product_id === item.product_id);
+          if (existing) {
+            return { items: state.items.map((i) => i === existing ? { ...i, quantity: (i.quantity || 1) + (item.quantity || 1) } : i) };
+          }
+          return { items: [...state.items, { ...item, quantity: item.quantity || 1, term_months: 0 }] };
+        }
+        return { items: [...state.items, item] };
+      }),
+      updateQuantity: (product_id, quantity) => set((state) => ({
+        items: state.items.map((i) => i.item_type === 'physical' && i.product_id === product_id ? { ...i, quantity: Math.max(1, quantity) } : i),
+      })),
+      hasPhysicalItems: () => get().items.some((i) => i.item_type === 'physical'),
       // Add item specifically for renewal/extension
       addRenewalItem: (item, serviceId, actionType = 'extend') => set((state) => ({ 
         items: [...state.items, { 
@@ -50,7 +63,7 @@ export const useCartStore = create(
           return { items: newItems };
         }),
       clearCart: () => set({ items: [] }),
-      getTotal: () => get().items.reduce((sum, item) => sum + item.price, 0),
+      getTotal: () => get().items.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0),
     }),
     {
       name: 'cart-storage',

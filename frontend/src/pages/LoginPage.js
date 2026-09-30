@@ -38,6 +38,8 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('message') === 'email_verified') {
       setSuccessMessage('✅ Email verified successfully! You can now log in.');
+    } else if (params.get('message') === 'password_reset') {
+      setSuccessMessage('✅ Password reset successfully! Sign in with your new password.');
     } else if (params.get('registered') === 'true') {
       setSuccessMessage('📧 Registration successful! Please check your email to verify your account.');
     } else if (params.get('message') === 'password_reset') {
@@ -224,7 +226,7 @@ export default function LoginPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Password
                   </label>
-                  <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                  <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-medium" data-testid="forgot-password-link">
                     Forgot password?
                   </Link>
                 </div>

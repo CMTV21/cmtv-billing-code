@@ -64,6 +64,27 @@ export const ordersAPI = {
   checkGhostPay: (id) => api.post(`/api/orders/${id}/ghostpay/check`),
 };
 
+// Physical items & shipping
+export const physicalItemsAPI = {
+  getAll: () => api.get('/api/physical-items'),
+  getOne: (id) => api.get(`/api/physical-items/${id}`),
+  adminList: () => api.get('/api/admin/physical-items'),
+  adminCreate: (data) => api.post('/api/admin/physical-items', data),
+  adminUpdate: (id, data) => api.put(`/api/admin/physical-items/${id}`, data),
+  adminDelete: (id) => api.delete(`/api/admin/physical-items/${id}`),
+};
+
+export const shippingAPI = {
+  config: () => api.get('/api/shipping/config'),
+  rates: (data) => api.post('/api/shipping/rates', data),
+  myShipments: () => api.get('/api/shipments'),
+  adminSettings: () => api.get('/api/admin/shipping/settings'),
+  adminSaveSettings: (data) => api.put('/api/admin/shipping/settings', data),
+  adminTestRates: (data) => api.post('/api/admin/shipping/test-rates', data),
+  adminShipments: (status) => api.get('/api/admin/shipments', { params: status ? { status } : {} }),
+  adminUpdateShipment: (id, data) => api.put(`/api/admin/shipments/${id}`, data),
+};
+
 // Services API
 export const servicesAPI = {
   getAll: () => api.get('/api/services'),

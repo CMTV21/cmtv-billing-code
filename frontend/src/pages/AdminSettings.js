@@ -26,6 +26,7 @@ import GhostSurfPanelManagement from '../components/GhostSurfPanelManagement';
 import AetherPanelManagement from '../components/AetherPanelManagement';
 import InvoiceSettings from '../components/InvoiceSettings';
 import SEOSettings from '../components/SEOSettings';
+import ShippingSettings from '../components/ShippingSettings';
 import { toast } from 'sonner';
 
 export default function AdminSettings() {
@@ -116,6 +117,18 @@ export default function AdminSettings() {
                 }`}
               >
                 GhostSurf VPN
+              </button>
+              <button
+                onClick={() => setActiveTab('shipping')}
+                data-testid="settings-tab-shipping"
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center justify-between ${
+                  activeTab === 'shipping' ? 'bg-blue-600 text-white' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                Shipping
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                  activeTab === 'shipping' ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                }`}>New</span>
               </button>
               <button
                 onClick={() => setActiveTab('branding')}
@@ -306,6 +319,11 @@ export default function AdminSettings() {
             {/* Aether Tab */}
             {activeTab === 'aether' && (
               <AetherPanelManagement settings={settings} />
+            )}
+
+            {/* Shipping Tab */}
+            {activeTab === 'shipping' && (
+              <ShippingSettings />
             )}
 
             {/* Branding Tab */}

@@ -33,6 +33,7 @@ from models import (
     User, UserCreate, UserLogin, UserRole,
     Product, ProductCreate,
     Order, OrderCreate, OrderStatus,
+    PhysicalItemCreate, ShippingRateRequest, ShipmentUpdate,
     Invoice, Service, ServiceStatus, AccountType,
     Settings, XtreamSettings, SMTPSettings, PayPalSettings, StripeSettings,
     Ticket, TicketCreate, TicketStatus, TicketPriority, TicketMessage,
@@ -66,6 +67,9 @@ import cockpit_service  # CMTV local change 2026-09-24: Stremio / CMTVpn account
 from email_logger import EmailLogger
 from unsubscribe_manager import UnsubscribeManager
 from invoice_service import get_invoice_generator
+from shipping_service import (
+    get_shipping_rates, merge_shipping_settings, carrier_tracking_url, CARRIERS as SHIPPING_CARRIERS,
+)
 
 # Import 2FA and reCAPTCHA services
 from two_factor_service import TwoFactorService
@@ -271,6 +275,10 @@ download_logs_collection = db.download_logs
 licenses_collection = db.licenses
 license_validations_collection = db.license_validations
 imported_users_collection = db.imported_users
+physical_items_collection = db.physical_items
+shipments_collection = db.shipments
+shipping_settings_collection = db.shipping_settings
+password_reset_tokens_collection = db.password_reset_tokens
 
 # Deduplicate imported users and create unique index on startup
 async def ensure_indexes():
@@ -757,6 +765,11 @@ async def get_settings() -> dict:
         return default_settings
     return settings
 
+
+async def get_shipping_settings() -> dict:
+    stored = await shipping_settings_collection.find_one({}, {"_id": 0})
+    return merge_shipping_settings(stored)
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
@@ -769,6 +782,8 @@ async def startup_event():
     await products_collection.create_index("name")
     await orders_collection.create_index("user_id")
     await services_collection.create_index("user_id")
+    await password_reset_tokens_collection.create_index("expires_at", expireAfterSeconds=0)
+    await password_reset_tokens_collection.create_index("token_hash")
     
     # Create default admin user if not exists
     admin_exists = await users_collection.find_one({"role": "admin"})
@@ -1356,6 +1371,57 @@ async def startup_event():
         ]
         await email_templates_collection.insert_many(default_templates)
         logger.info("Default email templates created")
+
+    # Ensure the order-shipped template exists on upgraded installs
+    if not await email_templates_collection.find_one({"template_type": "order_shipped"}):
+        await email_templates_collection.insert_one({
+            "template_type": "order_shipped",
+            "name": "Order Shipped",
+            "subject": "Your order {{order_id}} has shipped",
+            "html_content": (
+                '<p style="font-size: 15px; color: #374151; line-height: 1.6;">Hi {{customer_name}},</p>\n'
+                '<p style="font-size: 15px; color: #374151; line-height: 1.6;">Good news — your order <strong>#{{order_id}}</strong> is on its way.</p>\n'
+                '<div style="background-color: #f9fafb; padding: 16px; border-radius: 4px; border-left: 3px solid #7c3aed; margin: 16px 0;">\n'
+                '    <p style="margin: 0 0 8px; font-size: 14px;"><strong>Carrier:</strong> {{carrier}}</p>\n'
+                '    <p style="margin: 0 0 8px; font-size: 14px;"><strong>Tracking number:</strong> {{tracking_link}}</p>\n'
+                '    <p style="margin: 0 0 4px; font-size: 14px;"><strong>Items:</strong></p>{{items}}\n'
+                '    <p style="margin: 8px 0 4px; font-size: 14px;"><strong>Shipping to:</strong></p>\n'
+                '    <p style="margin: 0; font-size: 14px; color: #4b5563;">{{shipping_address}}</p>\n'
+                '</div>\n'
+                '<p style="margin-top: 20px;"><a href="{{dashboard_link}}" style="background-color: #2563eb; color: white; padding: 12px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">View My Orders</a></p>'
+            ),
+            "text_content": "Hi {{customer_name}}, your order #{{order_id}} has shipped via {{carrier}}. Tracking: {{tracking_number}} {{tracking_url}}",
+            "available_variables": ["customer_name", "order_id", "carrier", "tracking_number", "tracking_url", "tracking_link", "items", "shipping_address", "dashboard_link"],
+            "description": "Sent when a physical-item order is marked as shipped",
+            "is_active": True,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        })
+        logger.info("Order shipped email template created")
+
+    if not await email_templates_collection.find_one({"template_type": "password_reset"}):
+        await email_templates_collection.insert_one({
+            "template_type": "password_reset",
+            "name": "Password Reset",
+            "subject": "Reset your password",
+            "html_content": (
+                '<p style="font-size: 15px; color: #374151; line-height: 1.6;">Hi {{customer_name}},</p>\n'
+                '<p style="font-size: 15px; color: #374151; line-height: 1.6;">We received a request to reset the password for your account. Click the button below to choose a new password.</p>\n'
+                '<p style="margin: 24px 0; text-align: center;">\n'
+                '    <a href="{{reset_link}}" style="background-color: #1a56db; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 4px; display: inline-block; font-size: 15px; font-weight: 600;">Reset Password</a>\n'
+                '</p>\n'
+                '<p style="font-size: 13px; color: #6b7280; line-height: 1.5;">If the button does not work, copy this link into your browser:</p>\n'
+                '<p style="font-size: 13px; color: #6b7280; word-break: break-all; background: #f9fafb; padding: 10px; border-radius: 4px;">{{reset_link}}</p>\n'
+                '<p style="font-size: 13px; color: #6b7280; line-height: 1.5;">This link expires in {{expires_in}}. If you did not request a password reset, you can safely ignore this email — your password will not change.</p>'
+            ),
+            "text_content": "Hi {{customer_name}},\n\nReset your password by visiting:\n{{reset_link}}\n\nThis link expires in {{expires_in}}. If you did not request this, ignore this email.",
+            "available_variables": ["customer_name", "reset_link", "expires_in"],
+            "description": "Sent when a user requests a password reset from the login page",
+            "is_active": True,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        })
+        logger.info("Password reset email template created")
     
     # Initialize lifecycle manager and background jobs
     global lifecycle_manager, background_scheduler
@@ -3705,7 +3771,23 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
     # CMTV local change 2026-09-24: always charge the product's own price. The browser's price was trusted
     # unless it was <= 0, so a modified request could buy any plan for $0.01. Each product holds one price.
     actual_total = 0.0
+    physical_entries = []
     for item in order_data.items:
+        if item.item_type == "physical":
+            pitem = await physical_items_collection.find_one({"_id": str_to_objectid(item.product_id), "active": True})
+            if not pitem:
+                raise HTTPException(status_code=400, detail=f"Item '{item.product_name}' is no longer available")
+            qty = max(1, int(item.quantity or 1))
+            if pitem.get("track_stock", True) and int(pitem.get("stock_quantity", 0)) < qty:
+                raise HTTPException(status_code=400, detail=f"Only {int(pitem.get('stock_quantity', 0))} of '{pitem['name']}' left in stock")
+            item.quantity = qty
+            item.price = float(pitem.get("price", 0))
+            item.product_name = pitem["name"]
+            item.account_type = AccountType.PHYSICAL
+            item.term_months = 0
+            actual_total += item.price * qty
+            physical_entries.append({"item": pitem, "quantity": qty})
+            continue
         product = await products_collection.find_one({"_id": str_to_objectid(item.product_id)})
         if not product:
             raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}")
@@ -3730,6 +3812,23 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             item.lineup = None
         actual_total += item.price
 
+
+    # Shipping (developer 3.9.0, merged 2026-09-30): required for physical items, priced on the server
+    # Shipping (required when the cart has physical items) — price is recomputed server-side
+    shipping_cost = 0.0
+    shipping_method = None
+    shipping_address = None
+    if physical_entries:
+        if not order_data.shipping_address or not order_data.shipping_method_id:
+            raise HTTPException(status_code=400, detail="Shipping address and shipping method are required for physical items")
+        shipping_address = order_data.shipping_address.dict()
+        ship_settings = await get_shipping_settings()
+        quote = await get_shipping_rates(ship_settings, physical_entries, shipping_address)
+        shipping_method = next((o for o in quote["options"] if o.get("method_id") == order_data.shipping_method_id), None)
+        if not shipping_method:
+            raise HTTPException(status_code=400, detail="Selected shipping method is not available for this address. Please re-select shipping.")
+        shipping_cost = float(shipping_method["price"])
+    
     subtotal = actual_total
     discount_amount = 0.0
     credits_used = 0.0
@@ -3764,7 +3863,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         order_data.coupon_code = None
 
     # Calculate total after discount
-    total_after_discount = subtotal - discount_amount
+    total_after_discount = subtotal - discount_amount + shipping_cost   # coupons never discount shipping
     
     # Apply credits if requested
     if order_data.use_credits > 0:
@@ -3794,6 +3893,10 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         "referral_tier": tier_discount["tier"] if discount_source == "tier" else None,
         "tier_discount_lines": tier_discount["lines"] if discount_source == "tier" else None,
         "credits_used": credits_used,
+        "shipping_cost": shipping_cost,
+        "shipping_method": shipping_method,
+        "shipping_address": shipping_address,
+        "has_physical_items": bool(physical_entries),
         "total": final_total,
         "reseller_credentials": order_data.reseller_credentials,  # Save custom credentials
         "status": "pending",
@@ -5078,6 +5181,7 @@ async def admin_download_invoice_pdf(invoice_id: str, current_user: dict = Depen
         user = await users_collection.find_one({"_id": str_to_objectid(invoice["user_id"])})
     
     items = []
+    order = None
     if invoice.get("order_id"):
         try:
             order = await orders_collection.find_one({"_id": str_to_objectid(invoice["order_id"])})
@@ -5087,7 +5191,7 @@ async def admin_download_invoice_pdf(invoice_id: str, current_user: dict = Depen
             pass
     
     settings = await get_settings()
-    pdf_bytes = generate_invoice_pdf(invoice, user, items, settings)
+    pdf_bytes = generate_invoice_pdf(invoice, user, items, settings, order)
     
     filename = f"{invoice.get('invoice_number', 'invoice')}.pdf"
     return Response(
@@ -5111,6 +5215,7 @@ async def customer_download_invoice_pdf(invoice_id: str, current_user: dict = De
     user = await users_collection.find_one({"_id": str_to_objectid(current_user["sub"])})
     
     items = []
+    order = None
     if invoice.get("order_id"):
         try:
             order = await orders_collection.find_one({"_id": str_to_objectid(invoice["order_id"])})
@@ -5120,7 +5225,7 @@ async def customer_download_invoice_pdf(invoice_id: str, current_user: dict = De
             pass
     
     settings = await get_settings()
-    pdf_bytes = generate_invoice_pdf(invoice, user, items, settings)
+    pdf_bytes = generate_invoice_pdf(invoice, user, items, settings, order)
     
     filename = f"{invoice.get('invoice_number', 'invoice')}.pdf"
     return Response(
@@ -5185,6 +5290,197 @@ async def _alert_provisioning_failure(order_id: str, order: dict, user: dict, fa
                                                email_type="transactional")
         except Exception as e:
             logger.warning(f"Provisioning alert: email failed: {e}")
+# ===== PHYSICAL ITEMS, SHIPPING & SHIPMENTS =====
+
+def _serialize_physical_item(doc: dict) -> dict:
+    doc["id"] = str(doc.pop("_id"))
+    return doc
+
+
+@app.get("/api/physical-items")
+async def list_physical_items_public():
+    items = []
+    async for doc in physical_items_collection.find({"active": True}).sort([("display_order", 1), ("created_at", -1)]):
+        item = _serialize_physical_item(doc)
+        item["in_stock"] = (not item.get("track_stock", True)) or int(item.get("stock_quantity", 0)) > 0
+        items.append(item)
+    return items
+
+
+@app.get("/api/physical-items/{item_id}")
+async def get_physical_item_public(item_id: str):
+    doc = await physical_items_collection.find_one({"_id": str_to_objectid(item_id), "active": True})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Item not found")
+    item = _serialize_physical_item(doc)
+    item["in_stock"] = (not item.get("track_stock", True)) or int(item.get("stock_quantity", 0)) > 0
+    return item
+
+
+@app.get("/api/admin/physical-items")
+async def list_physical_items_admin(current_user: dict = Depends(get_current_admin_user)):
+    return [_serialize_physical_item(d) async for d in physical_items_collection.find({}).sort([("display_order", 1), ("created_at", -1)])]
+
+
+@app.post("/api/admin/physical-items")
+async def create_physical_item(item: PhysicalItemCreate, current_user: dict = Depends(get_current_admin_user)):
+    doc = item.dict()
+    doc["created_at"] = datetime.utcnow()
+    doc["updated_at"] = datetime.utcnow()
+    result = await physical_items_collection.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _serialize_physical_item(doc)
+
+
+@app.put("/api/admin/physical-items/{item_id}")
+async def update_physical_item(item_id: str, item: PhysicalItemCreate, current_user: dict = Depends(get_current_admin_user)):
+    doc = item.dict()
+    doc["updated_at"] = datetime.utcnow()
+    result = await physical_items_collection.update_one({"_id": str_to_objectid(item_id)}, {"$set": doc})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    updated = await physical_items_collection.find_one({"_id": str_to_objectid(item_id)})
+    return _serialize_physical_item(updated)
+
+
+@app.delete("/api/admin/physical-items/{item_id}")
+async def delete_physical_item(item_id: str, current_user: dict = Depends(get_current_admin_user)):
+    result = await physical_items_collection.delete_one({"_id": str_to_objectid(item_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"message": "Item deleted"}
+
+
+@app.get("/api/shipping/config")
+async def get_shipping_config_public():
+    s = await get_shipping_settings()
+    return {"ship_from_country": s["ship_from"].get("country", ""), "weight_unit": s.get("weight_unit", "kg"),
+            "enabled": bool([m for m in s["methods"] if m.get("enabled", True)])}
+
+
+@app.post("/api/shipping/rates")
+async def quote_shipping_rates(req: ShippingRateRequest, current_user: dict = Depends(get_current_user)):
+    entries = []
+    for line in req.items:
+        pitem = await physical_items_collection.find_one({"_id": str_to_objectid(line.physical_item_id), "active": True})
+        if not pitem:
+            raise HTTPException(status_code=400, detail="One of the items is no longer available")
+        entries.append({"item": pitem, "quantity": max(1, line.quantity)})
+    if not entries:
+        return {"package": None, "options": []}
+    if not (req.ship_to or {}).get("country"):
+        raise HTTPException(status_code=400, detail="Destination country is required")
+    settings = await get_shipping_settings()
+    return await get_shipping_rates(settings, entries, req.ship_to)
+
+
+@app.get("/api/admin/shipping/settings")
+async def get_shipping_settings_admin(current_user: dict = Depends(get_current_admin_user)):
+    s = await get_shipping_settings()
+    s["carrier_catalog"] = {c: {"name": v["name"], "credential_fields": v["credential_fields"]} for c, v in SHIPPING_CARRIERS.items()}
+    return s
+
+
+@app.put("/api/admin/shipping/settings")
+async def update_shipping_settings_admin(request: Request, current_user: dict = Depends(get_current_admin_user)):
+    body = await request.json()
+    body.pop("carrier_catalog", None)
+    for method in body.get("methods", []) or []:
+        if not method.get("id"):
+            method["id"] = str(uuid.uuid4())
+    merged = merge_shipping_settings(body)
+    merged["updated_at"] = datetime.utcnow()
+    await shipping_settings_collection.update_one({}, {"$set": merged}, upsert=True)
+    return await get_shipping_settings()
+
+
+@app.post("/api/admin/shipping/test-rates")
+async def test_shipping_rates_admin(request: Request, current_user: dict = Depends(get_current_admin_user)):
+    """Admin sandbox: quote the configured table for an arbitrary weight/value/destination"""
+    body = await request.json()
+    settings = await get_shipping_settings()
+    fake_item = {"price": float(body.get("subtotal", 0)), "weight": float(body.get("weight", 0)), "weight_unit": settings.get("weight_unit", "kg")}
+    return await get_shipping_rates(settings, [{"item": fake_item, "quantity": 1}], {"country": body.get("country", "")})
+
+
+async def create_shipment_for_order(order_id: str, order: dict, user: dict, physical_items: list):
+    if await shipments_collection.find_one({"order_id": order_id}):
+        return
+    lines = []
+    for it in physical_items:
+        qty = max(1, int(it.get("quantity", 1)))
+        lines.append({"physical_item_id": it["product_id"], "name": it["product_name"], "quantity": qty, "unit_price": float(it.get("price", 0))})
+        pitem = await physical_items_collection.find_one({"_id": str_to_objectid(it["product_id"])})
+        if pitem and pitem.get("track_stock", True):
+            await physical_items_collection.update_one({"_id": pitem["_id"]}, {"$inc": {"stock_quantity": -qty}})
+    method = order.get("shipping_method") or {}
+    await shipments_collection.insert_one({
+        "order_id": order_id,
+        "user_id": order["user_id"],
+        "customer_name": user.get("name", ""),
+        "customer_email": user.get("email", ""),
+        "items": lines,
+        "shipping_address": order.get("shipping_address"),
+        "shipping_method": method,
+        "carrier": method.get("carrier", ""),
+        "shipping_cost": float(order.get("shipping_cost", 0)),
+        "status": "pending",
+        "tracking_number": "",
+        "tracking_url": "",
+        "notes": "",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    })
+    logger.info(f"Shipment created for order {order_id} ({len(lines)} line(s))")
+
+
+def _serialize_shipment(doc: dict) -> dict:
+    doc["id"] = str(doc.pop("_id"))
+    return doc
+
+
+@app.get("/api/shipments")
+async def list_my_shipments(current_user: dict = Depends(get_current_user)):
+    return [_serialize_shipment(d) async for d in shipments_collection.find({"user_id": current_user["sub"]}).sort("created_at", -1)]
+
+
+@app.get("/api/admin/shipments")
+async def list_shipments_admin(status: Optional[str] = None, current_user: dict = Depends(get_current_admin_user)):
+    query = {"status": status} if status and status != "all" else {}
+    return [_serialize_shipment(d) async for d in shipments_collection.find(query).sort("created_at", -1).limit(500)]
+
+
+@app.put("/api/admin/shipments/{shipment_id}")
+async def update_shipment_admin(shipment_id: str, update: ShipmentUpdate, background_tasks: BackgroundTasks,
+                                current_user: dict = Depends(get_current_admin_user)):
+    shipment = await shipments_collection.find_one({"_id": str_to_objectid(shipment_id)})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    changes = {k: v for k, v in update.dict().items() if v is not None}
+    carrier = changes.get("carrier", shipment.get("carrier", ""))
+    tracking = changes.get("tracking_number", shipment.get("tracking_number", ""))
+    if "tracking_url" not in changes or not changes.get("tracking_url"):
+        changes["tracking_url"] = carrier_tracking_url(carrier, tracking)
+    new_status = changes.get("status")
+    if new_status == "shipped" and shipment.get("status") != "shipped":
+        changes["shipped_at"] = datetime.utcnow()
+    if new_status == "delivered":
+        changes["delivered_at"] = datetime.utcnow()
+    changes["updated_at"] = datetime.utcnow()
+    await shipments_collection.update_one({"_id": shipment["_id"]}, {"$set": changes})
+    updated = await shipments_collection.find_one({"_id": shipment["_id"]})
+    if new_status == "shipped" and shipment.get("status") != "shipped":
+        email_service = await get_configured_email_service()
+        if email_service and updated.get("customer_email"):
+            background_tasks.add_task(
+                email_service.send_order_shipped,
+                updated["customer_email"], updated.get("customer_name", ""), updated["order_id"],
+                SHIPPING_CARRIERS.get(updated.get("carrier", "other"), SHIPPING_CARRIERS["other"])["name"],
+                updated.get("tracking_number", ""), updated.get("tracking_url", ""),
+                updated.get("items", []), updated.get("shipping_address") or {}, updated["user_id"],
+            )
+    return _serialize_shipment(updated)
+
 
 async def provision_order_services(order_id: str, order: dict, user: dict):
     """Provision services (XtreamUI or XuiOne) for paid order"""
@@ -5244,8 +5540,18 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
         
         # Get configured email service with all required params
         email_service = await get_configured_email_service()
+
+        # Physical items → one shipment record per order, then skip them in the provisioning loop
+        physical_items = [i for i in order["items"] if i.get("item_type") == "physical"]
+        if physical_items:
+            try:
+                await create_shipment_for_order(order_id, order, user, physical_items)
+            except Exception as e:
+                logger.error(f"Shipment creation failed for order {order_id}: {e}")
         
         for item in order["items"]:
+            if item.get("item_type") == "physical":
+                continue
             # Get product details to determine which panel to use
             product = await products_collection.find_one({"_id": str_to_objectid(item["product_id"])})
             
@@ -9950,16 +10256,14 @@ async def test_email_template(
 
 # ===== FILE UPLOAD ENDPOINTS =====
 
-# Dynamic upload directory (works in any installation path)
+# Self-hosted local storage (see local_storage.py). UPLOADS_DIR env lets operators mount a persistent volume
+from local_storage import UPLOAD_BASE_DIR, category_dir, save_upload
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "attachments")
-HERO_IMAGES_DIR = os.path.join(BASE_DIR, "uploads", "hero")
-LOGO_DIR = os.path.join(BASE_DIR, "uploads", "logos")
-KB_MEDIA_DIR = os.path.join(BASE_DIR, "uploads", "kb")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(HERO_IMAGES_DIR, exist_ok=True)
-os.makedirs(LOGO_DIR, exist_ok=True)
-os.makedirs(KB_MEDIA_DIR, exist_ok=True)
+UPLOAD_DIR = category_dir("attachments")
+HERO_IMAGES_DIR = category_dir("hero")
+LOGO_DIR = category_dir("logos")
+KB_MEDIA_DIR = category_dir("kb")
+DOWNLOADS_DIR = category_dir("downloads")
 
 @app.post("/api/admin/upload/logo")
 async def upload_logo(
@@ -9976,9 +10280,7 @@ async def upload_logo(
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB")
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"logo_{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(LOGO_DIR, unique_filename)
-    async with aiofiles.open(file_path, 'wb') as f:
-        await f.write(contents)
+    await save_upload("logos", unique_filename, contents)
     return {
         "filename": file.filename,
         "url": f"{os.getenv('BACKEND_PUBLIC_URL', '')}/api/uploads/logos/{unique_filename}"
@@ -10002,9 +10304,7 @@ async def upload_kb_media(
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 50MB")
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"kb_{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(KB_MEDIA_DIR, unique_filename)
-    async with aiofiles.open(file_path, 'wb') as f:
-        await f.write(contents)
+    await save_upload("kb", unique_filename, contents)
     media_type = "image" if file.content_type in allowed_image else "video"
     return {
         "filename": file.filename,
@@ -10039,11 +10339,7 @@ async def upload_hero_image(
     # Generate unique filename
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"hero_{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(HERO_IMAGES_DIR, unique_filename)
-    
-    # Save file
-    async with aiofiles.open(file_path, 'wb') as f:
-        await f.write(contents)
+    await save_upload("hero", unique_filename, contents)
     
     # Return file info
     return {
@@ -10072,11 +10368,7 @@ async def upload_attachment(
     # Generate unique filename
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
-    
-    # Save file
-    async with aiofiles.open(file_path, 'wb') as f:
-        await f.write(contents)
+    await save_upload("attachments", unique_filename, contents)
     
     # Return file info
     return {
@@ -10101,12 +10393,7 @@ async def delete_attachment(filename: str, current_user: dict = Depends(get_curr
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
 
-# Serve uploaded files (use dynamic path)
-UPLOAD_BASE_DIR = os.path.dirname(os.path.abspath(__file__)) + "/uploads"
-os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
-os.makedirs(f"{UPLOAD_BASE_DIR}/attachments", exist_ok=True)
-os.makedirs(f"{UPLOAD_BASE_DIR}/downloads", exist_ok=True)
-
+# Serve uploaded files from the local upload root
 app.mount("/api/uploads", StaticFiles(directory=UPLOAD_BASE_DIR), name="uploads")
 
 # ===== EMAIL LOGS & HISTORY ENDPOINTS =====
@@ -14462,18 +14749,10 @@ async def upload_download_file(
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 100MB")
     
-    # Create downloads directory dynamically
-    DOWNLOADS_DIR = os.path.join(BASE_DIR, "uploads", "downloads")
-    os.makedirs(DOWNLOADS_DIR, exist_ok=True)
-    
     # Generate unique filename
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(DOWNLOADS_DIR, unique_filename)
-    
-    # Save file
-    async with aiofiles.open(file_path, 'wb') as f:
-        await f.write(contents)
+    file_path = await save_upload("downloads", unique_filename, contents)
     
     return {
         "filename": file.filename,

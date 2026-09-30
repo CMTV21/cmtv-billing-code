@@ -71,6 +71,8 @@ import { useTimezone } from './utils/timezone';
 import AnalyticsDashboard from './pages/AnalyticsDashboard'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-27: replaced by AnalyticsPage
 import AnalyticsPage from './pages/cmtv/AnalyticsPage'; // CMTV local change 2026-09-27: new Admin > Analytics
 import AdminImportedUsers from './pages/AdminImportedUsers';
+import AdminPhysicalItems from './pages/AdminPhysicalItems';
+import AdminShipments from './pages/AdminShipments';
 import TicketsPage from './pages/TicketsPage';
 import DownloadsPage from './pages/DownloadsPage';
 import PayPalSuccessPage from './pages/PayPalSuccessPage';
@@ -327,6 +329,9 @@ function App() {
             />
             <Route path="/admin/imported-users" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminImportedUsers /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/launcher" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><LauncherDashboard /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
+            {/* developer 3.9.0 (merged 2026-09-30): physical items + shipments, in the CMTV admin frame */}
+            <Route path="/admin/physical-items" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminPhysicalItems /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/shipments" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminShipments /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
 
             <Route
               path="/admin/customers"
