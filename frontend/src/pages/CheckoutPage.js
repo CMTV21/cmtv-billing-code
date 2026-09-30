@@ -691,7 +691,7 @@ export default function CheckoutPage() {
                               {item.term_months} {item.term_months === 1 ? 'Month' : 'Months'}
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-300">
-                              {item.account_type === 'subscriber' ? 'Subscriber' : 'Reseller'}
+                              {item.account_type === 'subscriber' ? 'Subscriber' : item.account_type === 'reseller' ? 'Reseller' : 'Add-on' /* CMTV 2026-09-30: manual products are add-ons */}
                             </p>
                           </>
                         )}

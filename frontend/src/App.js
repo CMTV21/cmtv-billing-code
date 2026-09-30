@@ -247,7 +247,7 @@ function App() {
               path="/checkout"
               element={
                 <ProtectedRoute>
-                  <CheckoutPage />
+                  <CmtvAccountFrame><CheckoutPage /></CmtvAccountFrame>{/* CMTV local change 2026-09-30: checkout in the CMTV look */}
                 </ProtectedRoute>
               }
             />
