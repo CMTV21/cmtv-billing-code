@@ -1,10 +1,10 @@
-// CMTV local addition 2026-09-30: pick your own Imperium channel groups (backend: cmtv_lineups.py /lineups/{key}/groups).
-// The line-up sets which groups start ticked; the customer can tick or untick any group the panel allows. value = null means
-// "the line-up as it is"; otherwise an array of group ids. Same price either way.
+// CMTV local addition 2026-09-30: pick your own channel groups (backend: cmtv_lineups.py).
+// Imperium: /lineups/{key}/groups (the line-up sets which groups start ticked). CCTV (source="cctv"): /cctv/groups (every
+// group of the plan starts ticked). value = null means "as it is"; otherwise an array of group ids. Same price either way.
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../../api/api';
 
-const SECTIONS = [
+const DEFAULT_SECTIONS = [
   ['main', 'Main channels'], ['vod', 'Movies & series'], ['world', 'International'], ['adult', 'Adult'],
 ];
 const n = (v) => Number(v || 0).toLocaleString('en-CA');
@@ -12,17 +12,19 @@ const count = (g) => (g.live ? `${n(g.live)} ch` : g.movies ? `${n(g.movies)} mo
 
 export const customName = (name, ids) => (ids && ids.length ? `${name} · custom channels (${ids.length} groups)` : name);
 
-export default function ChannelPicker({ productId, lineup, value, onChange }) {
+export default function ChannelPicker({ productId, lineup, value, onChange, source = 'imperium' }) {
   const [open, setOpen] = useState(false);
-  const [groups, setGroups] = useState(null);   // null = not loaded, 'error', or the list
-  useEffect(() => { setGroups(null); onChange(null); }, [lineup, productId]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [data, setData] = useState(null);   // null = not loaded, 'error', or {groups, sections}
+  useEffect(() => { setData(null); onChange(null); }, [lineup, productId, source]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!open || groups) return;
-    api.get(`/api/cmtv/lineups/${lineup}/groups`, { params: { product_id: productId } })
-      .then((r) => setGroups(r.data.groups || []))
-      .catch(() => setGroups('error'));
-  }, [open, groups, lineup, productId]);
-  const list = Array.isArray(groups) ? groups : [];
+    if (!open || data) return;
+    const url = source === 'cctv' ? '/api/cmtv/cctv/groups' : `/api/cmtv/lineups/${lineup}/groups`;
+    api.get(url, { params: { product_id: productId } })
+      .then((r) => setData({ groups: r.data.groups || [], sections: r.data.sections || DEFAULT_SECTIONS }))
+      .catch(() => setData('error'));
+  }, [open, data, lineup, productId, source]);
+  const list = data && data !== 'error' ? data.groups : [];
+  const sections = data && data !== 'error' ? data.sections : DEFAULT_SECTIONS;
   const standard = useMemo(() => list.filter((g) => g.standard).map((g) => g.id), [list]);
   const picked = value || standard;
   const set = (ids) => {
@@ -33,25 +35,26 @@ export default function ChannelPicker({ productId, lineup, value, onChange }) {
   const live = list.filter((g) => picked.includes(g.id)).reduce((a, g) => a + g.live, 0);
   const hasVod = list.some((g) => picked.includes(g.id) && (g.movies || g.series));
   const box = { background: 'var(--deep, #0a1020)', border: '1px solid var(--line, #27345a)', borderRadius: 12, padding: 12, marginTop: 8 };
+  const accent = source === 'cctv' ? 'var(--cyan, #22e6f2)' : 'var(--gold, #d8b35a)';
   return (
     <div style={{ margin: '0 0 10px' }}>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-        style={{ background: 'none', border: 0, padding: 0, color: 'var(--gold, #d8b35a)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+        style={{ background: 'none', border: 0, padding: 0, color: accent, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
         {open ? '▾' : '▸'} Customize channels{value ? ` (${value.length} groups picked)` : ''}
       </button>
       {open && (
         <div style={box}>
-          {groups === null && <small>Loading the channel groups...</small>}
-          {groups === 'error' && <small>The channel groups can't be loaded right now. You can still order this line-up as it is.</small>}
+          {data === null && <small>Loading the channel groups...</small>}
+          {data === 'error' && <small>The channel groups can't be loaded right now. You can still order this plan as it is.</small>}
           {list.length > 0 && (
             <>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8, fontSize: 13 }}>
                 <b style={{ color: 'var(--text, #e9edf8)' }}>{picked.length} of {list.length} groups · {n(live)} live channels{hasVod ? ' · movies & series' : ''}</b>
                 <button type="button" onClick={() => onChange(null)} disabled={!value}
                   style={{ marginLeft: 'auto', background: 'none', border: '1px solid var(--line, #27345a)', color: 'var(--muted, #9aa6c6)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: value ? 'pointer' : 'default' }}>
-                  Reset to the line-up</button>
+                  {source === 'cctv' ? 'Reset (all groups)' : 'Reset to the line-up'}</button>
               </div>
-              {SECTIONS.map(([key, label]) => {
+              {sections.map(([key, label]) => {
                 const gs = list.filter((g) => g.section === key);
                 if (!gs.length) return null;
                 const all = gs.every((g) => picked.includes(g.id));
@@ -65,7 +68,8 @@ export default function ChannelPicker({ productId, lineup, value, onChange }) {
                           {all ? 'Untick all' : 'Tick all'}</button>
                       )}
                     </legend>
-                    {key === 'adult' && <small style={{ display: 'block', marginBottom: 4 }}>Adult channels (18+). Off unless you tick it.</small>}
+                    {key === 'adult' && <small style={{ display: 'block', marginBottom: 4 }}>
+                      Adult channels (18+).{gs.some((g) => g.standard) ? ' Untick to leave them out.' : ' Off unless you tick it.'}</small>}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '2px 10px', maxHeight: key === 'world' ? 220 : 'none', overflowY: key === 'world' ? 'auto' : 'visible' }}>
                       {gs.map((g) => (
                         <label key={g.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: 'var(--text, #e9edf8)', padding: '3px 0', cursor: 'pointer' }}>
@@ -77,7 +81,7 @@ export default function ChannelPicker({ productId, lineup, value, onChange }) {
                   </fieldset>
                 );
               })}
-              <small>Your line gets exactly these groups. Same price. You can change them later by messaging support.</small>
+              <small>Your line gets exactly these groups, and renewals keep them. Same price. To change them later, message support.</small>
             </>
           )}
         </div>

@@ -307,9 +307,11 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
   const buy = (p) => {
     const { term, price } = firstPrice(p);
     const withLineup = family === 'imperium' && p.account_type === 'subscriber' && !p.is_trial;
+    const withGroups = family === 'cctv' && p.account_type === 'subscriber' && !p.is_trial;   // 2026-09-30: CCTV channel groups
     const withStremio = vodChoice && vodApp === 'stremio';   // 2026-09-30: shows on the order as "CMTV+ (with Stremio)"
-    const name = withLineup ? customName(lineupName(p.name, lineup), bouquets) : withStremio ? `${p.name} (with Stremio)` : p.name;
-    const choices = withLineup ? { lineup, ...(bouquets ? { bouquets } : {}) } : {};
+    const name = withLineup ? customName(lineupName(p.name, lineup), bouquets) : withGroups ? customName(p.name, bouquets)
+      : withStremio ? `${p.name} (with Stremio)` : p.name;
+    const choices = withLineup ? { lineup, ...(bouquets ? { bouquets } : {}) } : withGroups && bouquets ? { bouquets } : {};
     // 2026-09-28: remember the plan through sign-in (it used to be forgotten); 2026-09-30: with its line-up/channel choices
     if (!user) { rememberPlan(p.id, null, { ...choices, product_name: name }); window.location.href = '/login?redirect=/'; return; }
     addItem({ product_id: p.id, product_name: name, term_months: term, price, account_type: p.account_type, ...choices });
@@ -352,6 +354,9 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
         )}
         {family === 'imperium' && first?.account_type === 'subscriber' && !first?.is_trial && (
           <ChannelPicker productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />
+        )}
+        {family === 'cctv' && first?.account_type === 'subscriber' && !first?.is_trial && (
+          <ChannelPicker source="cctv" productId={first.id} value={bouquets} onChange={setBouquets} />
         )}
         {vodChoice && (
           <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>

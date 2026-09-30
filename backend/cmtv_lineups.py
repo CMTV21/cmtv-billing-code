@@ -14,7 +14,10 @@ and differ only in which are on by default. An order item may carry `bouquets` (
 with exactly those groups (they must be allowed by the line-up's package; anything else is dropped). Renewals keep the
 line's groups (the panel's renew call doesn't touch them). The line remembers its groups in service.cmtv_bouquets.
   GET /api/cmtv/lineups/{lineup}/groups?product_id= -> the groups, their channel counts and which are standard
+CCTV (same day): the plan's own group list is the choice (no line-ups); renewals send the line's saved picks.
+  GET /api/cmtv/cctv/groups?product_id= -> the groups + sections
 """
+import asyncio
 import logging
 import time
 from datetime import datetime
@@ -142,8 +145,109 @@ def clean_bouquets(raw):
     return out or None
 
 
+# ---------------- CCTV channel groups (2026-09-30) ----------------
+# CCTV (XtreamUI) has no line-ups: a plan's groups are its product's `bouquets` list (the owner keeps Brazil, Iran and Africa
+# off on purpose, although the panel packages have them). Tested on the panel 2026-09-30: a line created with 3 groups got
+# only those. Unlike Imperium, a CCTV renewal re-posts a group list, so renewals send the line's saved picks.
+CCTV_SECTIONS = [["main", "Main channels"], ["sports", "Sports"], ["locals", "US local networks"], ["vod", "Movies & series"],
+                 ["world", "International"], ["adult", "Adult"]]
+CCTV_MAIN = {"usa ent", "usa news", "usa kids", "movie channels", "canada ent", "canada locals", "canada french", "uk", "247", "music"}
+CCTV_SPORTS = {"usa sports", "canada sports", "uk sports", "nba", "nfl", "nhl", "mlb", "mls", "ncaa", "bein sports", "espn",
+               "fanduel", "flosports and dirtvision", "ppv"}
+_cctv = {}   # package id -> (time, {group id: (name, channels, series)})
+
+
+def _cctv_section(name):
+    n = str(name or "").strip().lower()
+    if "adult" in n or "xxx" in n:
+        return "adult"
+    if "vod" in n:
+        return "vod"
+    if n in CCTV_SPORTS:
+        return "sports"
+    if n.endswith("locals") and not n.startswith("canada"):
+        return "locals"
+    return "main" if n in CCTV_MAIN else "world"
+
+
+def _count(v):
+    return len(v) if isinstance(v, (list, tuple)) else int(v or 0)
+
+
+async def _cctv_names(pkg):
+    """{group id: (name, channels, series)} for a CCTV package, read from the panel (cached 1 h)"""
+    hit = _cctv.get(str(pkg))
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    panels = ((await D["get_settings"]()).get("xtream") or {}).get("panels") or []
+    if not panels or not pkg:
+        return {}
+    p = panels[0]
+
+    def read():
+        from xtreamui_service import XtreamUIService
+        x = XtreamUIService(panel_url=p["panel_url"], admin_username=p["admin_username"], admin_password=p["admin_password"],
+                            ssl_verify=p.get("ssl_verify", False), http_basic_user=p.get("http_basic_user", ""),
+                            http_basic_pass=p.get("http_basic_pass", ""), proxy_url=p.get("proxy_url", ""), api_key=p.get("api_key", ""))
+        sc = x._get_session_client()
+        if not sc.login():
+            return {}
+        d = sc.session.get(f"{sc.panel_url}/api.php", params={"action": "get_package", "package_id": int(pkg)},
+                           auth=getattr(sc, "http_auth", None), timeout=20).json()
+        return {int(b["id"]): (str(b.get("bouquet_name") or "").strip(), _count(b.get("bouquet_channels")), _count(b.get("bouquet_series")))
+                for b in d.get("bouquets") or [] if str(b.get("id", "")).isdigit()}
+    out = {}
+    try:
+        out = await asyncio.to_thread(read)
+    except Exception as e:
+        log.warning(f"CCTV groups: couldn't read package {pkg}: {type(e).__name__}")
+    if out:
+        _cctv[str(pkg)] = (time.time(), out)
+    return out
+
+
+def _cctv_ids(product):
+    out = []
+    for b in (product or {}).get("bouquets") or []:
+        try:
+            out.append(int(b))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def _is_line_plan(p, panel):
+    return bool(p) and p.get("panel_type") == panel and p.get("account_type", "subscriber") == "subscriber" and not p.get("is_trial")
+
+
+async def _apply_cctv(product: dict, item: dict):
+    if not _is_line_plan(product, "xtream"):
+        return product
+    allowed = _cctv_ids(product)
+    if item.get("renewal_service_id"):   # renewals re-post a group list: send the line's own picks
+        svc = await D["db"].services.find_one({"_id": _oid(item["renewal_service_id"])})
+        keep = [b for b in ((svc or {}).get("cmtv_bouquets") or []) if b in allowed]
+        if keep:
+            log.info(f"CCTV groups: renewal keeps the line's {len(keep)} chosen groups")
+            return {**product, "bouquets": keep}
+        return product
+    picks = clean_bouquets(item.get("bouquets"))
+    if not picks:
+        return product
+    keep = [b for b in picks if b in allowed]
+    if len(keep) < len(picks):
+        log.warning(f"CCTV groups: {len(picks) - len(keep)} picked group(s) aren't in {product.get('name')}, left out")
+    if not keep or set(keep) == set(allowed):
+        return product
+    log.info(f"CCTV groups: {product.get('name')} with {len(keep)} chosen groups")
+    return {**product, "bouquets": keep, "cmtv_bouquets": keep}
+
+
 async def apply(product: dict, item: dict):
-    """Imperium subscriber item: the chosen line-up's package, plus the customer's own channel groups on a new line."""
+    """Imperium subscriber item: the chosen line-up's package, plus the customer's own channel groups on a new line.
+    CCTV subscriber item: the customer's own groups on a new line, the line's saved groups on a renewal."""
+    if product and product.get("panel_type") == "xtream":
+        return await _apply_cctv(product, item)
     out = await _apply_lineup(product, item)
     picks = clean_bouquets(item.get("bouquets"))
     if not picks or item.get("renewal_service_id") or out is None or out.get("panel_type") != "aether" \
@@ -213,9 +317,16 @@ async def remember(order_id: str, order: dict):
             await D["db"].services.update_many({"order_id": order_id, "panel_type": "aether", "cmtv_lineup": {"$exists": False}},
                                                {"$set": {"cmtv_lineup": it["lineup"]}})
         picks = clean_bouquets(it.get("bouquets"))
-        if picks and not it.get("renewal_service_id"):   # 2026-09-30: the groups the customer picked
-            await D["db"].services.update_many({"order_id": order_id, "panel_type": "aether", "cmtv_bouquets": {"$exists": False}},
-                                               {"$set": {"cmtv_bouquets": picks}})
+        if picks and not it.get("renewal_service_id"):   # 2026-09-30: the groups the customer picked (Imperium + CCTV)
+            prod = await D["db"].products.find_one({"_id": _oid(it.get("product_id"))}) if it.get("product_id") else None
+            if (prod or {}).get("panel_type") == "xtream":
+                picks = [b for b in picks if b in _cctv_ids(prod)]
+                if not picks or set(picks) == set(_cctv_ids(prod)):
+                    continue
+            q = {"order_id": order_id, "panel_type": {"$in": ["aether", "xtream"]}, "cmtv_bouquets": {"$exists": False}}
+            if it.get("product_id"):
+                q["product_id"] = str(it["product_id"])
+            await D["db"].services.update_many(q, {"$set": {"cmtv_bouquets": picks}})
 
 
 @router.get("/lineups")
@@ -239,3 +350,24 @@ async def lineup_groups(lineup: str, product_id: str):
         raise HTTPException(status_code=503, detail="Channel groups can't be loaded right now")
     return {"lineup": lineup, "groups": [{k: g[k] for k in ("id", "name", "live", "movies", "series", "standard", "section")}
                                          for g in groups]}
+
+
+@router.get("/cctv/groups")
+async def cctv_groups(product_id: str):
+    """Public: the channel groups a customer can pick for a CCTV plan (all of the plan's groups start ticked)"""
+    from fastapi import HTTPException
+    p = await D["db"].products.find_one({"_id": _oid(product_id)}) if _oid(product_id) else None
+    if not _is_line_plan(p, "xtream"):
+        raise HTTPException(status_code=404, detail="No channel groups for this plan")
+    names = await _cctv_names(p.get("xtream_package_id"))
+    groups = []
+    for i in _cctv_ids(p):
+        if i not in names:
+            continue
+        name, ch, ser = names[i]
+        vod = "vod" in name.lower()   # VOD groups hold movies (counted as "channels" by the panel) or series
+        groups.append({"id": i, "name": name, "live": 0 if vod else ch, "movies": ch if vod else 0, "series": ser,
+                       "standard": True, "section": _cctv_section(name)})
+    if not groups:
+        raise HTTPException(status_code=503, detail="Channel groups can't be loaded right now")
+    return {"groups": groups, "sections": CCTV_SECTIONS}

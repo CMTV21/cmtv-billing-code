@@ -3895,10 +3895,10 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if getattr(item, "lineup", None) and (item.lineup not in cmtv_lineups.LINEUPS or product.get("panel_type") != "aether"
                                              or product.get("account_type", "subscriber") != "subscriber"):
             item.lineup = None
-        # CMTV local change 2026-09-30: picked channel groups only on a NEW Imperium subscriber line (not trials or renewals)
+        # CMTV local change 2026-09-30: picked channel groups only on a NEW Imperium or CCTV subscriber line (not trials or renewals)
         if getattr(item, "bouquets", None):
             item.bouquets = cmtv_lineups.clean_bouquets(item.bouquets)
-            if product.get("panel_type") != "aether" or product.get("account_type", "subscriber") != "subscriber" \
+            if product.get("panel_type") not in ("aether", "xtream") or product.get("account_type", "subscriber") != "subscriber" \
                     or product.get("is_trial") or item.renewal_service_id:
                 item.bouquets = None
         actual_total += item.price
