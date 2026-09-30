@@ -153,7 +153,8 @@ async def push_addons(acc: dict) -> int:
     own = [a for a in (current or []) if not str(a.get("url", "")).startswith(ADDON_BASE + "/")]
     ours = [{"url": personal_url(acc["token"], a["slug"]), "name": a["name"]} for a in managed]
     cmtv = {"url": personal_url(acc["token"], CMTV_SLUG), "name": "CMTV"}
-    ordered = ([cmtv] + ours + own) if not is_live(acc) else (ours + own + [cmtv])
+    # 2026-09-30: always first, so the CMTV row is the top row of the home screen (the owner: "buried at the bottom")
+    ordered = [cmtv] + ours + own
     rows = [{"url": a["url"], "name": a.get("name") or "", "enabled": a.get("enabled", True), "sort_order": i}
             for i, a in enumerate(ordered)]
     st, data = await nv("POST", "/rest/v1/rpc/sync_push_addons", {"p_profile_id": 1, "p_addons": rows}, as_user=acc["nuvio_id"])
@@ -338,15 +339,34 @@ async def _cmtv_info(acc: dict) -> dict:
 
 
 def _draw(kind: str, shape: str, info: dict, username: str) -> bytes:
-    """poster (2:3) for the row, background (16:9) for the detail page"""
+    """background (16:9, text + QR) = the tile in the row (the app shows rows landscape); backdrop (16:9, no text)
+    = the big picture behind the app's own title on the detail/hero view; poster (2:3) kept for other apps"""
     import io
     import qrcode
     from PIL import Image, ImageDraw
     w, h = (600, 900) if shape == "poster" else (1280, 720)
     im = Image.new("RGB", (w, h), (10, 16, 32))
     d = ImageDraw.Draw(im)
+    if shape == "backdrop":   # smooth shade, darkest on the left where the app puts its text
+        for x in range(w):
+            t = x / w
+            d.line([(x, 0), (x, h)], fill=(int(10 + 4 * t), int(16 + 16 * t), int(32 + 34 * t)))
     for i, c in enumerate([(34, 230, 242), (46, 139, 255), (139, 92, 246), (236, 72, 153)]):   # the CMTV colour line
         d.rectangle([i * w // 4, 0, (i + 1) * w // 4, 8], fill=c)
+    if shape == "backdrop":
+        # the app draws its title, text and logo over the left side: keep that plain, big QR on the right
+        url = {"renew": info["renew_url"], "help": SUPPORT_URL}.get(kind)
+        if url:
+            q = qrcode.QRCode(border=2, box_size=10)
+            q.add_data(url)
+            q.make(fit=True)
+            img = q.make_image(fill_color="black", back_color="white").convert("RGB").resize((400, 400))
+            im.paste(img, (w - 460, 150))
+            cap = "Scan to renew" if kind == "renew" else "Scan to message us"
+            d.text((w - 260, 585), cap, font=_font(30), fill=(34, 230, 242), anchor="mm")
+        out = io.BytesIO()
+        im.save(out, "PNG", optimize=True)
+        return out.getvalue()
     try:
         logo = Image.open("/opt/frontend/public/cmtv/cmtv-logo.png").convert("RGBA")
         side = 110 if shape == "poster" else 96
@@ -403,9 +423,11 @@ async def _cmtv_addon(acc: dict, token: str, rest: str):
                 "renew": f"Scan the code with your phone to renew, or go to billing.cmtv.info and sign in. "
                          f"Your plan {'ended' if not info['live'] else 'runs until'} {info['expires']}.",
                 "help": f"Questions or problems? Scan the code to message CMTV Support on Telegram, or email {SUPPORT_EMAIL}."}[kind]
-        return {"id": f"cmtv:{kind}", "type": "movie", "name": name, "description": desc, "posterShape": "poster",
-                "poster": f"{base}/img/{kind}-poster-{ver}.png", "background": f"{base}/img/{kind}-background-{ver}.png",
-                "logo": "https://billing.cmtv.info/cmtv/cmtv-logo.png", "releaseInfo": "CMTV", "genres": ["CMTV"]}
+        # 2026-09-30 after the owner's TV test: wide tile with the text + QR, plain backdrop behind the app's own title,
+        # no genre/year labels ("Movie • CMTV • CMTV")
+        return {"id": f"cmtv:{kind}", "type": "movie", "name": name, "description": desc, "posterShape": "landscape",
+                "poster": f"{base}/img/{kind}-background-{ver}.png", "background": f"{base}/img/{kind}-backdrop-{ver}.png",
+                "logo": "https://billing.cmtv.info/cmtv/cmtv-logo.png"}
     if rest == "manifest.json":
         return JSONResponse({"id": "info.cmtv.account", "version": "1.0.0", "name": "CMTV",
                              "description": "Your CMTV plan, renewals and support.", "logo": "https://billing.cmtv.info/cmtv/cmtv-logo.png",
@@ -423,7 +445,7 @@ async def _cmtv_addon(acc: dict, token: str, rest: str):
         url = info["renew_url"] if kind != "help" else SUPPORT_URL
         return JSONResponse({"streams": [{"name": "CMTV", "title": ("Renew at billing.cmtv.info" if kind != "help" else
                              f"CMTV Support: Telegram or {SUPPORT_EMAIL}"), "externalUrl": url}]}, headers={**cors, "Cache-Control": "no-store"})
-    m = re.match(r"^img/(plan|renew|help)-(poster|background)-[0-9a-f]+\.png$", rest)
+    m = re.match(r"^img/(plan|renew|help)-(poster|background|backdrop)-[0-9a-f]+\.png$", rest)
     if m:
         key = (token, m.group(1), m.group(2), info["state"])
         png = _img_cache.get(key)
@@ -549,10 +571,11 @@ async def repair_addons() -> list:
         if not live and acc.get("addons_pushed_live") is False:
             continue
         want = {personal_url(acc["token"], a["slug"]) for a in managed} | {personal_url(acc["token"], CMTV_SLUG)}
-        st, rows = await nv("GET", f"/rest/v1/addons?select=url&user_id=eq.{acc['nuvio_id']}&profile_id=eq.1")
+        st, rows = await nv("GET", f"/rest/v1/addons?select=url&user_id=eq.{acc['nuvio_id']}&profile_id=eq.1&order=sort_order")
         if st != 200:
             continue
-        if (want - {r.get("url") for r in rows or []}) or acc.get("addons_pushed_live") != live:
+        cmtv_first = bool(rows) and rows[0].get("url") == personal_url(acc["token"], CMTV_SLUG)
+        if (want - {r.get("url") for r in rows or []}) or acc.get("addons_pushed_live") != live or not cmtv_first:
             await push_addons(acc)
             await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$inc": {"addons_repaired": 1},
                                                                             "$set": {"addons_repaired_at": datetime.utcnow()}})
