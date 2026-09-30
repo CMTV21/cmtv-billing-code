@@ -138,24 +138,40 @@ def personal_url(token: str, slug: str) -> str:
     return f"{ADDON_BASE}/{token}/{slug}/manifest.json"
 
 
+CMTV_SLUG = "cmtv"   # 2026-09-30: billing's own built-in add-on ("CMTV" row: your plan, renew, get help)
+
+
 async def push_addons(acc: dict) -> int:
     """Put the managed add-ons (personal links) on the account's main profile, keeping add-ons the customer added
-    themselves. Other profiles share the main profile's add-ons (uses_primary_addons)."""
+    themselves. Other profiles share the main profile's add-ons (uses_primary_addons). The CMTV add-on goes last while
+    the plan is live and first once it has ended (so "Renew" is the first thing they see)."""
     managed = [a for a in await addon_config() if a.get("enabled", True)]
     st, current = await nv("GET", f"/rest/v1/addons?select=url,name,enabled,sort_order&user_id=eq.{acc['nuvio_id']}"
                                   f"&profile_id=eq.1&order=sort_order")
     if st != 200:
         raise NuvioError(f"reading add-ons failed ({st}: {_err(current)})")
     own = [a for a in (current or []) if not str(a.get("url", "")).startswith(ADDON_BASE + "/")]
-    rows = [{"url": personal_url(acc["token"], a["slug"]), "name": a["name"], "enabled": True, "sort_order": i}
-            for i, a in enumerate(managed)]
-    rows += [{"url": a["url"], "name": a.get("name") or "", "enabled": a.get("enabled", True), "sort_order": len(rows) + i}
-             for i, a in enumerate(own)]
+    ours = [{"url": personal_url(acc["token"], a["slug"]), "name": a["name"]} for a in managed]
+    cmtv = {"url": personal_url(acc["token"], CMTV_SLUG), "name": "CMTV"}
+    ordered = ([cmtv] + ours + own) if not is_live(acc) else (ours + own + [cmtv])
+    rows = [{"url": a["url"], "name": a.get("name") or "", "enabled": a.get("enabled", True), "sort_order": i}
+            for i, a in enumerate(ordered)]
     st, data = await nv("POST", "/rest/v1/rpc/sync_push_addons", {"p_profile_id": 1, "p_addons": rows}, as_user=acc["nuvio_id"])
     if st not in (200, 204):
         raise NuvioError(f"pushing add-ons failed ({st}: {_err(data)})")
-    await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {"addons_pushed_at": datetime.utcnow()}})
+    await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {
+        "addons_pushed_at": datetime.utcnow(), "addons_pushed_live": is_live(acc)}})
     return len(managed)
+
+
+async def _repush(username: str):
+    """After a status/end-date change: move the CMTV row (best effort)"""
+    acc = await get_account(username)
+    if acc:
+        try:
+            await push_addons(acc)
+        except Exception as e:
+            logger.warning(f"Nuvio {username}: add-ons not re-sent after a change: {e}")
 
 
 # ---------------------------------------------------------------- accounts
@@ -196,6 +212,7 @@ async def set_expiry(username: str, expires: str) -> dict:
     await _db().cmtv_nuvio_accounts.update_one({"_id": username.lower()},
                                               {"$set": {"expires": expires, "status": "active", "updated_at": datetime.utcnow()}})
     _cache_drop(username)
+    await _repush(username)   # 2026-09-30: CMTV row back to the end after a renewal
     return await get_account(username)
 
 
@@ -290,6 +307,143 @@ async def _relay_get(url: str):
 short_relay = APIRouter(prefix="/nv", tags=["cmtv-nuvio-relay"])
 
 
+# ---------------------------------------------------------------- the built-in CMTV add-on (2026-09-30)
+# A "CMTV" row on every account's home screen, personal to it: "Your plan" (end date or ended), "Renew" (QR to billing
+# with their renewal in the cart) and "Get help" (QR to the support bot). Pictures are drawn here (Pillow + qrcode).
+SUPPORT_URL = "https://t.me/Cmtv_support_bot"
+SUPPORT_EMAIL = "cmtv@pm.me"
+_img_cache = {}   # (token, kind, shape, state) -> png bytes
+_FONT_PATHS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+
+
+def _font(size: int, bold: bool = True):
+    from PIL import ImageFont
+    for p in (_FONT_PATHS if bold else _FONT_PATHS[::-1]):
+        if os.path.exists(p):
+            return ImageFont.truetype(p, size)
+    return ImageFont.load_default(size=size)
+
+
+async def _cmtv_info(acc: dict) -> dict:
+    svc = (await _linked(acc["_id"]) or [None])[0]
+    exp = acc.get("expires") or ""
+    try:
+        exp_txt = datetime.strptime(exp, "%Y-%m-%d").strftime("%b %-d, %Y")
+    except ValueError:
+        exp_txt = exp
+    live = is_live(acc)
+    return {"live": live, "expires": exp_txt, "off": acc.get("status") == "off",
+            "renew_url": f"https://billing.cmtv.info/dashboard?renew={svc['_id']}" if svc else "https://billing.cmtv.info/?tab=addons",
+            "state": f"{int(live)}:{exp}:{acc.get('status')}:{bool(svc)}"}
+
+
+def _draw(kind: str, shape: str, info: dict, username: str) -> bytes:
+    """poster (2:3) for the row, background (16:9) for the detail page"""
+    import io
+    import qrcode
+    from PIL import Image, ImageDraw
+    w, h = (600, 900) if shape == "poster" else (1280, 720)
+    im = Image.new("RGB", (w, h), (10, 16, 32))
+    d = ImageDraw.Draw(im)
+    for i, c in enumerate([(34, 230, 242), (46, 139, 255), (139, 92, 246), (236, 72, 153)]):   # the CMTV colour line
+        d.rectangle([i * w // 4, 0, (i + 1) * w // 4, 8], fill=c)
+    try:
+        logo = Image.open("/opt/frontend/public/cmtv/cmtv-logo.png").convert("RGBA")
+        side = 110 if shape == "poster" else 96
+        im.paste(logo.resize((side, side)), (40, 40), logo.resize((side, side)))
+    except Exception:
+        pass
+    ended = not info["live"]
+    title = {"plan": "Your plan", "renew": "Renew", "help": "Get help"}[kind]
+    if kind == "plan":
+        line = "Switched off" if info["off"] else ("Ended " + info["expires"] if ended else "Active until " + info["expires"])
+        sub = "Renew to keep watching" if ended else f"Signed in as {username}"
+        qr_url = None
+    elif kind == "renew":
+        line, sub, qr_url = "Scan with your phone", "billing.cmtv.info", info["renew_url"]
+    else:
+        line, sub, qr_url = "Scan to message us", f"Telegram · {SUPPORT_EMAIL}", SUPPORT_URL
+    colour = (255, 120, 140) if (kind == "plan" and ended) else (34, 230, 242)
+    if shape == "poster":
+        d.text((40, 190), title, font=_font(64), fill=(233, 237, 248))
+        d.text((40, 275), line, font=_font(30), fill=colour)
+        d.text((40, 318), sub, font=_font(26, False), fill=(160, 170, 195))
+        box = (100, 400, 500, 800)
+    else:
+        d.text((60, 190), title, font=_font(84), fill=(233, 237, 248))
+        d.text((60, 300), line, font=_font(40), fill=colour)
+        d.text((60, 356), sub, font=_font(32, False), fill=(160, 170, 195))
+        box = (820, 200, 1200, 580)
+    if qr_url:
+        q = qrcode.QRCode(border=2, box_size=10)
+        q.add_data(qr_url)
+        q.make(fit=True)
+        img = q.make_image(fill_color="black", back_color="white").convert("RGB").resize((box[2] - box[0], box[3] - box[1]))
+        im.paste(img, box[:2])
+    elif kind == "plan":
+        d.rounded_rectangle(box, radius=30, outline=colour, width=6)
+        d.text(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2), "!" if ended else "OK", font=_font(120), fill=colour, anchor="mm")
+    out = io.BytesIO()
+    im.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+async def _cmtv_addon(acc: dict, token: str, rest: str):
+    cors = {"Access-Control-Allow-Origin": "*"}
+    base = f"{ADDON_BASE}/{token}/{CMTV_SLUG}"
+    info = await _cmtv_info(acc)
+    ver = hashlib_md5(info["state"])
+    items = [("plan", "Your plan"), ("renew", "Renew your plan"), ("help", "Get help")]
+    if not info["live"]:
+        items = [items[1], items[0], items[2]]
+
+    def meta(kind, name):
+        desc = {"plan": ("Your CMTV plan has ended. Renew to keep watching: scan the Renew tile with your phone."
+                         if not info["live"] else f"Your CMTV plan is active until {info['expires']}."),
+                "renew": f"Scan the code with your phone to renew, or go to billing.cmtv.info and sign in. "
+                         f"Your plan {'ended' if not info['live'] else 'runs until'} {info['expires']}.",
+                "help": f"Questions or problems? Scan the code to message CMTV Support on Telegram, or email {SUPPORT_EMAIL}."}[kind]
+        return {"id": f"cmtv:{kind}", "type": "movie", "name": name, "description": desc, "posterShape": "poster",
+                "poster": f"{base}/img/{kind}-poster-{ver}.png", "background": f"{base}/img/{kind}-background-{ver}.png",
+                "logo": "https://billing.cmtv.info/cmtv/cmtv-logo.png", "releaseInfo": "CMTV", "genres": ["CMTV"]}
+    if rest == "manifest.json":
+        return JSONResponse({"id": "info.cmtv.account", "version": "1.0.0", "name": "CMTV",
+                             "description": "Your CMTV plan, renewals and support.", "logo": "https://billing.cmtv.info/cmtv/cmtv-logo.png",
+                             "resources": ["catalog", "meta", "stream"], "types": ["movie"], "idPrefixes": ["cmtv:"],
+                             "catalogs": [{"type": "movie", "id": "cmtv-account", "name": "CMTV · Your account"}],
+                             "behaviorHints": {"configurable": False, "configurationRequired": False}},
+                            headers={**cors, "Cache-Control": "max-age=3600"})
+    if rest.startswith("catalog/movie/cmtv-account"):
+        return JSONResponse({"metas": [meta(k, n) for k, n in items]}, headers={**cors, "Cache-Control": "no-store"})
+    m = re.match(r"^(meta|stream)/movie/cmtv(?::|%3A)(plan|renew|help)\.json$", rest)
+    if m:
+        kind = m.group(2)
+        if m.group(1) == "meta":
+            return JSONResponse({"meta": meta(kind, dict(items)[kind])}, headers={**cors, "Cache-Control": "no-store"})
+        url = info["renew_url"] if kind != "help" else SUPPORT_URL
+        return JSONResponse({"streams": [{"name": "CMTV", "title": ("Renew at billing.cmtv.info" if kind != "help" else
+                             f"CMTV Support: Telegram or {SUPPORT_EMAIL}"), "externalUrl": url}]}, headers={**cors, "Cache-Control": "no-store"})
+    m = re.match(r"^img/(plan|renew|help)-(poster|background)-[0-9a-f]+\.png$", rest)
+    if m:
+        key = (token, m.group(1), m.group(2), info["state"])
+        png = _img_cache.get(key)
+        if not png:
+            png = await asyncio.to_thread(_draw, m.group(1), m.group(2), info, acc["_id"])
+            if len(_img_cache) > 500:
+                _img_cache.clear()
+            _img_cache[key] = png
+        return Response(content=png, media_type="image/png", headers={**cors, "Cache-Control": "max-age=3600"})
+    if rest.startswith(("meta/", "stream/", "catalog/", "subtitles/")):
+        return JSONResponse({"metas": []} if rest.startswith("catalog/") else {"streams": []} if rest.startswith("stream/")
+                            else {"subtitles": []} if rest.startswith("subtitles/") else {"meta": None}, headers=cors)
+    return JSONResponse({"error": "not found"}, status_code=404, headers=cors)
+
+
+def hashlib_md5(s: str) -> str:
+    import hashlib
+    return hashlib.md5(s.encode()).hexdigest()[:10]
+
+
 @short_relay.get("/{token}/{slug}/{rest:path}")
 @relay.get("/{token}/{slug}/{rest:path}")
 async def relay_get(token: str, slug: str, rest: str, request: Request):
@@ -298,13 +452,21 @@ async def relay_get(token: str, slug: str, rest: str, request: Request):
     rest = raw.split(marker, 1)[1] if marker in raw else rest
     cors = {"Access-Control-Allow-Origin": "*"}
     acc = await _account_by_token(token)
+    if slug == CMTV_SLUG:
+        if not acc:
+            return JSONResponse({"error": "not found"}, status_code=404, headers=cors)
+        return await _cmtv_addon(acc, token, rest)
     addon = await _addon(slug)
     if not acc or not addon or not addon.get("enabled", True):
         return JSONResponse({"error": "not found"}, status_code=404, headers=cors)
     is_stream = rest.startswith("stream/")
     if is_stream:
         if not is_live(acc):
-            return JSONResponse(_ENDED_STREAM, headers={**cors, "Cache-Control": "no-store"})
+            info = await _cmtv_info(acc)   # 2026-09-30: their own renew link + where the Renew code is
+            ended = {"streams": [{"name": "CMTV", "externalUrl": info["renew_url"], "title":
+                     "Your CMTV subscription has ended.\nRenew: open the CMTV row on your home screen and scan the Renew code,\n"
+                     "or sign in at billing.cmtv.info. Need help? Scan Get help in the same row."}]}
+            return JSONResponse(ended, headers={**cors, "Cache-Control": "no-store"})
         try:
             await _note_stream(acc, _client_ip(request))
         except Exception as e:
@@ -380,17 +542,17 @@ async def repair_addons() -> list:
     own test removed them while tidying up). Put back any managed add-on missing from a live account's main profile;
     the customer's own add-ons are kept (push_addons)."""
     managed = [a for a in await addon_config() if a.get("enabled", True)]
-    if not managed:
-        return []
     fixed = []
     async for acc in _db().cmtv_nuvio_accounts.find({"deleted": {"$ne": True}}):
-        if not is_live(acc):
+        live = is_live(acc)
+        # 2026-09-30: ended accounts are checked too, so their CMTV row moves to the top when the end date passes
+        if not live and acc.get("addons_pushed_live") is False:
             continue
-        want = {personal_url(acc["token"], a["slug"]) for a in managed}
+        want = {personal_url(acc["token"], a["slug"]) for a in managed} | {personal_url(acc["token"], CMTV_SLUG)}
         st, rows = await nv("GET", f"/rest/v1/addons?select=url&user_id=eq.{acc['nuvio_id']}&profile_id=eq.1")
         if st != 200:
             continue
-        if want - {r.get("url") for r in rows or []}:
+        if (want - {r.get("url") for r in rows or []}) or acc.get("addons_pushed_live") != live:
             await push_addons(acc)
             await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$inc": {"addons_repaired": 1},
                                                                             "$set": {"addons_repaired_at": datetime.utcnow()}})
@@ -702,6 +864,7 @@ def init_routes():
             "status": "off", "switched_off_at": datetime.utcnow(), "updated_at": datetime.utcnow()}})
         _cache_drop(username)
         await _sync_services(username, status="suspended")
+        await _repush(username)
         return {"status": "off"}
 
     @router.post("/accounts/{username}/enable")
@@ -709,6 +872,7 @@ def init_routes():
         acc = await _must(username)
         await _db().cmtv_nuvio_accounts.update_one({"_id": username.lower()}, {"$set": {"status": "active", "updated_at": datetime.utcnow()}})
         _cache_drop(username)
+        await _repush(username)
         await _sync_services(username, status="active" if (acc.get("expires") or "") >= _today() else "expired")
         return {"status": "active", "live": (acc.get("expires") or "") >= _today()}
 
