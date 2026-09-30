@@ -92,6 +92,13 @@ export default function AdminImportedUsers() {
       value: `aether-${index}`,
       label: `${panel.name || 'Aether'} (Aether)`
     })),
+    ...(settings?.gold?.panels || []).map((panel, index) => ({ 
+      ...panel, 
+      type: 'gold', 
+      index: index,
+      value: `gold-${index}`,
+      label: `${panel.name || 'Gold'} (Gold Panel)`
+    })),
     ...ghostsurfPanels.map((panel, index) => ({ 
       ...panel, 
       type: 'ghostsurf', 
@@ -1172,6 +1179,8 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
       return settings?.nxtdash?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name} (NXT Dash)` })) || [];
     } else if (formData.panel_type === 'aether') {
       return settings?.aether?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name || 'Aether'} (Aether)` })) || [];
+    } else if (formData.panel_type === 'gold') {
+      return settings?.gold?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name || 'Gold'} (Gold Panel)` })) || [];
     } else {
       return settings?.xuione?.panels?.map((p, i) => ({ ...p, index: i, label: `${p.name} (XuiOne)` })) || [];
     }
@@ -1229,10 +1238,18 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
     enabled: formData.panel_type === 'aether' && formData.account_type === 'subscriber',
   });
 
+  // Fetch packages (bouquets) for Gold Panel — the term is chosen separately
+  const { data: goldPackages } = useQuery({
+    queryKey: ['gold-packages-full', formData.panel_index],
+    queryFn: async () => (await adminAPI.getGoldPackages(formData.panel_index)).data,
+    enabled: formData.panel_type === 'gold' && formData.account_type === 'subscriber',
+  });
+
   const packages = formData.panel_type === 'xtream' ? (xtreamPackages?.packages || []) 
     : formData.panel_type === 'onestream' ? (onestreamPackages?.packages || [])
     : formData.panel_type === 'nxtdash' ? (nxtdashPackages?.packages || [])
     : formData.panel_type === 'aether' ? ([...(aetherPackages?.packages || []), ...(aetherPackages?.trial_packages || [])])
+    : formData.panel_type === 'gold' ? ((goldPackages?.bouquets || []).map((b) => ({ id: b.id, name: b.name, duration: formData.duration_months, duration_unit: 'months', max_connections: 1 })))
     : (xuionePackages?.packages || []);
 
   const handleSubmit = async (e) => {
@@ -1249,7 +1266,7 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
       };
 
       if (formData.account_type === 'subscriber') {
-        submitData.package_id = parseInt(formData.package_id);
+        submitData.package_id = formData.panel_type === 'gold' ? String(formData.package_id) : parseInt(formData.package_id);
         submitData.duration_months = parseInt(formData.duration_months);
         submitData.max_connections = parseInt(formData.max_connections);
       } else {
@@ -1326,6 +1343,12 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
                   <p className="font-semibold text-gray-900 dark:text-white">{createdUser.duration_months} month(s)</p>
                 </div>
               )}
+              {createdUser.m3u_url && (
+                <div className="col-span-2">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">M3U URL</p>
+                  <p className="font-mono text-xs break-all text-gray-900 dark:text-white" data-testid="created-m3u-url">{createdUser.m3u_url}</p>
+                </div>
+              )}
               {createdUser.credits !== undefined && (
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400">Credits</p>
@@ -1379,6 +1402,7 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
               <option value="onestream">1-Stream</option>
               <option value="nxtdash">NXT Dash</option>
               <option value="aether">Aether</option>
+              <option value="gold">Gold Panel</option>
             </select>
           </div>
 
@@ -1417,12 +1441,18 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
               <option value="subscriber">Subscriber</option>
               {(formData.panel_type === 'xtream' || formData.panel_type === 'onestream') && <option value="reseller">Reseller</option>}
             </select>
-            {(formData.panel_type === 'xuione' || formData.panel_type === 'nxtdash' || formData.panel_type === 'aether') && (
+            {(formData.panel_type === 'xuione' || formData.panel_type === 'nxtdash' || formData.panel_type === 'aether' || formData.panel_type === 'gold') && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Note: {formData.panel_type === 'xuione' ? 'XuiOne' : formData.panel_type === 'aether' ? 'Aether' : 'NXT Dash'} reseller creation is not supported via API
+                Note: {({ xuione: 'XuiOne', aether: 'Aether', gold: 'Gold Panel', nxtdash: 'NXT Dash' })[formData.panel_type]} reseller creation is not supported via API
               </p>
             )}
           </div>
+
+          {formData.panel_type === 'gold' && (
+            <p className="text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3" data-testid="gold-create-hint">
+              Gold Panel generates the M3U username and password itself — the fields below are ignored for Gold devices.
+            </p>
+          )}
 
           {/* Username (optional) */}
           <div>
@@ -1479,6 +1509,20 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
                   </p>
                 )}
               </div>
+
+              {formData.panel_type === 'gold' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Subscription length *</label>
+                  <select
+                    value={formData.duration_months}
+                    onChange={(e) => setFormData({ ...formData, duration_months: parseInt(e.target.value) })}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    data-testid="gold-term-select"
+                  >
+                    {[1, 3, 6, 12].map((m) => (<option key={m} value={m}>{m} month{m > 1 ? 's' : ''}</option>))}
+                  </select>
+                </div>
+              )}
 
               {/* Show selected package details */}
               {formData.package_id && (() => {
@@ -1579,7 +1623,7 @@ function CreateUserModal({ panels, onClose, onSuccess }) {
 
 // Extend User Modal Component
 function ExtendUserModal({ user, onClose, onSuccess }) {
-  const timezone = useTimezone(); // CMTV local fix 2026-09-24: was undefined here, blank screen
+  const timezone = useTimezone(); // CMTV local fix 2026-09-24: was undefined here, blank screen (developer fixed it too)
   const [selectedPackageId, setSelectedPackageId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -1603,6 +1647,9 @@ function ExtendUserModal({ user, onClose, onSuccess }) {
       } else if (panelType === 'aether') {
         const response = await adminAPI.getAetherPackages(user.panel_index || 0);
         return [...(response.data?.packages || []), ...(response.data?.extension_packages || [])];
+      } else if (panelType === 'gold') {
+        const response = await adminAPI.getGoldPackages(user.panel_index || 0);
+        return response.data?.terms || [];
       } else {
         const response = await adminAPI.syncXuiOnePackages(user.panel_index || 0);
         return (response.data?.packages || []).filter(p => !p.is_trial);
@@ -1774,7 +1821,7 @@ function ExtendUserModal({ user, onClose, onSuccess }) {
 
           <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
             <p className="text-sm text-green-800 dark:text-green-200">
-              <strong>Note:</strong> This will extend the subscription on both the billing system and the {({ xtream: 'XtreamUI', onestream: '1-Stream', nxtdash: 'NXT Dash', aether: 'Aether' })[user.panel_type] || 'XuiOne'} panel.
+              <strong>Note:</strong> This will extend the subscription on both the billing system and the {({ xtream: 'XtreamUI', onestream: '1-Stream', nxtdash: 'NXT Dash', aether: 'Aether', gold: 'Gold' })[user.panel_type] || 'XuiOne'} panel.
             </p>
           </div>
 

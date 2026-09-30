@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Union
 import os
 import logging
 import uuid
@@ -64,6 +64,7 @@ from xtreamui_session_client import XtreamUISessionClient
 from onestream_service import OneStreamService, get_onestream_service
 from nxtdash_service import NxtDashService, get_nxtdash_service
 from aether_service import AetherService, get_aether_service
+from gold_service import GoldPanelService, get_gold_service
 from email_service import get_email_service
 import cockpit_service  # CMTV local change 2026-09-24: Stremio / CMTVpn accounts in the Cockpit panel
 from email_logger import EmailLogger
@@ -846,10 +847,21 @@ async def sync_services_expiry_from_imported_users(panel_type: Optional[str] = N
 def render_provision_notes(template: str, **kwargs) -> str:
     """Render provisioning notes template with variables"""
     if not template:
-        template = "{{customer_name}} | {{email}} | Order: {{order_id}}"
+        template = "{{site_name}} | Order: {{order_id}}"
     for key, val in kwargs.items():
         template = template.replace("{{" + key + "}}", str(val or ""))
     return template.strip()
+
+
+def provision_notes(settings: dict, **kwargs) -> str:
+    """Notes written on the panel for a new line — branded with the billing panel's name, not the customer's."""
+    branding = settings.get("branding", {}) or {}
+    return render_provision_notes(branding.get("provision_notes_template", ""), site_name=branding.get("site_name") or "Billing", **kwargs)
+
+
+def manual_notes(settings: dict, current_user: dict) -> str:
+    site = (settings.get("branding", {}) or {}).get("site_name") or "Billing"
+    return f"{site} | Manual - {current_user.get('email', 'Admin')}"
 
 
 async def get_settings() -> dict:
@@ -883,6 +895,11 @@ async def startup_event():
     await password_reset_tokens_collection.create_index("token_hash")
     await shipping_quotes_collection.create_index("created_at", expireAfterSeconds=48 * 3600)
     await shipping_quotes_collection.create_index("rate_id")
+
+    # Panel notes should carry the billing panel's name, not the customer's (old default template)
+    await settings_collection.update_one(
+        {"branding.provision_notes_template": "{{customer_name}} | {{email}} | Order: {{order_id}}"},
+        {"$set": {"branding.provision_notes_template": "{{site_name}} | Order: {{order_id}}"}})
     
     # Create default admin user if not exists
     admin_exists = await users_collection.find_one({"role": "admin"})
@@ -5976,6 +5993,8 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                         await run_item(bp_item["product_name"], bp_item, provision_ghostsurf_service(order_id, order, user, bp_item, bp, settings, email_service))
                     elif bp_panel_type == "aether":
                         await run_item(bp_item["product_name"], bp_item, provision_aether_service(order_id, order, user, bp_item, bp, settings, email_service))
+                    elif bp_panel_type == "gold":
+                        await run_item(bp_item["product_name"], bp_item, provision_gold_service(order_id, order, user, bp_item, bp, settings, email_service))
                     else:
                         await run_item(bp_item["product_name"], bp_item, provision_xtream_service(order_id, order, user, bp_item, bp, settings, email_service))
                 continue
@@ -6038,6 +6057,8 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 await run_item(item["product_name"], item, provision_ghostsurf_service(order_id, order, user, item, product, settings, email_service))
             elif panel_type == "aether":
                 await run_item(item["product_name"], item, provision_aether_service(order_id, order, user, item, product, settings, email_service))
+            elif panel_type == "gold":
+                await run_item(item["product_name"], item, provision_gold_service(order_id, order, user, item, product, settings, email_service))
             else:
                 await run_item(item["product_name"], item, provision_xtream_service(order_id, order, user, item, product, settings, email_service))
 
@@ -7580,7 +7601,7 @@ async def provision_onestream_service(order_id: str, order: dict, user: dict, it
                 username=username,
                 password=password,
                 package_id=package_id,
-                reseller_notes=f"Order {order_id} - {user['name']}",
+                reseller_notes=provision_notes(settings, customer_name=user.get("name", ""), email=user.get("email", ""), order_id=order_id[:8], username=username, product_name=product.get("name", "")),
                 max_connections=product.get("max_connections", 1)
             )
             
@@ -7729,7 +7750,7 @@ async def provision_onestream_service(order_id: str, order: dict, user: dict, it
                     email=user.get("email", f"{username}@billing.local"),
                     password=password,
                     credits=product.get("reseller_credits", 0),
-                    notes=f"Order {order_id} - {user['name']}"
+                    notes=provision_notes(settings, customer_name=user.get("name", ""), email=user.get("email", ""), order_id=order_id[:8], username=username, product_name=product.get("name", ""))
                 )
                 
                 if result.get("success"):
@@ -7975,10 +7996,8 @@ async def provision_aether_service(order_id: str, order: dict, user: dict, item:
         username = item.get("reseller_username") or generate_username()
         password = item.get("reseller_password") or generate_password()
         product_bouquets = product.get("bouquets") or None
-        notes = render_provision_notes(
-            settings.get("branding", {}).get("provision_notes_template", ""),
-            customer_name=user.get("name", ""), email=user.get("email", ""), order_id=order_id[:8]
-        )
+        notes = provision_notes(settings, customer_name=user.get("name", ""), email=user.get("email", ""), order_id=order_id[:8],
+                                username="", product_name=product.get("name", ""))
 
         result = await ae.create_line(
             package_id=int(package_id), username=username, password=password,
@@ -8049,6 +8068,131 @@ def _aether_for_service(service: dict, settings: dict):
     if idx >= len(panels):
         return None
     return get_aether_service(panels[idx])
+
+
+def _gold_for_service(service: dict, settings: dict):
+    panels = settings.get("gold", {}).get("panels", [])
+    idx = safe_panel_index(service.get("panel_index"))
+    if idx >= len(panels):
+        return None
+    return get_gold_service(panels[idx])
+
+
+def _gold_pack_and_term(product: dict, item: dict):
+    """Gold packages are '{bouquet}:{months}'; the term falls back to the purchased term."""
+    pack_id, sub = GoldPanelService.parse_package_id(product.get("panel_package_id") or product.get("xtream_package_id") or product.get("package_id"))
+    if sub is None:
+        sub = GoldPanelService.normalize_term(item.get("term_months") or product.get("duration") or 1)
+    return pack_id, sub
+
+
+async def _gold_set_status_for(gd, doc: dict, enable: bool) -> dict:
+    """Enable/disable a Gold device, resolving the panel user_id from device_info when unknown."""
+    user_id = await gd.resolve_user_id(doc.get("xtream_username") or doc.get("username", ""), doc.get("xtream_password") or doc.get("password", ""), doc.get("gold_user_id", ""))
+    if not user_id:
+        return {"success": False, "error": "Device not found on Gold Panel"}
+    result = await gd.set_status(user_id, enable)
+    if result.get("success"):
+        result["user_id"] = user_id
+    return result
+
+
+async def provision_gold_service(order_id: str, order: dict, user: dict, item: dict, product: dict, settings: dict, email_service):
+    """Provision a Gold Panel M3U device (or renew an existing one) via api.php"""
+    try:
+        gd_panels = settings.get("gold", {}).get("panels", [])
+        panel_index = safe_panel_index(product.get("panel_index"))
+        if not gd_panels:
+            logger.error("Gold Panel not configured")
+            return
+        if panel_index >= len(gd_panels):
+            panel_index = 0
+        panel = gd_panels[panel_index]
+        panel_name = panel.get("name", f"Gold Panel {panel_index + 1}")
+        gd = get_gold_service(panel)
+        if not gd:
+            logger.error("Gold Panel service not available (missing panel_url or api_key)")
+            return
+        if product.get("account_type", "subscriber") != "subscriber":
+            logger.error("Gold Panel: only subscriber (M3U) devices can be provisioned via the API")
+            return
+
+        pack_id, sub = _gold_pack_and_term(product, item)
+        if not sub:
+            logger.error(f"Gold Panel: product '{product.get('name')}' has an unsupported term (need 1/3/6/12 months)")
+            return
+        action_type = item.get("action_type", "create_new")
+        renewal_service_id = item.get("renewal_service_id")
+
+        if renewal_service_id and action_type in ("renew", "extend"):
+            existing = await services_collection.find_one({"_id": str_to_objectid(renewal_service_id), "user_id": order["user_id"]})
+            if not existing:
+                logger.error(f"Gold renewal: service {renewal_service_id} not found")
+                return
+            line_user = existing.get("xtream_username") or existing.get("username", "")
+            line_pass = existing.get("xtream_password") or existing.get("password", "")
+            result = await gd.renew_m3u(line_user, line_pass, sub)
+            if not result.get("success"):
+                logger.error(f"Gold renew failed: {result.get('error')}")
+                return
+            base = existing.get("expiry_date") if existing.get("expiry_date") and existing["expiry_date"] > datetime.utcnow() else None
+            new_exp = result.get("new_expiry") or GoldPanelService.fallback_expiry(sub, base)
+            await services_collection.update_one({"_id": existing["_id"]}, {"$set": {"expiry_date": new_exp, "status": "active", "updated_at": datetime.utcnow()}})
+            logger.info(f"Gold device renewed: {line_user} -> {new_exp}")
+            if email_service:
+                try:
+                    await email_service.send_service_renewed(
+                        customer_email=user["email"], customer_name=user.get("name", "Customer"),
+                        service_name=existing.get("product_name", product.get("name", "Gold Service")),
+                        username=line_user, new_expiry_date=new_exp.strftime("%Y-%m-%d"), customer_id=order["user_id"])
+                except Exception as email_err:
+                    logger.warning(f"Gold renewal email failed: {email_err}")
+            return
+
+        if not pack_id:
+            logger.error(f"Gold Panel: product '{product.get('name')}' has no package id")
+            return
+        notes = provision_notes(settings, customer_name=user.get("name", ""), email=user.get("email", ""), order_id=order_id[:8],
+                                username="", product_name=product.get("name", "")) or f"Order {order_id[:8]}"
+        result = await gd.create_m3u(pack_id, sub, notes=notes)
+        if not result.get("success"):
+            logger.error(f"Gold create device failed: {result.get('error')}")
+            return
+
+        api_user, api_pass = result["username"], result["password"]
+        info = await gd.device_info(api_user, api_pass)
+        expiry_dt = info.get("expiry") if info.get("success") else None
+        expiry_dt = expiry_dt or GoldPanelService.fallback_expiry(sub)
+        streaming_url = result.get("streaming_url", "")
+
+        service_doc = {
+            "user_id": order["user_id"], "order_id": order_id,
+            "product_id": str(product.get("_id", item.get("product_id", ""))),
+            "product_name": product.get("name", "Gold Service"),
+            "username": api_user, "password": api_pass, "xtream_username": api_user, "xtream_password": api_pass,
+            "panel_type": "gold", "panel_name": panel_name, "panel_index": panel_index,
+            "gold_user_id": result.get("user_id", ""), "gold_pack_id": pack_id, "gold_m3u_url": result.get("url", ""),
+            "account_type": "subscriber", "term_months": sub,
+            "max_connections": product.get("max_connections", 1), "is_trial": product.get("is_trial", False),
+            "streaming_url": streaming_url, "start_date": datetime.utcnow(), "expiry_date": expiry_dt,
+            "status": "active", "created_at": datetime.utcnow(),
+        }
+        await services_collection.insert_one(service_doc)
+        logger.info(f"Gold M3U provisioned: {api_user} (user_id {result.get('user_id')}, {sub} months)")
+
+        if email_service:
+            try:
+                await email_service.send_service_activated(
+                    customer_email=user["email"], customer_name=user.get("name", "Customer"),
+                    service_name=product.get("name", "Gold Service"), username=api_user, password=api_pass,
+                    streaming_url=streaming_url, max_connections=product.get("max_connections", 1),
+                    expiry_date=expiry_dt.strftime("%Y-%m-%d"), customer_id=order["user_id"])
+            except Exception as email_err:
+                logger.warning(f"Gold activation email failed: {email_err}")
+    except Exception as e:
+        logger.error(f"Gold provisioning error: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 
 def _xtream_panel(settings: dict, panel_index) -> Optional[dict]:
@@ -8179,6 +8323,11 @@ async def suspend_service(service_id: str, current_user: dict = Depends(get_curr
         if not ae:
             raise HTTPException(status_code=500, detail="Aether panel not configured")
         result = await ae.suspend_line(line_user)
+    elif panel_type == "gold":
+        gd = _gold_for_service(service, settings)
+        if not gd:
+            raise HTTPException(status_code=500, detail="Gold Panel not configured")
+        result = await _gold_set_status_for(gd, service, False)
     elif panel_type == "xtream":
         xtream_service = get_xtream_service(settings.get("xtream", {}))
         if not xtream_service:
@@ -8190,7 +8339,7 @@ async def suspend_service(service_id: str, current_user: dict = Depends(get_curr
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error", "Failed to suspend"))
 
-    await services_collection.update_one({"_id": service["_id"]}, {"$set": {"status": "suspended"}})
+    await services_collection.update_one({"_id": service["_id"]}, {"$set": {"status": "suspended", **({"gold_user_id": result["user_id"]} if result.get("user_id") else {})}})
     return {"message": "Service suspended successfully"}
 
 @app.post("/api/admin/services/{service_id}/unsuspend")
@@ -8209,6 +8358,11 @@ async def unsuspend_service(service_id: str, current_user: dict = Depends(get_cu
         if not ae:
             raise HTTPException(status_code=500, detail="Aether panel not configured")
         result = await ae.unsuspend_line(line_user)
+    elif panel_type == "gold":
+        gd = _gold_for_service(service, settings)
+        if not gd:
+            raise HTTPException(status_code=500, detail="Gold Panel not configured")
+        result = await _gold_set_status_for(gd, service, True)
     elif panel_type == "xtream":
         xtream_service = get_xtream_service(settings.get("xtream", {}))
         if not xtream_service:
@@ -8220,7 +8374,7 @@ async def unsuspend_service(service_id: str, current_user: dict = Depends(get_cu
     if not result.get("success"):
         raise HTTPException(status_code=500, detail=result.get("error", "Failed to unsuspend"))
 
-    await services_collection.update_one({"_id": service["_id"]}, {"$set": {"status": "active"}})
+    await services_collection.update_one({"_id": service["_id"]}, {"$set": {"status": "active", **({"gold_user_id": result["user_id"]} if result.get("user_id") else {})}})
     return {"message": "Service unsuspended successfully"}
 
 @app.post("/api/admin/services/{service_id}/cancel")
@@ -8239,6 +8393,11 @@ async def cancel_service(service_id: str, current_user: dict = Depends(get_curre
         if not ae:
             raise HTTPException(status_code=500, detail="Aether panel not configured")
         result = await ae.suspend_line(line_user)
+    elif panel_type == "gold":
+        gd = _gold_for_service(service, settings)
+        if not gd:
+            raise HTTPException(status_code=500, detail="Gold Panel not configured")
+        result = await _gold_set_status_for(gd, service, False)
     elif panel_type == "xtream":
         xtream_service = get_xtream_service(settings.get("xtream", {}))
         if not xtream_service:
@@ -8297,13 +8456,18 @@ async def get_panel_names():
         {"index": i, "name": panel.get("name", f"Aether Panel {i + 1}")}
         for i, panel in enumerate(settings.get("aether", {}).get("panels", []))
     ]
+    gold_info = [
+        {"index": i, "name": panel.get("name", f"Gold Panel {i + 1}")}
+        for i, panel in enumerate(settings.get("gold", {}).get("panels", []))
+    ]
     
     return {
         "panels": panel_info,
         "xuione_panels": xuione_info,
         "onestream_panels": onestream_info,
         "nxtdash_panels": nxtdash_info,
-        "aether_panels": aether_info
+        "aether_panels": aether_info,
+        "gold_panels": gold_info
     }
 
 class ManualServiceCreate(BaseModel):
@@ -8527,6 +8691,91 @@ async def sync_aether_bouquets(panel_index: int = 0, current_user: dict = Depend
     bouquets = [{"id": b["id"], "name": b["name"]} for b in result["bouquets"]]
     await db.settings.update_one({}, {"$set": {f"aether.panels.{panel_index}.bouquets": bouquets}})
     return {"bouquets": bouquets, "count": len(bouquets)}
+
+
+def _get_gold_panel(settings: dict, panel_index: int):
+    panels = settings.get("gold", {}).get("panels", [])
+    if not panels:
+        raise HTTPException(status_code=400, detail="No Gold panels configured")
+    if panel_index >= len(panels):
+        raise HTTPException(status_code=400, detail=f"Panel index {panel_index} not found")
+    panel = panels[panel_index]
+    service = get_gold_service(panel)
+    if not service:
+        raise HTTPException(status_code=500, detail="Gold Panel service not available - check panel_url and api_key")
+    return panel, service
+
+
+@app.post("/api/admin/gold/test")
+async def test_gold_connection(panel_index: int = 0, current_user: dict = Depends(get_current_admin_user)):
+    """Test a Gold Panel API key (action=reseller) and report credits"""
+    settings = await get_settings()
+    _, service = _get_gold_panel(settings, panel_index)
+    result = await service.test_connection()
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Connection failed"))
+    data = result.get("data", {})
+    msg = result["message"]
+    if data.get("credits") is not None:
+        msg += f" — Balance: {data['credits']:g} credits"
+    return {"success": True, "message": msg, "data": data}
+
+
+@app.get("/api/admin/gold/packages")
+async def get_gold_packages(panel_index: int = 0, current_user: dict = Depends(get_current_admin_user)):
+    """Sellable Gold packages (bouquet × 1/3/6/12 months) plus plain terms for renewals"""
+    settings = await get_settings()
+    panel, service = _get_gold_panel(settings, panel_index)
+    result = await service.get_packages()
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Failed to fetch packages"))
+    return {"packages": result["packages"], "trial_packages": [], "terms": result["terms"], "bouquets": result["bouquets"],
+            "count": len(result["packages"]), "trial_count": 0, "panel_name": panel.get("name", f"Gold Panel {panel_index + 1}")}
+
+
+def _gold_info_to_doc(info: dict, panel_index: int, panel_name: str) -> dict:
+    return {
+        "panel_index": panel_index, "panel_type": "gold", "panel_name": panel_name,
+        "gold_user_id": info.get("user_id", ""), "username": info.get("username", ""), "password": info.get("password", ""),
+        "expiry_date": info.get("expiry"), "status": info.get("status", "active"), "max_connections": 1,
+        "account_type": "subscriber", "is_trial": 0, "notes": info.get("note", ""), "last_synced": datetime.utcnow(),
+    }
+
+
+async def _gold_refresh_panel_users(panel: dict, panel_index: int, service) -> dict:
+    """Gold has no list endpoint: re-read device_info for every device we already know (imported users + billing services)."""
+    panel_name = panel.get("name", f"Gold Panel {panel_index + 1}")
+    known = {}
+    async for u in imported_users_collection.find({"panel_type": "gold", "panel_index": panel_index}):
+        known[u.get("username", "")] = u.get("password", "")
+    async for s in services_collection.find({"panel_type": "gold", "panel_index": panel_index, "status": {"$ne": "cancelled"}}):
+        known.setdefault(s.get("xtream_username") or s.get("username", ""), s.get("xtream_password") or s.get("password", ""))
+    known.pop("", None)
+    updated = added = errors = 0
+    for username, password in known.items():
+        info = await service.device_info(username, password)
+        if not info.get("success"):
+            errors += 1
+            continue
+        r = await safe_upsert_imported_user({"username": username, "panel_name": panel_name, "account_type": "subscriber"},
+                                            _gold_info_to_doc(info, panel_index, panel_name))
+        if r.upserted_id:
+            added += 1
+        elif r.modified_count:
+            updated += 1
+        if info.get("expiry"):
+            await services_collection.update_many(
+                {"panel_type": "gold", "panel_index": panel_index, "$or": [{"xtream_username": username}, {"username": username}], "status": {"$ne": "cancelled"}},
+                {"$set": {"expiry_date": info["expiry"], "gold_user_id": info.get("user_id", ""), **({"status": info["status"]} if info["status"] in ("active", "suspended", "expired") else {})}})
+    return {"synced": added, "updated": updated, "total": len(known), "errors": errors}
+
+
+@app.post("/api/admin/gold/refresh-users")
+async def refresh_gold_users(panel_index: int = 0, current_user: dict = Depends(get_current_admin_user)):
+    """Refresh expiry/status of all known Gold devices (the API cannot list users)"""
+    settings = await get_settings()
+    panel, service = _get_gold_panel(settings, panel_index)
+    return await _gold_refresh_panel_users(panel, panel_index, service)
 
 
 def _aether_line_to_doc(line: dict, panel_index: int, panel_name: str) -> dict:
@@ -9137,7 +9386,7 @@ async def update_admin_settings(settings_update: Settings,
     existing = await settings_collection.find_one()
     if existing:
         # Detect removed panels and clean up their data
-        for panel_type_key in ["xtream", "xuione", "onestream", "nxtdash", "ghostsurf", "aether"]:
+        for panel_type_key in ["xtream", "xuione", "onestream", "nxtdash", "ghostsurf", "aether", "gold"]:
             old_panels = existing.get(panel_type_key, {}).get("panels", [])
             new_panels = settings_dict.get(panel_type_key, {}).get("panels", [])
             old_names = {p.get("name") for p in old_panels if p.get("name")}
@@ -11457,6 +11706,8 @@ async def get_bouquets(panel_id: int = 0, panel_type: str = 'xtream', current_us
                     await db.settings.update_one({}, {"$set": {f"aether.panels.{panel_id}.bouquets": bouquets}})
                     return bouquets
         return []
+    elif panel_type == 'gold':
+        return []  # Gold packages are whole bouquets; nothing to pick per product
     elif panel_type == 'nxtdash':
         # Get NXT Dash bouquets from stored panel settings (with custom names)
         nd_panels = settings.get("nxtdash", {}).get("panels", [])
@@ -11553,6 +11804,7 @@ async def cleanup_orphaned_imported_users(data: dict, current_user: dict = Depen
         "onestream": [p.get("name") for p in settings.get("onestream", {}).get("panels", [])],
         "nxtdash": [p.get("name") for p in settings.get("nxtdash", {}).get("panels", [])],
         "aether": [p.get("name") for p in settings.get("aether", {}).get("panels", [])],
+        "gold": [p.get("name") for p in settings.get("gold", {}).get("panels", [])],
     }
     all_active = sum(active_names.values(), [])
 
@@ -12356,6 +12608,23 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
             logger.error(f"Error syncing from {panel_name}: {e}")
             results["errors"].append(f"{panel_name}: {str(e)}")
 
+    # Refresh Gold panels (no list endpoint — re-read known devices)
+    gold_panels = settings.get("gold", {}).get("panels", [])
+    for panel_index, panel in enumerate(gold_panels):
+        panel_name = panel.get("name", f"Gold Panel {panel_index + 1}")
+        try:
+            gd = get_gold_service(panel)
+            if not gd:
+                results["errors"].append(f"{panel_name}: Service not available")
+                continue
+            r = await _gold_refresh_panel_users(panel, panel_index, gd)
+            results["panels_synced"].append({"name": panel_name, "type": "gold", "synced": r["synced"], "updated": r["updated"]})
+            results["total_synced"] += r["synced"]
+            results["total_updated"] += r["updated"]
+        except Exception as e:
+            logger.error(f"Error refreshing {panel_name}: {e}")
+            results["errors"].append(f"{panel_name}: {str(e)}")
+
     # Check for orphaned users from removed panels (don't auto-delete — let admin decide)
     active_xtream_panel_names = [p.get("name") for p in xtream_panels]
     active_xuione_panel_names = [p.get("name") for p in xuione_panels]
@@ -12363,11 +12632,12 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
     active_nxtdash_panel_names = [p.get("name") for p in nxtdash_panels]
     active_ghostsurf_panel_names = [p.get("name") for p in ghostsurf_panels]
     active_aether_panel_names = [p.get("name") for p in aether_panels]
-    all_active_panel_names = active_xtream_panel_names + active_xuione_panel_names + active_onestream_panel_names + active_nxtdash_panel_names + active_ghostsurf_panel_names + active_aether_panel_names
+    active_gold_panel_names = [p.get("name") for p in gold_panels]
+    all_active_panel_names = active_xtream_panel_names + active_xuione_panel_names + active_onestream_panel_names + active_nxtdash_panel_names + active_ghostsurf_panel_names + active_aether_panel_names + active_gold_panel_names
 
     orphaned_count = 0
     orphaned_panels = []
-    for ptype, active_names in [("xtream", active_xtream_panel_names), ("xuione", active_xuione_panel_names), ("onestream", active_onestream_panel_names), ("nxtdash", active_nxtdash_panel_names), ("ghostsurf", active_ghostsurf_panel_names), ("aether", active_aether_panel_names)]:
+    for ptype, active_names in [("xtream", active_xtream_panel_names), ("xuione", active_xuione_panel_names), ("onestream", active_onestream_panel_names), ("nxtdash", active_nxtdash_panel_names), ("ghostsurf", active_ghostsurf_panel_names), ("aether", active_aether_panel_names), ("gold", active_gold_panel_names)]:
         count = await imported_users_collection.count_documents({
             "panel_type": ptype,
             "panel_name": {"$nin": active_names}
@@ -12959,6 +13229,22 @@ async def suspend_imported_user(user_id: str, current_user: dict = Depends(get_c
             return {"message": "User suspended successfully on Aether panel"}
         raise HTTPException(status_code=500, detail=result.get("error", "Failed to suspend"))
 
+    elif panel_type == "gold":
+        panels = settings.get("gold", {}).get("panels", [])
+        if panel_index >= len(panels):
+            raise HTTPException(status_code=400, detail="Invalid panel")
+        gd = get_gold_service(panels[panel_index])
+        if not gd:
+            raise HTTPException(status_code=500, detail="Gold Panel service not available")
+        result = await _gold_set_status_for(gd, user, False)
+        if result.get("success"):
+            await imported_users_collection.update_one(
+                {"_id": str_to_objectid(user_id)},
+                {"$set": {"status": "suspended", "gold_user_id": result.get("user_id", user.get("gold_user_id", "")), "last_synced": datetime.utcnow()}}
+            )
+            return {"message": "Device disabled successfully on Gold Panel"}
+        raise HTTPException(status_code=500, detail=result.get("error", "Failed to suspend"))
+
     else:
         raise HTTPException(status_code=400, detail=f"Unknown panel type: {panel_type}")
 
@@ -13097,6 +13383,22 @@ async def activate_imported_user(user_id: str, current_user: dict = Depends(get_
                 {"$set": {"status": "active", "last_synced": datetime.utcnow()}}
             )
             return {"message": "User activated successfully on Aether panel"}
+        raise HTTPException(status_code=500, detail=result.get("error", "Failed to activate"))
+
+    elif panel_type == "gold":
+        panels = settings.get("gold", {}).get("panels", [])
+        if panel_index >= len(panels):
+            raise HTTPException(status_code=400, detail="Invalid panel")
+        gd = get_gold_service(panels[panel_index])
+        if not gd:
+            raise HTTPException(status_code=500, detail="Gold Panel service not available")
+        result = await _gold_set_status_for(gd, user, True)
+        if result.get("success"):
+            await imported_users_collection.update_one(
+                {"_id": str_to_objectid(user_id)},
+                {"$set": {"status": "active", "gold_user_id": result.get("user_id", user.get("gold_user_id", "")), "last_synced": datetime.utcnow()}}
+            )
+            return {"message": "Device enabled successfully on Gold Panel"}
         raise HTTPException(status_code=500, detail=result.get("error", "Failed to activate"))
 
     else:
@@ -13504,6 +13806,17 @@ async def bulk_action_imported_users(data: dict, current_user: dict = Depends(ge
                         {"_id": str_to_objectid(uid)},
                         {"$set": {"status": "suspended", "last_synced": datetime.utcnow()}}
                     )
+                elif panel_type == "gold":
+                    gd_panels = settings.get("gold", {}).get("panels", [])
+                    pi = safe_panel_index(user.get("panel_index"))
+                    gd = get_gold_service(gd_panels[pi]) if pi < len(gd_panels) else None
+                    if not gd or not (await _gold_set_status_for(gd, user, False)).get("success"):
+                        failed += 1
+                        continue
+                    await imported_users_collection.update_one(
+                        {"_id": str_to_objectid(uid)},
+                        {"$set": {"status": "suspended", "last_synced": datetime.utcnow()}}
+                    )
                 elif panel_type == "xtream":
                     try:
                         panels = settings.get("xtream", {}).get("panels", [])
@@ -13537,6 +13850,13 @@ async def bulk_action_imported_users(data: dict, current_user: dict = Depends(ge
                     pi = safe_panel_index(user.get("panel_index"))
                     ae = get_aether_service(ae_panels[pi]) if pi < len(ae_panels) else None
                     if not ae or not (await ae.unsuspend_line(user["username"])).get("success"):
+                        failed += 1
+                        continue
+                elif panel_type == "gold":
+                    gd_panels = settings.get("gold", {}).get("panels", [])
+                    pi = safe_panel_index(user.get("panel_index"))
+                    gd = get_gold_service(gd_panels[pi]) if pi < len(gd_panels) else None
+                    if not gd or not (await _gold_set_status_for(gd, user, True)).get("success"):
                         failed += 1
                         continue
                 elif panel_type == "xtream":
@@ -13839,6 +14159,23 @@ async def extend_imported_user(user_id: str, data: ExtendImportedUserRequest, cu
                 raise HTTPException(status_code=status_code, detail=f"Failed to extend on panel: {panel_extend_result.get('error')}")
             logger.info("✓ Aether renewal successful")
 
+        elif panel_type == "gold":
+            gd_panels = settings.get("gold", {}).get("panels", [])
+            if not gd_panels or panel_index >= len(gd_panels):
+                raise HTTPException(status_code=400, detail="Panel configuration not found")
+            gd = get_gold_service(gd_panels[panel_index])
+            if not gd:
+                raise HTTPException(status_code=500, detail="Gold Panel service not available")
+            _, sub = GoldPanelService.parse_package_id(data.package_id)
+            sub = GoldPanelService.normalize_term(sub or data.package_id)
+            if not sub:
+                raise HTTPException(status_code=400, detail="Gold Panel renewals must be 1, 3, 6 or 12 months")
+            days_to_add = sub * 30
+            panel_extend_result = await gd.renew_m3u(username, password, sub)
+            if not panel_extend_result.get("success"):
+                raise HTTPException(status_code=500, detail=f"Failed to extend on panel: {panel_extend_result.get('error')}")
+            logger.info("✓ Gold Panel renewal successful")
+
         else:
             raise HTTPException(status_code=400, detail="Invalid panel type")
         
@@ -13910,6 +14247,8 @@ async def extend_imported_user(user_id: str, data: ExtendImportedUserRequest, cu
                     pass
             elif panel_type == "aether" and panel_extend_result and panel_extend_result.get("new_expiry"):
                 new_expiry = panel_extend_result["new_expiry"]
+            elif panel_type == "gold" and panel_extend_result and panel_extend_result.get("new_expiry"):
+                new_expiry = panel_extend_result["new_expiry"]
         except Exception as e:
             logger.warning(f"Could not fetch panel expiry after extend: {e}")
     
@@ -13954,7 +14293,7 @@ class CreateImportedUserRequest(BaseModel):
     username: Optional[str] = None  # Auto-generate if not provided
     password: Optional[str] = None  # Auto-generate if not provided
     # For subscribers
-    package_id: Optional[int] = None
+    package_id: Optional[Union[int, str]] = None  # int for most panels; Gold accepts "bouquet:months" too
     duration_months: Optional[int] = 1
     max_connections: Optional[int] = 1
     # For resellers
@@ -14042,7 +14381,7 @@ async def create_imported_user(data: CreateImportedUserRequest, current_user: di
                 password=password,
                 package_id=data.package_id,
                 bouquets=bouquets,
-                customer_name=f"Manual - {current_user.get('email', 'Admin')}"
+                customer_name=manual_notes(settings, current_user)
             )
             
             if not result.get("success"):
@@ -14293,7 +14632,7 @@ async def create_imported_user(data: CreateImportedUserRequest, current_user: di
             result = os_service.create_line(
                 username=username, password=password,
                 package_id=data.package_id,
-                reseller_notes=f"Manual - {current_user.get('email', 'Admin')}",
+                reseller_notes=manual_notes(settings, current_user),
                 max_connections=data.max_connections or package_max_connections
             )
             if not result.get("success"):
@@ -14327,7 +14666,7 @@ async def create_imported_user(data: CreateImportedUserRequest, current_user: di
             result = os_service.create_subreseller(
                 name=username, email=f"{username}@billing.local",
                 password=password, credits=data.credits or 0,
-                notes=f"Manual - {current_user.get('email', 'Admin')}"
+                notes=manual_notes(settings, current_user)
             )
             if not result.get("success"):
                 raise HTTPException(status_code=500, detail=result.get("error", "Failed to create reseller on 1-Stream"))
@@ -14375,7 +14714,7 @@ async def create_imported_user(data: CreateImportedUserRequest, current_user: di
         result = await nd_service.create_line(
             username=username, password=password,
             package_id=int(data.package_id),
-            description=f"Manual - {current_user.get('email', 'Admin')}",
+            description=manual_notes(settings, current_user),
             is_trial=is_trial,
         )
         if not result.get("success"):
@@ -14426,7 +14765,7 @@ async def create_imported_user(data: CreateImportedUserRequest, current_user: di
         result = await ae.create_line(
             package_id=int(data.package_id),
             username=data.username or username, password=data.password or password,
-            notes=f"Manual - {current_user.get('email', 'Admin')}",
+            notes=manual_notes(settings, current_user),
             idem_key=f"billing-admin-create-{uuid.uuid4().hex}",
         )
         if not result.get("success"):
@@ -14458,8 +14797,48 @@ async def create_imported_user(data: CreateImportedUserRequest, current_user: di
                      "account_type": "subscriber", "max_connections": max_conn}
         }
 
+    elif panel_type == "gold":
+        gd_panels = settings.get("gold", {}).get("panels", [])
+        if not gd_panels or panel_index >= len(gd_panels):
+            raise HTTPException(status_code=400, detail="Invalid Gold panel index")
+        panel = gd_panels[panel_index]
+        panel_name = panel.get("name", f"Gold Panel {panel_index + 1}")
+        gd = get_gold_service(panel)
+        if not gd:
+            raise HTTPException(status_code=500, detail="Gold Panel service not available")
+        if data.account_type != "subscriber":
+            raise HTTPException(status_code=400, detail="Gold Panel only supports subscriber (M3U device) creation via API")
+        pack_id, sub = GoldPanelService.parse_package_id(data.package_id)
+        sub = GoldPanelService.normalize_term(sub or data.duration_months or 1)
+        if not pack_id:
+            raise HTTPException(status_code=400, detail="package_id (Gold bouquet) is required")
+        if not sub:
+            raise HTTPException(status_code=400, detail="Subscription length must be 1, 3, 6 or 12 months")
+
+        result = await gd.create_m3u(pack_id, sub, notes=manual_notes(settings, current_user))
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Failed to create device on Gold Panel"))
+        api_user, api_pass = result["username"], result["password"]
+        info = await gd.device_info(api_user, api_pass)
+        expiry_dt = (info.get("expiry") if info.get("success") else None) or GoldPanelService.fallback_expiry(sub)
+
+        user_doc = {
+            "panel_index": panel_index, "panel_type": "gold", "panel_name": panel_name,
+            "gold_user_id": result.get("user_id", ""), "gold_pack_id": pack_id, "gold_m3u_url": result.get("url", ""),
+            "username": api_user, "password": api_pass, "expiry_date": expiry_dt, "status": "active",
+            "max_connections": 1, "account_type": "subscriber", "last_synced": datetime.utcnow(), "created_at": datetime.utcnow()
+        }
+        await imported_users_collection.insert_one(user_doc)
+        return {
+            "success": True,
+            "message": f"M3U device '{api_user}' created on {panel_name} ({sub} month{'s' if sub > 1 else ''})",
+            "user": {"username": api_user, "password": api_pass, "panel_name": panel_name,
+                     "expiry_date": expiry_dt.strftime("%Y-%m-%d %H:%M:%S"), "account_type": "subscriber",
+                     "max_connections": 1, "duration_months": sub, "m3u_url": result.get("url", "")}
+        }
+
     else:
-        raise HTTPException(status_code=400, detail="Invalid panel_type. Must be 'xtream', 'xuione', 'onestream', 'nxtdash', or 'aether'")
+        raise HTTPException(status_code=400, detail="Invalid panel_type. Must be 'xtream', 'xuione', 'onestream', 'nxtdash', 'aether', or 'gold'")
 
 @app.get("/api/products/{product_id}/channels")
 async def get_product_channels(product_id: str):
@@ -14506,6 +14885,8 @@ async def get_product_channels(product_id: str):
         ae_panels = settings.get("aether", {}).get("panels", [])
         if panel_index < len(ae_panels):
             panel_bouquets = ae_panels[panel_index].get("bouquets", [])
+    elif panel_type == "gold":
+        panel_bouquets = []
     else:
         # XtreamUI - check panel-specific then legacy
         panel_bouquets_key = f"bouquets_panel_{panel_index}"

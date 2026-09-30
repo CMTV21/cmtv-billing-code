@@ -44,6 +44,7 @@ export default function AdminProducts() {
   const nxtdashPanels = settings?.nxtdash?.panels || [];
   const ghostsurfPanels = settings?.ghostsurf?.panels || [];
   const aetherPanels = settings?.aether?.panels || [];
+  const goldPanels = settings?.gold?.panels || [];
   
   // Combine all panel types with a type indicator
   const allPanels = [
@@ -52,7 +53,8 @@ export default function AdminProducts() {
     ...onestreamPanels.map((panel, index) => ({ ...panel, type: 'onestream', originalIndex: index })),
     ...nxtdashPanels.map((panel, index) => ({ ...panel, type: 'nxtdash', originalIndex: index })),
     ...ghostsurfPanels.map((panel, index) => ({ ...panel, type: 'ghostsurf', originalIndex: index })),
-    ...aetherPanels.map((panel, index) => ({ ...panel, type: 'aether', originalIndex: index }))
+    ...aetherPanels.map((panel, index) => ({ ...panel, type: 'aether', originalIndex: index })),
+    ...goldPanels.map((panel, index) => ({ ...panel, type: 'gold', originalIndex: index }))
   ];
   
   // For components that need just XtreamUI panels (like ResellerPackageModal)
@@ -75,6 +77,9 @@ export default function AdminProducts() {
     }
     if (panelType === 'aether') {
       return aetherPanels[panelIndex]?.name || `Aether Panel ${panelIndex}`;
+    }
+    if (panelType === 'gold') {
+      return goldPanels[panelIndex]?.name || `Gold Panel ${panelIndex}`;
     }
     return xtreamPanels[panelIndex]?.name || `Panel ${panelIndex}`;
   };
@@ -416,7 +421,7 @@ export default function AdminProducts() {
                     <option value="all">All Panels</option>
                     {allPanels.map((panel, idx) => (
                       <option key={idx} value={`${panel.type}-${panel.originalIndex}`}>
-                        {panel.name || `${panel.type === 'xuione' ? 'XuiOne' : panel.type === 'onestream' ? '1-Stream' : panel.type === 'nxtdash' ? 'NXT Dash' : panel.type === 'ghostsurf' ? 'GhostSurf VPN' : panel.type === 'aether' ? 'Aether' : 'XtreamUI'} Panel ${panel.originalIndex + 1}`}
+                        {panel.name || `${panel.type === 'xuione' ? 'XuiOne' : panel.type === 'onestream' ? '1-Stream' : panel.type === 'nxtdash' ? 'NXT Dash' : panel.type === 'ghostsurf' ? 'GhostSurf VPN' : panel.type === 'aether' ? 'Aether' : panel.type === 'gold' ? 'Gold' : 'XtreamUI'} Panel ${panel.originalIndex + 1}`}
                       </option>
                     ))}
                   </select>
@@ -691,6 +696,7 @@ function ProductFormModal({ product, onClose, onSuccess }) {
   const nxtdashPanels = settings?.nxtdash?.panels || [];
   const ghostsurfPanels = settings?.ghostsurf?.panels || [];
   const aetherPanels = settings?.aether?.panels || [];
+  const goldPanels = settings?.gold?.panels || [];
   
   // Combine all panel types with a type indicator
   const allPanels = [
@@ -699,6 +705,7 @@ function ProductFormModal({ product, onClose, onSuccess }) {
     ...onestreamPanels.map((panel, index) => ({ ...panel, type: 'onestream', originalIndex: index, label: `${panel.name} (1-Stream)` })),
     ...nxtdashPanels.map((panel, index) => ({ ...panel, type: 'nxtdash', originalIndex: index, label: `${panel.name} (NXT Dash)` })),
     ...aetherPanels.map((panel, index) => ({ ...panel, type: 'aether', originalIndex: index, label: `${panel.name || 'Aether'} (Aether)` })),
+    ...goldPanels.map((panel, index) => ({ ...panel, type: 'gold', originalIndex: index, label: `${panel.name || 'Gold'} (Gold Panel)` })),
     ...ghostsurfPanels.map((panel, index) => ({ ...panel, type: 'ghostsurf', originalIndex: index, label: `${panel.name || 'GhostSurf VPN'} (GhostSurf)` }))
   ];
   
@@ -746,6 +753,9 @@ function ProductFormModal({ product, onClose, onSuccess }) {
       } else if (selectedPanelInfo.type === 'aether') {
         const response = await adminAPI.getAetherPackages(selectedPanelInfo.index);
         return response.data.packages || [];
+      } else if (selectedPanelInfo.type === 'gold') {
+        const response = await adminAPI.getGoldPackages(selectedPanelInfo.index);
+        return response.data.packages || [];
       } else {
         const response = await adminAPI.syncPackagesFromPanel(selectedPanelInfo.index);
         return response.data.packages || [];
@@ -769,6 +779,8 @@ function ProductFormModal({ product, onClose, onSuccess }) {
         return response.data.trial_packages || [];
       } else if (selectedPanelInfo.type === 'ghostsurf') {
         return []; // GhostSurf doesn't have trial packages
+      } else if (selectedPanelInfo.type === 'gold') {
+        return []; // Gold Panel has no trial packages
       } else if (selectedPanelInfo.type === 'aether') {
         const response = await adminAPI.getAetherPackages(selectedPanelInfo.index);
         return response.data.trial_packages || [];
@@ -1049,7 +1061,7 @@ function ProductFormModal({ product, onClose, onSuccess }) {
                       <option value="">-- Select a {packageType} package --</option>
                       {currentPackages.map((pkg) => (
                         <option key={pkg.id} value={pkg.id}>
-                          {pkg.name} | ${pkg.credits} | {pkg.duration} {pkg.duration_unit} | {pkg.max_connections} connection(s)
+                          {pkg.name} | {pkg.credits != null ? `$${pkg.credits} | ` : ''}{pkg.duration} {pkg.duration_unit} | {pkg.max_connections} connection(s)
                         </option>
                       ))}
                     </select>
@@ -1070,7 +1082,7 @@ function ProductFormModal({ product, onClose, onSuccess }) {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded">
                           <span className="text-gray-600 dark:text-gray-400 block mb-1">Price:</span>
-                          <span className="font-bold text-green-700 dark:text-green-300 text-lg">${selectedPackage.credits}</span>
+                          <span className="font-bold text-green-700 dark:text-green-300 text-lg">{selectedPackage.credits != null ? `$${selectedPackage.credits}` : '—'}</span>
                         </div>
                         <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded">
                           <span className="text-gray-600 dark:text-gray-400 block mb-1">Duration:</span>
@@ -1151,8 +1163,8 @@ function ProductFormModal({ product, onClose, onSuccess }) {
               </p>
             </div>
 
-            {/* View Channels Toggle - hide for VPN panels */}
-            {selectedPanelInfo.type !== 'ghostsurf' && (
+            {/* View Channels Toggle - hide for VPN / Gold panels */}
+            {selectedPanelInfo.type !== 'ghostsurf' && selectedPanelInfo.type !== 'gold' && (
             <div className="md:col-span-2 flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
               <div>
                 <span className="text-sm font-medium text-gray-900 dark:text-white">Show "View Channels" on Storefront</span>
@@ -1192,7 +1204,13 @@ function ProductFormModal({ product, onClose, onSuccess }) {
                   </h3>
                 </div>
 
-                {selectedPanelInfo.type !== 'ghostsurf' && (
+                {selectedPanelInfo.type === 'gold' && (
+                <div className="md:col-span-2 text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3" data-testid="gold-product-hint">
+                  Gold Panel products are M3U devices. The package you picked above already defines the channel bouquet and the 1 / 3 / 6 / 12-month term — the panel generates the username &amp; password at purchase.
+                </div>
+                )}
+
+                {selectedPanelInfo.type !== 'ghostsurf' && selectedPanelInfo.type !== 'gold' && (
                 <div className="md:col-span-2">
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">

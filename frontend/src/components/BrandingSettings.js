@@ -19,7 +19,7 @@ export default function BrandingSettings({ settings }) {
     hero_title: settings?.branding?.hero_title || 'Premium IPTV Subscriptions',
     hero_description: settings?.branding?.hero_description || 'Access thousands of channels with our reliable IPTV service. Flexible plans, instant activation, 24/7 support.',
     footer_text: settings?.branding?.footer_text || 'Premium IPTV Services',
-    provision_notes_template: settings?.branding?.provision_notes_template || '{{customer_name}} | {{email}} | Order: {{order_id}}',
+    provision_notes_template: settings?.branding?.provision_notes_template || '{{site_name}} | Order: {{order_id}}',
     feature_1_title: settings?.branding?.feature_1_title || 'Instant Activation',
     feature_1_description: settings?.branding?.feature_1_description || 'Get your credentials immediately after payment. Start watching within minutes.',
     feature_2_title: settings?.branding?.feature_2_title || 'Multiple Connections',
@@ -207,12 +207,14 @@ export default function BrandingSettings({ settings }) {
             value={formData.provision_notes_template}
             onChange={(e) => setFormData({ ...formData, provision_notes_template: e.target.value })}
             className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-            placeholder="{{customer_name}} | {{email}} | Order: {{order_id}}"
+            placeholder="{{site_name}} | Order: {{order_id}}"
+            data-testid="provision-notes-template-input"
           />
+          <p className="text-xs text-gray-500 mt-1">Written into the "notes" field on the IPTV panel for every line created through billing. Use <code>{'{{site_name}}'}</code> so your panel name shows instead of the customer's.</p>
           <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
             <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Available variables:</p>
             <div className="flex flex-wrap gap-1.5">
-              {['{{customer_name}}', '{{email}}', '{{order_id}}', '{{username}}', '{{product_name}}'].map(v => (
+              {['{{site_name}}', '{{order_id}}', '{{product_name}}', '{{username}}', '{{customer_name}}', '{{email}}'].map(v => (
                 <button key={v} type="button" onClick={() => setFormData({ ...formData, provision_notes_template: (formData.provision_notes_template || '') + ' ' + v })}
                   className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded font-mono hover:bg-blue-200">
                   {v}
@@ -220,8 +222,8 @@ export default function BrandingSettings({ settings }) {
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Preview: <span className="font-mono text-gray-700 dark:text-gray-300">
-                {(formData.provision_notes_template || '').replace(/\{\{customer_name\}\}/g, 'John Doe').replace(/\{\{email\}\}/g, 'john@example.com').replace(/\{\{order_id\}\}/g, 'abc123').replace(/\{\{username\}\}/g, 'johndoe99').replace(/\{\{product_name\}\}/g, '1 Month Plan')}
+              Preview: <span className="font-mono text-gray-700 dark:text-gray-300" data-testid="provision-notes-preview">
+                {(formData.provision_notes_template || '').replace(/\{\{site_name\}\}/g, formData.site_name || 'IPTV Billing').replace(/\{\{customer_name\}\}/g, 'John Doe').replace(/\{\{email\}\}/g, 'john@example.com').replace(/\{\{order_id\}\}/g, 'abc123').replace(/\{\{username\}\}/g, 'johndoe99').replace(/\{\{product_name\}\}/g, '1 Month Plan')}
               </span>
             </p>
           </div>

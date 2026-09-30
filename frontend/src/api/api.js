@@ -263,6 +263,9 @@ export const adminAPI = {
   getAetherBouquets: (panelIndex = 0) => api.get(`/api/admin/aether/bouquets?panel_index=${panelIndex}`),
   getAetherPackageBouquets: (packageId, panelIndex = 0) => api.get(`/api/admin/aether/packages/${packageId}/bouquets?panel_index=${panelIndex}`),
   syncAetherUsers: (panelIndex = 0) => api.post(`/api/admin/aether/sync-users?panel_index=${panelIndex}`),
+  testGold: (panelIndex = 0) => api.post(`/api/admin/gold/test?panel_index=${panelIndex}`),
+  getGoldPackages: (panelIndex = 0) => api.get(`/api/admin/gold/packages?panel_index=${panelIndex}`),
+  refreshGoldUsers: (panelIndex = 0) => api.post(`/api/admin/gold/refresh-users?panel_index=${panelIndex}`, null, { timeout: 120000 }),
   // Maintenance
   deduplicateImportedUsers: () => api.post('/api/admin/imported-users/deduplicate'),
   // Staff management
