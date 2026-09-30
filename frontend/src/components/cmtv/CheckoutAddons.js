@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { productsAPI, servicesAPI } from '../../api/api';
-import { BRAND, lookup } from './brand';
+import { BRAND, lookup, bundlePartsFor, replacedBy, partsText } from './brand';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 const firstPrice = (p) => {
@@ -72,11 +72,15 @@ export default function CheckoutAddons({ items, addItem, removeItem, currencySym
 
   const bundleName = Object.keys(BRAND.bundles || {})[0];
   const bundle = addons.find((a) => norm(a.name) === norm(bundleName));
-  const parts = (lookup(BRAND.bundles || {}, bundleName) || []).map(norm);
+  const onSale = addons.map((a) => a.name);   // 2026-09-30: Nuvio replaces Stremio once it's on sale
+  const partNames = bundlePartsFor(bundleName, onSale);
+  const parts = partNames.map(norm);
+  const replaced = replacedBy(onSale);
   const inCart = new Set(items.map((i) => i.product_id));
   const owned = new Set((services || []).filter((s) => ['active', 'suspended'].includes(s.status)).map((s) => s.product_id));
   const haveBundle = bundle && (inCart.has(bundle.id) || owned.has(bundle.id));
-  const offers = addons.filter((a) => !inCart.has(a.id) && !owned.has(a.id) && !(haveBundle && parts.includes(norm(a.name))));
+  const offers = addons.filter((a) => !inCart.has(a.id) && !owned.has(a.id) && !(haveBundle && parts.includes(norm(a.name)))
+    && !replaced.includes(norm(a.name)));
   if (offers.length === 0) return null;
 
   const partsTotal = addons.filter((a) => parts.includes(norm(a.name))).reduce((s, a) => s + firstPrice(a).price, 0);
@@ -135,7 +139,7 @@ export default function CheckoutAddons({ items, addItem, removeItem, currencySym
                   )}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {isBundle ? 'Stremio, CMTVpn and Audiobooks together' : (lookup(BRAND.taglines || {}, p.name) || '')}
+                  {isBundle ? `${partsText(partNames)} together` : (lookup(BRAND.taglines || {}, p.name) || '')}
                 </p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
                   {freeForMe ? <><span className="line-through text-gray-400 mr-1">{currencySymbol}{convertPrice(price).toFixed(2)}</span>Free</>

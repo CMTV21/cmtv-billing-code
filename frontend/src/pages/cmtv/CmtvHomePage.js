@@ -17,7 +17,7 @@ import { useCurrencyStore } from '../../store/currency';
 import CurrencySwitcher from '../../components/CurrencySwitcher';
 import FormattedText from '../../components/cmtv/FormattedText';
 import ServiceComparison from '../../components/cmtv/ServiceComparison';
-import { BRAND, lookup, familyOf } from '../../components/cmtv/brand';
+import { BRAND, lookup, familyOf, bundlePartsFor } from '../../components/cmtv/brand';
 import '../../components/cmtv/cmtv-theme.css';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
@@ -269,12 +269,15 @@ function PlanCard({ card, family, grouped, allProducts }) {
   const [open, setOpen] = useState(false);
   const [channels, setChannels] = useState(null);
   const [lineup, setLineup] = useState('full');   // 2026-09-29: Imperium channel line-up (same price)
+  const [vodApp, setVodApp] = useState('nuvio');   // 2026-09-30: CMTV+ movies & series app (Nuvio, or Stremio on request)
   const products = card.products;
   const first = products[0];
   const money = (v) => `${symbol}${convertPrice(v).toFixed(2)}`;
 
   const monthly1 = products.map(firstPrice).find((fp) => fp.term === 1 && fp.price > 0)?.price;
-  const bundleOf = lookup(BRAND.bundles, first?.name);
+  // 2026-09-30: parts as on sale now (Stremio stands in for Nuvio until Nuvio is switched on)
+  const bundleOf = lookup(BRAND.bundles, first?.name) ? bundlePartsFor(first?.name, (allProducts || []).map((p) => p.name)) : null;
+  const vodChoice = !!bundleOf && bundleOf.includes('Nuvio');
   const bundleTotal = bundleOf
     ? bundleOf.map((n) => allProducts?.find((p) => p.name.trim().toLowerCase() === n.toLowerCase())).filter(Boolean)
         .reduce((sum, p) => sum + firstPrice(p).price, 0)
@@ -291,7 +294,8 @@ function PlanCard({ card, family, grouped, allProducts }) {
     if (!user) { rememberPlan(p.id); window.location.href = '/login?redirect=/'; return; }
     const { term, price } = firstPrice(p);
     const withLineup = family === 'imperium' && p.account_type === 'subscriber' && !p.is_trial;
-    addItem({ product_id: p.id, product_name: withLineup ? lineupName(p.name, lineup) : p.name, term_months: term, price,
+    const withStremio = vodChoice && vodApp === 'stremio';   // 2026-09-30: shows on the order as "CMTV+ (with Stremio)"
+    addItem({ product_id: p.id, product_name: withLineup ? lineupName(p.name, lineup) : withStremio ? `${p.name} (with Stremio)` : p.name, term_months: term, price,
               account_type: p.account_type, ...(withLineup ? { lineup } : {}) });
     window.location.href = '/checkout';
   };
@@ -327,6 +331,17 @@ function PlanCard({ card, family, grouped, allProducts }) {
               {LINEUPS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
             </select>
             <small>{LINEUPS.find((l) => l.key === lineup)?.note} Same price.</small>
+          </label>
+        )}
+        {vodChoice && (
+          <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>
+            <span style={{ fontWeight: 700, color: 'var(--text)' }}>Movies &amp; series app</span>
+            <select value={vodApp} onChange={(e) => setVodApp(e.target.value)} aria-label="Movies and series app"
+              style={{ background: 'var(--deep, #0a1020)', color: 'var(--text, #e9edf8)', border: '1px solid var(--cyan, #22e6f2)', borderRadius: 10, padding: '8px 10px', fontSize: 14 }}>
+              <option value="nuvio">Nuvio (recommended)</option>
+              <option value="stremio">Stremio</option>
+            </select>
+            <small>{vodApp === 'nuvio' ? 'Profiles, cloud sync, made for TV.' : 'The classic Stremio app.'} Same price.</small>
           </label>
         )}
         {products.map((p) => {

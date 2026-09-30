@@ -10,20 +10,25 @@ export const BRAND = {
     'CMTV+': '/cmtv/cmtv-plus.png',
     'CMTVpn': '/cmtv/cmtvpn.png',
     'CMTV Audiobooks': '/cmtv/cmtv-audiobooks.png',
+    'Nuvio': '/cmtv/nuvio.png', // 2026-09-30
   },
   // Short line under the logo on an add-on card
   taglines: {
     'CMTV+': 'Stream, secure, listen',
     'CMTVpn': 'Private, secure, connected',
     'CMTV Audiobooks': 'Any device, requests welcome',
-    'Stremio': 'Works with the Nuvio app',
+    'Nuvio': 'Profiles, cloud sync, made for TV', // 2026-09-30
+    'Stremio': 'The classic Stremio app',
   },
   // Add-ons offered at checkout ("Complete your setup", components/cmtv/CheckoutAddons.js), bundle first
-  addons: ['CMTV+', 'Stremio', 'CMTVpn', 'CMTV Audiobooks'],
+  addons: ['CMTV+', 'Nuvio', 'Stremio', 'CMTVpn', 'CMTV Audiobooks'],
   // Bundles: the card shows the saving against buying these products separately
   bundles: {
-    'CMTV+': ['Stremio', 'CMTVpn', 'CMTV Audiobooks'],
+    'CMTV+': ['Nuvio', 'CMTVpn', 'CMTV Audiobooks'],
   },
+  // 2026-09-30: while a product named Nuvio isn't on sale (hidden until launch), Stremio stands in for it in the
+  // bundle's parts; once Nuvio is on sale the checkout offer shows Nuvio instead of Stremio (Stremio stays in the store)
+  standIns: { 'Nuvio': 'Stremio' },
 };
 
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -42,3 +47,21 @@ export function familyOf(groupName) {
   if (/add-?on/.test(n)) return 'addons';
   return 'other';
 }
+
+// 2026-09-30: a bundle's parts, given the add-on names on sale (a hidden part is replaced by its stand-in)
+export function bundlePartsFor(bundleName, onSale) {
+  const sale = new Set([...(onSale || [])].map(norm));
+  return (lookup(BRAND.bundles || {}, bundleName) || []).map((n) => {
+    if (sale.has(norm(n))) return n;
+    const alt = lookup(BRAND.standIns || {}, n);
+    return alt && sale.has(norm(alt)) ? alt : n;
+  });
+}
+// Add-ons not offered at checkout because the one they stand in for is on sale (Stremio once Nuvio is)
+export function replacedBy(onSale) {
+  const sale = new Set([...(onSale || [])].map(norm));
+  return Object.entries(BRAND.standIns || {}).filter(([n]) => sale.has(norm(n))).map(([, alt]) => norm(alt));
+}
+// "Nuvio, CMTVpn and Audiobooks"
+export const partsText = (names) => names.map((n) => n.replace(/^CMTV (?=Audiobooks)/, ''))
+  .join(', ').replace(/, ([^,]*)$/, ' and $1');
