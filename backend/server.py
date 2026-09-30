@@ -817,7 +817,14 @@ async def sync_services_expiry_from_imported_users(panel_type: Optional[str] = N
             updated += 1
     if updated:
         logger.info(f"Service expiry sync: {updated}/{checked} services corrected from panel data")
-    return {"checked": checked, "updated": updated}
+    # CMTV local change 2026-09-30: services billing suspended/cancelled itself but renewed on the panel -> active (cmtv_revive.py)
+    revived = []
+    try:
+        import cmtv_revive
+        revived = await cmtv_revive.revive(db, find_imported_for_service)
+    except Exception as e:
+        logger.warning(f"CMTV revive failed: {e}")
+    return {"checked": checked, "updated": updated + len(revived), "revived": len(revived)}
 
 
 def render_provision_notes(template: str, **kwargs) -> str:
