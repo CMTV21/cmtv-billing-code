@@ -116,3 +116,39 @@ def row_expiry(row, start: int = 3, fallback_col: int = 7) -> Tuple[Optional[dat
         raw = str(cells[fallback_col])
         return parse_expiry(raw), is_unlimited(raw), raw
     return None, False, ""
+
+
+def row_expiry_index(row, start: int = 3) -> Optional[int]:
+    cells = list(row or [])
+    for idx in range(start, len(cells)):
+        raw = str(cells[idx])
+        if cell_epoch(raw) is not None and looks_like_date(strip_html(raw)):
+            return idx
+    for idx in range(start, len(cells)):
+        if looks_like_date(strip_html(cells[idx])):
+            return idx
+    return None
+
+
+def row_max_connections(row, default: int = 1) -> int:
+    """Max connections from an XtreamUI DataTables row.
+
+    Builds differ: newer panels put *active* connections (a live_connections.php link) and *max*
+    connections in separate columns; older ones render one "active / max" cell.
+    """
+    cells = [str(c) for c in (row or [])]
+    for idx, raw in enumerate(cells):
+        if "live_connections" in raw and idx + 1 < len(cells):
+            nxt = strip_html(cells[idx + 1])
+            if nxt.isdigit():
+                return int(nxt)
+    for idx in range(3, len(cells)):
+        m = re.search(r"(\d+)\s*/\s*(\d+)", strip_html(cells[idx]))
+        if m:
+            return int(m.group(2))
+    exp_idx = row_expiry_index(row)
+    if exp_idx is not None:
+        following = [strip_html(c) for c in cells[exp_idx + 1:exp_idx + 3]]
+        if len(following) == 2 and all(f.isdigit() for f in following):
+            return int(following[1])
+    return default

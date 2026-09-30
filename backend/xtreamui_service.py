@@ -560,10 +560,8 @@ class XtreamUIService:
             # Format based on test: [id, username, password, owner, status_icons..., expiry, connections, max_conn, ...]
             users = []
             import re
-            from panel_expiry import row_expiry, to_panel_string
+            from panel_expiry import row_expiry, to_panel_string, row_max_connections
             
-            conn_re = re.compile(r'^\d+\s*/\s*(\d+)$')
-
             def _strip(cell) -> str:
                 return re.sub(r'<[^>]+>', '', str(cell).replace('<br>', ' ').replace('<br/>', ' ')).strip()
 
@@ -573,16 +571,7 @@ class XtreamUIService:
                 return to_panel_string(dt, unlimited), raw
 
             def _find_max_conn(row) -> str:
-                for idx in range(3, len(row)):
-                    text = _strip(row[idx])
-                    m = conn_re.match(text)
-                    if m:
-                        return m.group(1)
-                if len(row) > 9:
-                    fallback = _strip(row[9])
-                    if fallback.isdigit():
-                        return fallback
-                return "1"
+                return str(row_max_connections(row))
 
             for row in users_data:
                 if len(row) >= 2:

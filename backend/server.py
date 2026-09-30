@@ -811,6 +811,9 @@ async def sync_services_expiry_from_imported_users(panel_type: Optional[str] = N
             changes["status"] = "active"
         if imported.get("status") == "disabled" and service.get("status") == "active":
             changes["status"] = "suspended"
+        panel_conns = imported.get("max_connections")
+        if isinstance(panel_conns, int) and panel_conns > 0 and panel_conns != service.get("max_connections"):
+            changes["max_connections"] = panel_conns
         if changes:
             changes["expiry_synced_at"] = now
             await services_collection.update_one({"_id": service["_id"]}, {"$set": changes})
