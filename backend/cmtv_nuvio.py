@@ -717,6 +717,61 @@ def _publish_files(version: str, files: dict) -> list:
     return assets
 
 
+# ---------------------------------------------------------------- app changelog in Telegram (2026-09-30)
+# The owner's "App updates" topic in the CMTV customer group. Set once in Admin > Nuvio > App by pasting the topic's
+# link (t.me/c/<chat>/<topic> or t.me/<group>/<topic>); posts go through the support bot (admin in that group).
+def parse_topic_link(link: str):
+    m = re.match(r"^(?:https?://)?t\.me/c/(\d+)/(\d+)(?:/\d+)?/?$", (link or "").strip())
+    if m:
+        return {"chat_id": int("-100" + m.group(1)), "thread_id": int(m.group(2))}
+    m = re.match(r"^(?:https?://)?t\.me/([A-Za-z0-9_]{4,})/(\d+)(?:/\d+)?/?$", (link or "").strip())
+    if m:
+        return {"chat_id": "@" + m.group(1), "thread_id": int(m.group(2))}
+    return None
+
+
+def changelog_text(rel: dict) -> str:
+    from html import escape
+    lines = []
+    for raw in (rel.get("notes") or "").splitlines():
+        t = raw.strip()
+        if not t:
+            continue
+        if t.startswith(("- ", "* ", "• ")):
+            lines.append("• " + escape(t[2:].strip()))
+        else:
+            lines.append(escape(t))
+    body = "\n".join(lines) or "Improvements and fixes."
+    return (f"🆕 <b>Nuvio for CMTV {escape(rel['tag'])}</b>\n\n{body}\n\n"
+            "📲 Already have Nuvio CMTV? The app offers the update by itself: just accept it.\n"
+            "New to Nuvio? On your Fire Stick or Android TV open <b>Downloader</b>, enter <b>5883394</b> and install "
+            "<b>Nuvio CMTV</b>.")
+
+
+async def post_changelog(rel: dict) -> dict:
+    cfg = await _db().cmtv_config.find_one({"_id": "nuvio_app_announce"}) or {}
+    if not cfg.get("chat_id") or not cfg.get("thread_id"):
+        raise NuvioError("no Telegram topic set yet (paste the App updates topic link first)")
+    import cmtv_status
+    token = cmtv_status._support_env().get("BOT_TOKEN")
+    if not token:
+        raise NuvioError("the support bot's settings couldn't be read")
+    msg = {"chat_id": cfg["chat_id"], "message_thread_id": int(cfg["thread_id"]), "text": changelog_text(rel),
+           "parse_mode": "HTML", "disable_web_page_preview": True}
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.post(f"https://api.telegram.org/bot{token}/sendMessage", json=msg)
+        j = r.json() if r.content else {}
+    except httpx.HTTPError as e:
+        raise NuvioError(f"couldn't reach Telegram ({type(e).__name__})")
+    if not j.get("ok"):
+        raise NuvioError(f"Telegram said: {j.get('description') or r.status_code}")
+    mid = j["result"]["message_id"]
+    await _db().cmtv_config.update_one({"_id": "nuvio_app_release", "tag": rel["tag"]}, {"$push": {"telegram_posts": {
+        "message_id": mid, "at": datetime.utcnow()}}})
+    return {"message_id": mid}
+
+
 # ---------------------------------------------------------------- admin
 def _new_expiry(current: str, months: int = 0, expiry_date: str = "") -> str:
     if expiry_date:
@@ -1064,7 +1119,43 @@ def init_routes():
                 k: v for k, v in old.items() if k != "_id"}}}, upsert=True)
         await _db().cmtv_config.replace_one({"_id": "nuvio_app_release"}, {"_id": "nuvio_app_release", **doc}, upsert=True)
         logger.info(f"Nuvio app {version} published by {current_user.get('email')}")
-        return {k: v for k, v in doc.items()}
+        out = {k: v for k, v in doc.items()}
+        if body.get("announce"):   # 2026-09-30: changelog to the App updates topic
+            try:
+                out["telegram"] = await post_changelog(doc)
+            except NuvioError as e:
+                out["telegram_error"] = str(e)
+        return out
+
+    @router.get("/app/announce")
+    async def announce_settings(current_user: dict = Depends(admin)):
+        cfg = await _db().cmtv_config.find_one({"_id": "nuvio_app_announce"}) or {}
+        return {"link": cfg.get("link", ""), "set": bool(cfg.get("thread_id"))}
+
+    @router.post("/app/announce")
+    async def save_announce(body: dict, current_user: dict = Depends(admin)):
+        t = parse_topic_link(body.get("link") or "")
+        if not t:
+            raise HTTPException(400, "Paste the topic's link (Copy link in Telegram), like https://t.me/c/123456/78")
+        await _db().cmtv_config.update_one({"_id": "nuvio_app_announce"}, {"$set": {**t, "link": body["link"].strip(),
+                                           "updated_at": datetime.utcnow()}}, upsert=True)
+        return {"ok": True, **{k: str(v) for k, v in t.items()}}
+
+    @router.post("/app/announce/post")
+    async def post_now(current_user: dict = Depends(admin)):
+        rel = await published_release()
+        if not rel:
+            raise HTTPException(400, "Nothing published yet")
+        try:
+            return await post_changelog(rel)
+        except NuvioError as e:
+            raise HTTPException(502, str(e))
+
+    @router.post("/app/announce/preview")
+    async def preview_post(body: dict, current_user: dict = Depends(admin)):
+        rel = await published_release() or {}
+        return {"text": changelog_text({"tag": body.get("version") or rel.get("tag") or "?",
+                                        "notes": body.get("notes") if body.get("notes") is not None else rel.get("notes", "")})}
 
     @router.get("/share-alerts")
     async def share_alerts(current_user: dict = Depends(admin)):

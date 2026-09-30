@@ -396,13 +396,34 @@ function AppTab() {
   });
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState('');
+  // 2026-09-30: changelog to the "App updates" Telegram topic
+  const { data: ann, refetch: refetchAnn } = useQuery({
+    queryKey: ['nuvio-app-announce'],
+    queryFn: async () => (await api.get('/api/cmtv/nuvio/app/announce')).data,
+  });
+  const [link, setLink] = useState(null);
+  const [announce, setAnnounce] = useState(true);
+  const saveLink = async () => {
+    try { await api.post('/api/cmtv/nuvio/app/announce', { link: link ?? ann?.link }); toast.success('Topic saved'); setLink(null); refetchAnn(); }
+    catch (e) { toast.error(errText(e, 'Could not save')); }
+  };
+  const postNow = async () => {
+    if (!window.confirm('Post the published version\'s notes to the App updates topic now?')) return;
+    try { await api.post('/api/cmtv/nuvio/app/announce/post'); toast.success('Posted to Telegram'); }
+    catch (e) { toast.error(errText(e, 'Could not post')); }
+  };
   const publish = async (b) => {
     const msg = b.updater
       ? `Publish ${b.version}? Every CMTV Nuvio app (from cmtv.3 on) will be offered this update.`
       : `Publish ${b.version}? This build can't update itself later (it's from before cmtv.3), so only use it for testing.`;
     if (!window.confirm(msg)) return;
     setBusy(b.version);
-    try { await api.post('/api/cmtv/nuvio/app/publish', { version: b.version, notes }); toast.success(`${b.version} published`); setNotes(''); refetch(); }
+    try {
+      const r = await api.post('/api/cmtv/nuvio/app/publish', { version: b.version, notes, announce: announce && !!ann?.set });
+      toast.success(`${b.version} published${r.data.telegram ? ' and posted to Telegram' : ''}`);
+      if (r.data.telegram_error) toast.error(`Telegram: ${r.data.telegram_error}`);
+      setNotes(''); refetch();
+    }
     catch (e) { toast.error(errText(e, 'Could not publish')); }
     setBusy('');
   };
@@ -426,12 +447,27 @@ function AppTab() {
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-2">Use the arm64 / armv7 links for Downloads and the Downloader code page.</p>
+            <button type="button" disabled={!ann?.set} onClick={postNow} className={`${btn} bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white mt-3`}>
+              <Send className="w-4 h-4" /> Post these notes to Telegram</button>
           </>
         )}
       </div>
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        <h2 className="font-bold text-gray-900 dark:text-white mb-1">Telegram: App updates topic</h2>
+        <p className="text-sm text-gray-500 mb-2">In Telegram, open the topic, then Copy link on the topic (or a message in it) and paste it here.
+          {ann?.set ? ' Set: changelogs go there.' : ' Not set yet.'}</p>
+        <div className="flex gap-2">
+          <input className={`${input} flex-1`} placeholder="https://t.me/c/1234567890/42" value={link ?? ann?.link ?? ''} onChange={(e) => setLink(e.target.value)} />
+          <button type="button" onClick={saveLink} className={`${btn} bg-blue-600 text-white`}><Check className="w-4 h-4" /> Save</button>
+        </div>
+      </div>
       <div>
         <h2 className="font-bold text-gray-900 dark:text-white mb-2">Builds</h2>
-        <textarea className={`${input} w-full mb-2`} rows={2} placeholder="What's new (shown in the app's update prompt, optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <textarea className={`${input} w-full mb-2`} rows={3} placeholder={"What's new: one line each, e.g.\n- Old-style logins like Rob@2025 now work"} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-3">
+          <input type="checkbox" checked={announce && !!ann?.set} disabled={!ann?.set} onChange={(e) => setAnnounce(e.target.checked)} />
+          Also post it to the App updates topic on Telegram{!ann?.set ? ' (set the topic below first)' : ''}
+        </label>
         <div className="divide-y divide-gray-200 dark:divide-gray-700 rounded-xl border border-gray-200 dark:border-gray-700">
           {(data?.builds || []).map((b) => (
             <div key={b.version} className="flex flex-wrap items-center gap-3 px-4 py-3">
