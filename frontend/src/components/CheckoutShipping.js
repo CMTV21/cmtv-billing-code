@@ -29,11 +29,11 @@ export function CheckoutShipping({ items, address, setAddress, rates, setRates, 
     try {
       const res = await shippingAPI.rates({
         items: physical.map((i) => ({ physical_item_id: i.product_id, quantity: i.quantity || 1 })),
-        ship_to: { country: address.country, state: address.state, postal_code: address.postal_code, city: address.city },
+        ship_to: { name: address.name, phone: address.phone, address1: address.address1, address2: address.address2, city: address.city, state: address.state, postal_code: address.postal_code, country: address.country },
       });
       setRates(res.data);
       if (res.data.options?.length === 1) setSelectedMethod(res.data.options[0]);
-      if (!res.data.options?.length) setError('No shipping options are available for this address. Please contact support.');
+      if (!res.data.options?.length) setError('No carrier could quote this address right now. Please double-check the address and try again, or contact support and we will arrange shipping for you.');
     } catch (e) {
       setError(e.response?.data?.detail || 'Could not calculate shipping. Please try again.');
     } finally {

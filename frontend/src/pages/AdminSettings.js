@@ -323,7 +323,7 @@ export default function AdminSettings() {
 
             {/* Shipping Tab */}
             {activeTab === 'shipping' && (
-              <ShippingSettings />
+              <ShippingSettings onGoToCurrency={() => setActiveTab('currency')} />
             )}
 
             {/* Branding Tab */}
@@ -661,7 +661,7 @@ function CurrencySettings({ settings }) {
 
   const handleChange = async () => {
     if (selected === current) return;
-    if (!window.confirm(`Change currency from ${current} to ${selected}?\n\nThis will convert ALL existing product prices using current exchange rates. This action cannot be easily undone.`)) return;
+    if (!window.confirm(`Change currency from ${current} to ${selected}?\n\nThis will convert ALL existing product prices and shipping rates (rate table + Shippo flat markup) using current exchange rates. Live carrier quotes will be shown in ${selected} from now on. This action cannot be easily undone.`)) return;
     setLoading(true);
     try {
       const token = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
@@ -686,7 +686,7 @@ function CurrencySettings({ settings }) {
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Currency</h2>
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Set the system-wide currency for all prices and invoices</p>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">Set the system-wide currency for all prices, invoices and shipping (shipping rates inherit this setting).</p>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
         <div className="mb-4">

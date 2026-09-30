@@ -767,6 +767,10 @@ export default function CheckoutPage() {
             {/* CMTV local change 2026-09-25: "Complete your setup" add-on offer */}
             <CheckoutAddons items={items} addItem={addItem} removeItem={removeItem}
               currencySymbol={currencySymbol} convertPrice={convertPrice} />
+            {hasPhysicalItems && (
+              <CheckoutShipping items={items} address={shippingAddress} setAddress={setShippingAddress}
+                rates={shippingRates} setRates={setShippingRates} selectedMethod={shippingMethod} setSelectedMethod={setShippingMethod} />
+            )}
           </div>
 
           {/* Order Summary */}

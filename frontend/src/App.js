@@ -36,6 +36,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ProductsPage from './pages/ProductsPage';
 import OrderProductPage from './pages/OrderProductPage';
+import OrderItemPage from './pages/OrderItemPage';
 import CheckoutPage from './pages/CheckoutPage';
 import DashboardPage from './pages/DashboardPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvDashboardPage
 import CmtvDashboardPage from './pages/cmtv/CmtvDashboardPage'; // CMTV local change 2026-09-26: new customer dashboard
@@ -238,6 +239,7 @@ function App() {
             <Route path="/link-email" element={<CmtvLinkEmailPage />} />
             <Route path="/verify-email" element={<EmailVerificationPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/order/item/:itemId" element={<OrderItemPage />} />
             <Route path="/order/:productId" element={<OrderProductPage />} />
             <Route path="/launcher/pay/:orderId" element={<LauncherPayPage />} />
             <Route path="/launcher/manage/:deviceToken" element={<LauncherManagePage />} />

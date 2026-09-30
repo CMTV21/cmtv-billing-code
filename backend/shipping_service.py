@@ -20,11 +20,15 @@ CARRIERS: Dict[str, Dict[str, Any]] = {
 }
 
 DEFAULT_SHIPPING_SETTINGS: Dict[str, Any] = {
-    "ship_from": {"name": "", "company": "", "address1": "", "address2": "", "city": "", "state": "", "postal_code": "", "country": "CA", "phone": ""},
+    "ship_from": {"name": "", "company": "", "address1": "", "address2": "", "city": "", "state": "", "postal_code": "", "country": "CA", "phone": "", "email": ""},
     "weight_unit": "kg",
     "dimension_unit": "cm",
     "carriers": {c: {"enabled": True, "mode": "table", "credentials": {}} for c in CARRIERS if c != "other"},
     "methods": [],
+    "shippo": {
+        "enabled": False, "api_token": "", "default_parcel": {"length": 30, "width": 20, "height": 15, "unit": "cm"},
+        "markup_percent": 0, "markup_flat": 0, "allowed_carriers": [], "webhook_token": "", "webhook_registered_id": "",
+    },
 }
 
 
@@ -54,6 +58,10 @@ def merge_shipping_settings(stored: Optional[dict]) -> dict:
         carriers[code]["credentials"] = carriers[code].get("credentials") or {}
     merged["carriers"] = carriers
     merged["methods"] = merged.get("methods") or []
+    shippo = {**DEFAULT_SHIPPING_SETTINGS["shippo"], **(merged.get("shippo") or {})}
+    shippo["default_parcel"] = {**DEFAULT_SHIPPING_SETTINGS["shippo"]["default_parcel"], **(shippo.get("default_parcel") or {})}
+    shippo["allowed_carriers"] = list(shippo.get("allowed_carriers") or [])
+    merged["shippo"] = shippo
     return merged
 
 

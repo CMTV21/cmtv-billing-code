@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Edit, Trash2, Package, X, Upload, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Package, X, Upload, Image as ImageIcon, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { physicalItemsAPI } from '../api/api';
@@ -94,6 +94,7 @@ export default function AdminPhysicalItems() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.active ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{item.active ? 'Active' : 'Hidden'}</span>
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/order/item/${item.id}`); toast.success('Order link copied to clipboard!'); }} className="p-2 text-gray-500 hover:text-blue-600" title="Copy direct order link" data-testid={`link-physical-item-${item.id}`}><LinkIcon className="w-4 h-4" /></button>
                       <button onClick={() => setEditing({ ...EMPTY_ITEM, ...item, specs: { ...EMPTY_ITEM.specs, ...(item.specs || {}) } })} className="p-2 text-gray-500 hover:text-blue-600" data-testid={`edit-physical-item-${item.id}`}><Edit className="w-4 h-4" /></button>
                       <button onClick={() => window.confirm(`Delete "${item.name}"?`) && deleteMutation.mutate(item.id)} className="p-2 text-gray-500 hover:text-red-600" data-testid={`delete-physical-item-${item.id}`}><Trash2 className="w-4 h-4" /></button>
                     </td>
@@ -159,6 +160,16 @@ function PhysicalItemModal({ item, onClose, onSaved }) {
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-6 h-6" /></button>
         </div>
         <div className="p-6 space-y-6">
+          {item.id && (
+            <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2" data-testid="pi-order-link">
+              <LinkIcon className="w-4 h-4 text-blue-600 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] uppercase tracking-wide text-blue-700 dark:text-blue-300 font-semibold">Direct order link — paste it on your website</p>
+                <code className="block text-xs text-gray-800 dark:text-gray-200 truncate">{`${window.location.origin}/order/item/${item.id}`}</code>
+              </div>
+              <button type="button" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/order/item/${item.id}`); toast.success('Order link copied!'); }} className="text-xs font-semibold text-blue-700 dark:text-blue-300 hover:underline whitespace-nowrap" data-testid="pi-copy-order-link">Copy</button>
+            </div>
+          )}
           <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2"><label className={labelCls}>Name *</label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} data-testid="pi-name" /></div>
             <div className="sm:col-span-2"><label className={labelCls}>Description</label><textarea rows={3} className={inputCls} value={form.description} onChange={(e) => set('description', e.target.value)} data-testid="pi-description" /></div>
