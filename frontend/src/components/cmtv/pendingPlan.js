@@ -5,8 +5,14 @@ const KEY = 'cmtv-pending-add';
 const TTL = 2 * 60 * 60 * 1000;
 
 // credits: a chosen reseller credit amount (ResellerCredits.js), kept with the plan
-export function rememberPlan(id, credits = null) {
-  try { localStorage.setItem(KEY, JSON.stringify({ id: String(id), credits: credits || null, at: Date.now() })); } catch { /* private mode */ }
+// extra (2026-09-30): the cart item's choices, e.g. an Imperium line-up + channel groups + name {lineup, bouquets, product_name}
+export function rememberPlan(id, credits = null, extra = null) {
+  try { localStorage.setItem(KEY, JSON.stringify({ id: String(id), credits: credits || null, extra: extra || null, at: Date.now() })); } catch { /* private mode */ }
+}
+
+export function pendingExtra() {
+  const p = read();
+  return (p && p.extra) || null;
 }
 
 function read() {

@@ -3,7 +3,7 @@
 // Reuses the same data and flows: products + product groups from the API, the cart store, login redirect, checkout.
 import React, { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { rememberPlan, pendingPlan, pendingCredits, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
+import { rememberPlan, pendingPlan, pendingCredits, pendingExtra, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
 import ResellerCredits, { creditPrice } from '../../components/cmtv/ResellerCredits'; // 2026-09-28: any credit amount
 import { LINEUPS, lineupName } from '../../components/cmtv/lineups'; // 2026-09-29: Imperium channel line-ups
 import ChannelPicker, { customName } from '../../components/cmtv/ChannelPicker'; // 2026-09-30: pick your own channel groups
@@ -119,6 +119,7 @@ export default function CmtvHomePage() {
   }, [products, productGroups]);
 
   // a plan chosen on cmtv.info (?add=) or picked here while signed out: cart + checkout once signed in
+  const [focusPlan, setFocusPlan] = useState(null);   // 2026-09-30: plan opened from a cmtv.info link (highlighted)
   const addDone = React.useRef(false);
   React.useEffect(() => {
     if (!products || addDone.current) return;
@@ -126,8 +127,13 @@ export default function CmtvHomePage() {
     if (!id) return;
     addDone.current = true;
     const credits = Number(params.get('credits')) || pendingCredits();   // a chosen reseller credit amount
+    const extra = params.get('add') ? null : pendingExtra();   // choices made on a card before signing in (2026-09-30)
     const p = products.find((x) => x.id === id);
     if (!p) { forgetPlan(); return; }
+    // 2026-09-30: a cmtv.info price link to an Imperium plan opens its card (line-up + channel choice) instead of checkout
+    if (params.get('add') && p.panel_type === 'aether' && p.account_type === 'subscriber' && !p.is_trial) {
+      setTab('imperium'); setFocusPlan(p.id); return;
+    }
     if (!user) { rememberPlan(id, credits); window.location.href = '/login?redirect=/'; return; }
     forgetPlan();
     (async () => {
@@ -144,7 +150,8 @@ export default function CmtvHomePage() {
         }
       }
       const { term, price } = firstPrice(p);
-      addItem({ product_id: p.id, product_name: p.name, term_months: term, price, account_type: p.account_type });
+      addItem({ product_id: p.id, product_name: extra?.product_name || p.name, term_months: term, price, account_type: p.account_type,
+                ...(extra?.lineup ? { lineup: extra.lineup } : {}), ...(extra?.bouquets ? { bouquets: extra.bouquets } : {}) });
       window.location.href = '/checkout';
     })();
   }, [products, user]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -250,7 +257,7 @@ export default function CmtvHomePage() {
                 </>
               ) : (
                 <div className="stack">
-                  {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} />)}
+                  {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} focus={focusPlan} />)}
                 </div>
               )}
             </div>
@@ -263,7 +270,7 @@ export default function CmtvHomePage() {
   );
 }
 
-function PlanCard({ card, family, grouped, allProducts }) {
+function PlanCard({ card, family, grouped, allProducts, focus }) {
   const { user } = useAuthStore();
   const { addItem } = useCartStore();
   const { symbol, convertPrice } = useCurrencyStore();
@@ -291,14 +298,21 @@ function PlanCard({ card, family, grouped, allProducts }) {
   const conns = first?.max_connections || 1;
   const logo = family === 'addons' ? lookup(BRAND.logos, first?.name) : null;
 
+  const cardRef = React.useRef(null);
+  const focused = !!focus && products.some((p) => p.id === focus);
+  React.useEffect(() => {   // 2026-09-30: opened from a cmtv.info price link
+    if (focused && cardRef.current) setTimeout(() => cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }, [focused]);
+
   const buy = (p) => {
-    // 2026-09-28: remember the plan through sign-in (it used to be forgotten)
-    if (!user) { rememberPlan(p.id); window.location.href = '/login?redirect=/'; return; }
     const { term, price } = firstPrice(p);
     const withLineup = family === 'imperium' && p.account_type === 'subscriber' && !p.is_trial;
     const withStremio = vodChoice && vodApp === 'stremio';   // 2026-09-30: shows on the order as "CMTV+ (with Stremio)"
-    addItem({ product_id: p.id, product_name: withLineup ? customName(lineupName(p.name, lineup), bouquets) : withStremio ? `${p.name} (with Stremio)` : p.name, term_months: term, price,
-              account_type: p.account_type, ...(withLineup ? { lineup, ...(bouquets ? { bouquets } : {}) } : {}) });
+    const name = withLineup ? customName(lineupName(p.name, lineup), bouquets) : withStremio ? `${p.name} (with Stremio)` : p.name;
+    const choices = withLineup ? { lineup, ...(bouquets ? { bouquets } : {}) } : {};
+    // 2026-09-28: remember the plan through sign-in (it used to be forgotten); 2026-09-30: with its line-up/channel choices
+    if (!user) { rememberPlan(p.id, null, { ...choices, product_name: name }); window.location.href = '/login?redirect=/'; return; }
+    addItem({ product_id: p.id, product_name: name, term_months: term, price, account_type: p.account_type, ...choices });
     window.location.href = '/checkout';
   };
   const showChannels = async () => {
@@ -308,7 +322,7 @@ function PlanCard({ card, family, grouped, allProducts }) {
   };
 
   return (
-    <div className={`card card-${family}`}>
+    <div className={`card card-${family}`} ref={cardRef} style={focused ? { boxShadow: '0 0 0 2px var(--gold, #d8b35a)' } : undefined}>
       <div className="side">
         {family === 'cctv' && <img src={BRAND.cctvLogo} alt="CCTV" />}
         {family === 'imperium' && <img src={BRAND.imperiumLogo} alt="Imperium" />}
@@ -325,6 +339,7 @@ function PlanCard({ card, family, grouped, allProducts }) {
       </div>
       <div className="rows">
         {showIntro && <div className="desc"><FormattedText text={intro} /></div>}
+        {focused && <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--gold, #d8b35a)', fontWeight: 700 }}>Choose your channel line-up, then tap your plan below.</p>}
         {family === 'imperium' && first?.account_type === 'subscriber' && !first?.is_trial && (
           <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>
             <span style={{ fontWeight: 700, color: 'var(--text)' }}>Channel line-up</span>
@@ -354,7 +369,8 @@ function PlanCard({ card, family, grouped, allProducts }) {
           const perMonth = term > 1 && price > 0 ? price / term : null;
           const save = perMonth && monthly1 ? Math.round((1 - perMonth / monthly1) * 100) : null;
           return (
-            <button key={p.id} type="button" className="row" onClick={() => buy(p)}>
+            <button key={p.id} type="button" className="row" onClick={() => buy(p)}
+              style={focus === p.id ? { outline: '2px solid var(--gold, #d8b35a)', outlineOffset: -2 } : undefined}>
               <span className="term">{termLabel(p)}</span>
               <span className="right">
                 {perMonth && p.account_type !== 'reseller' && (
