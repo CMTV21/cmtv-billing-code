@@ -62,6 +62,60 @@ function CustomerNotice() {
   );
 }
 
+// 2026-09-30: customer-relevant updates about any product -> the App updates topic in the CMTV User Support group
+// (cmtv_announce.py). The owner wants customers told about every new feature or good change.
+function CustomerUpdate() {
+  const { data: products } = useQuery({ queryKey: ['cmtv-announce-products'], queryFn: async () => (await api.get('/api/cmtv/announce/products')).data });
+  const { data: log, refetch } = useQuery({ queryKey: ['cmtv-announce-log'], queryFn: async () => (await api.get('/api/cmtv/announce/log')).data });
+  const [product, setProduct] = useState('general');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const field = { background: '#0a1020', color: '#e9edf8', border: '1px solid #26314d', borderRadius: 10, padding: '8px 10px' };
+  const doPreview = async () => {
+    setBusy(true);
+    try { setPreview((await api.post('/api/cmtv/announce/preview', { product, title, body })).data.text); }
+    catch (e) { toast.error(e.response?.data?.detail || 'Could not preview'); }
+    setBusy(false);
+  };
+  const post = async () => {
+    if (!window.confirm('Post this in the App updates topic now? Everyone in the CMTV User Support group can see it.')) return;
+    setBusy(true);
+    try { await api.post('/api/cmtv/announce/post', { product, title, body }); toast.success('Posted to Telegram'); setTitle(''); setBody(''); setPreview(null); refetch(); }
+    catch (e) { toast.error(e.response?.data?.detail || 'Could not post'); }
+    setBusy(false);
+  };
+  const edit = (fn) => (e) => { fn(e.target.value); setPreview(null); };
+  return (
+    <div className="rs-notice">
+      <b>Post a customer update (Telegram: App updates topic)</b>
+      <p className="rs-sub" style={{ margin: '4px 0 8px' }}>
+        New features and good changes customers would notice, for any product. One post in the CMTV User Support group's App updates topic.
+      </p>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+        <select style={field} value={product} onChange={edit(setProduct)} aria-label="Product">
+          {(products || []).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+        </select>
+        <input style={{ ...field, flex: 1, minWidth: 220 }} value={title} maxLength={120} onChange={edit(setTitle)}
+          placeholder="Title, e.g. Your CMTVGhost code is on your dashboard" aria-label="Title" />
+      </div>
+      <textarea value={body} maxLength={2500} onChange={edit(setBody)} aria-label="Details"
+        placeholder={'One line each, e.g.\n- Sign in to billing.cmtv.info and open your dashboard\n- Copy the code and enter it in CMTVGhost'} />
+      <div className="row">
+        <button type="button" className="rv-btn" disabled={busy || !title.trim()} onClick={doPreview}>Preview</button>
+        {preview && <button type="button" className="rv-btn glow" disabled={busy} onClick={post}>Post to Telegram</button>}
+      </div>
+      {preview && (
+        <pre style={{ whiteSpace: 'pre-wrap', ...field, padding: 12, fontSize: 14, marginTop: 8, fontFamily: 'inherit' }}>
+          {preview.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')}
+        </pre>
+      )}
+      {log?.length > 0 && <ul>{log.map((a) => <li key={`${a.at}-${a.title}`}>{when(a.at)} · {a.title}</li>)}</ul>}
+    </div>
+  );
+}
+
 export default function AdminNoticesPage() {
   return (
     <div className="rs-admin">
@@ -71,6 +125,7 @@ export default function AdminNoticesPage() {
         customer group, every customer's dashboard and cmtv.info. Use these boxes for targeted messages.
       </p>
       <ServiceStatus />
+      <CustomerUpdate />
       <CustomerNotice />
       <NoticeBox />
     </div>

@@ -237,6 +237,12 @@ app.include_router(cmtv_nuvio.relay)
 app.include_router(cmtv_nuvio.short_relay)
 app.include_router(cmtv_nuvio.updates)   # CMTV 2026-09-29: in-app updates for our Nuvio build
 
+# CMTV local change 2026-09-30: customer updates (any product) -> App updates Telegram topic (cmtv_announce.py)
+import cmtv_announce
+cmtv_announce.D["get_current_admin_user"] = get_current_admin_user
+cmtv_announce.init_routes()
+app.include_router(cmtv_announce.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -883,6 +889,7 @@ async def startup_event():
     cmtv_nuvio.init(db=db, users=users_collection, services=services_collection, products=products_collection,
                     get_email_service=get_configured_email_service)  # CMTV 2026-09-29: Nuvio server accounts
     await cmtv_nuvio.startup()   # sharing check (hourly)
+    cmtv_announce.init(db=db)   # CMTV 2026-09-30: customer update posts
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
                     create_access_token=create_access_token,
