@@ -479,20 +479,22 @@ class XtreamUISessionClient:
                                 try:
                                     verify_result = verify_response.json()
                                     if verify_result.get('data') and len(verify_result['data']) > 0:
-                                        new_date_str = verify_result['data'][0][7] if len(verify_result['data'][0]) > 7 else ''
+                                        from panel_expiry import row_expiry, to_panel_string
+                                        new_dt, new_unlimited, new_date_str = row_expiry(verify_result['data'][0])
                                         # Strip HTML tags
                                         import re
-                                        new_date_clean = re.sub('<[^<]+?>', '', new_date_str).strip()
-                                        logger.info(f"Previous date: {prev_date_str}, New date: {new_date_clean}")
+                                        new_date_clean = re.sub('<[^<]+?>', '', str(new_date_str)).strip()
+                                        new_expiry_utc = to_panel_string(new_dt, new_unlimited) or new_date_clean
+                                        logger.info(f"Previous date: {prev_date_str}, New date: {new_date_clean} (UTC: {new_expiry_utc})")
                                         
                                         # Compare dates to verify extension worked
                                         if new_date_clean != prev_date_str:
                                             logger.info(f"✓ Date changed! Subscriber {username} extended successfully")
-                                            return {'success': True, 'username': username, 'new_expiry': new_date_clean}
+                                            return {'success': True, 'username': username, 'new_expiry': new_expiry_utc}
                                         else:
                                             logger.warning(f"Date did not change - extension may have failed")
                                             if edit_response.status_code == 200:
-                                                return {'success': True, 'username': username, 'new_expiry': new_date_clean}
+                                                return {'success': True, 'username': username, 'new_expiry': new_expiry_utc}
                                 except Exception as ve:
                                     logger.error(f"Verification error: {ve}")
                             

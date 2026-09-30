@@ -488,9 +488,9 @@ class XuiOneService:
                                 expiry_timestamp = line.get('exp_date')
                                 expiry_str = ""
                                 if expiry_timestamp:
-                                    from datetime import datetime
+                                    from datetime import datetime, timezone
                                     try:
-                                        expiry_dt = datetime.fromtimestamp(int(expiry_timestamp))
+                                        expiry_dt = datetime.fromtimestamp(int(expiry_timestamp), tz=timezone.utc)
                                         expiry_str = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
                                     except Exception:
                                         expiry_str = str(expiry_timestamp)
@@ -528,9 +528,9 @@ class XuiOneService:
                                 expiry_timestamp = line.get('exp_date')
                                 expiry_str = ""
                                 if expiry_timestamp:
-                                    from datetime import datetime
+                                    from datetime import datetime, timezone
                                     try:
-                                        expiry_dt = datetime.fromtimestamp(int(expiry_timestamp))
+                                        expiry_dt = datetime.fromtimestamp(int(expiry_timestamp), tz=timezone.utc)
                                         expiry_str = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
                                     except Exception:
                                         expiry_str = str(expiry_timestamp)

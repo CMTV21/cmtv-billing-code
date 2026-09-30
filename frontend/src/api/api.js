@@ -191,6 +191,7 @@ export const adminAPI = {
   createImportedUser: (data) => api.post('/api/admin/imported-users/create', data),
   extendImportedUser: (id, data) => api.post(`/api/admin/imported-users/${id}/extend`, data),
   syncAllUsers: (config) => api.post('/api/admin/sync-all-users', null, { timeout: 120000, ...config }),
+  resyncServicesExpiry: () => api.post('/api/admin/services/resync-expiry', null, { timeout: 120000 }),
   // Customer creation
   createCustomer: (data) => api.post('/api/admin/customers/create', data),
 

@@ -58,6 +58,7 @@ from auth import (
     get_current_user, get_current_admin_user, get_current_staff_user
 )
 from xtreamui_service import get_xtream_service, XtreamUIService, xtream_api_call
+from panel_expiry import parse_expiry as parse_panel_expiry, is_unlimited as is_unlimited_expiry, row_expiry as panel_row_expiry
 from xtreamui_session_client import XtreamUISessionClient
 from onestream_service import OneStreamService, get_onestream_service
 from nxtdash_service import NxtDashService, get_nxtdash_service
@@ -750,6 +751,73 @@ async def create_customer_for_imported_user(imported_user: dict) -> Optional[str
         await services_collection.insert_one(service_doc)
 
     return user_id
+
+
+def _as_naive_dt(value) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            return None
+    return None
+
+
+async def find_imported_for_service(service: dict) -> Optional[dict]:
+    """Imported-user row for a service: same username on the same panel (never a namesake on another panel)."""
+    username = service.get("xtream_username") or service.get("username")
+    if not username:
+        return None
+    base = {"username": username, "account_type": {"$ne": "reseller"}}
+    if service.get("panel_type"):
+        base["panel_type"] = service["panel_type"]
+    if service.get("panel_name"):
+        hit = await imported_users_collection.find_one({**base, "panel_name": service["panel_name"]})
+        if hit:
+            return hit
+    if service.get("panel_index") is not None:
+        hit = await imported_users_collection.find_one({**base, "panel_index": service["panel_index"]})
+        if hit:
+            return hit
+    if not service.get("panel_type"):
+        return await imported_users_collection.find_one(base)
+    return None
+
+
+async def sync_services_expiry_from_imported_users(panel_type: Optional[str] = None) -> dict:
+    """Panel data is the source of truth: copy each imported user's expiry/status onto the linked service card."""
+    query = {"status": {"$in": ["active", "expired", "suspended"]}, "xtream_username": {"$nin": ["", None]}}
+    if panel_type:
+        query["panel_type"] = panel_type
+    checked = updated = 0
+    now = datetime.utcnow()
+    async for service in services_collection.find(query):
+        checked += 1
+        imported = await find_imported_for_service(service)
+        if not imported:
+            continue
+        panel_expiry = _as_naive_dt(imported.get("expiry_date"))
+        if panel_expiry is None and not imported.get("expiry_unlimited"):
+            continue
+        service_expiry = _as_naive_dt(service.get("expiry_date"))
+        changes = {}
+        if panel_expiry is None:
+            if service_expiry is not None:
+                changes["expiry_date"] = None
+        elif service_expiry is None or abs((panel_expiry - service_expiry).total_seconds()) > 60:
+            changes["expiry_date"] = panel_expiry
+        if service.get("status") == "expired" and (panel_expiry is None or panel_expiry > now) and imported.get("status") != "disabled":
+            changes["status"] = "active"
+        if imported.get("status") == "disabled" and service.get("status") == "active":
+            changes["status"] = "suspended"
+        if changes:
+            changes["expiry_synced_at"] = now
+            await services_collection.update_one({"_id": service["_id"]}, {"$set": changes})
+            updated += 1
+    if updated:
+        logger.info(f"Service expiry sync: {updated}/{checked} services corrected from panel data")
+    return {"checked": checked, "updated": updated}
 
 
 def render_provision_notes(template: str, **kwargs) -> str:
@@ -4044,19 +4112,12 @@ async def get_services(current_user: dict = Depends(get_current_user)):
         
         # Sync expiry from imported_users (panel-synced data is the source of truth)
         if service.get("xtream_username") and service.get("status") in ("active", "expired", "suspended"):
-            imported = await imported_users_collection.find_one({"username": service["xtream_username"]})
+            imported = await find_imported_for_service(service)
             if imported and imported.get("expiry_date"):
-                panel_expiry = imported["expiry_date"]
-                service_expiry = service.get("expiry_date")
-                # Convert strings to datetime if needed
-                if isinstance(panel_expiry, str):
-                    try: panel_expiry = datetime.fromisoformat(panel_expiry.replace("Z", "+00:00").replace("+00:00", ""))
-                    except ValueError: panel_expiry = None
-                if isinstance(service_expiry, str):
-                    try: service_expiry = datetime.fromisoformat(service_expiry.replace("Z", "+00:00").replace("+00:00", ""))
-                    except ValueError: service_expiry = None
+                panel_expiry = _as_naive_dt(imported["expiry_date"])
+                service_expiry = _as_naive_dt(service.get("expiry_date"))
                 # Update if panel expiry differs from service expiry
-                if panel_expiry and (not service_expiry or abs((panel_expiry - service_expiry).total_seconds()) > 3600):
+                if panel_expiry and (not service_expiry or abs((panel_expiry - service_expiry).total_seconds()) > 60):
                     service["expiry_date"] = panel_expiry
                     await services_collection.update_one(
                         {"_id": str_to_objectid(service["id"])},
@@ -6150,12 +6211,7 @@ async def provision_xtream_service(order_id: str, order: dict, user: dict, item:
                     # Get actual expiry from the panel instead of calculating
                     new_expiry = None
                     if extend_result.get("success") and extend_result.get("new_expiry"):
-                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                            try:
-                                new_expiry = datetime.strptime(str(extend_result["new_expiry"]).strip(), fmt)
-                                break
-                            except (ValueError, TypeError):
-                                continue
+                        new_expiry = parse_panel_expiry(extend_result["new_expiry"])
                     
                     # Fallback: fetch expiry from panel via table_search
                     if not new_expiry:
@@ -6179,15 +6235,10 @@ async def provision_xtream_service(order_id: str, order: dict, user: dict, item:
                             if resp.status_code == 200 and resp.text.strip():
                                 search_data = resp.json()
                                 users_data = search_data.get('data', [])
-                                if users_data and len(users_data[0]) > 7:
-                                    exp_raw = _re.sub(r'<[^>]+>', ' ', str(users_data[0][7])).strip()
-                                    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                        try:
-                                            new_expiry = datetime.strptime(exp_raw.strip(), fmt)
-                                            logger.info(f"Fetched actual panel expiry via search: {new_expiry}")
-                                            break
-                                        except ValueError:
-                                            continue
+                                if users_data:
+                                    new_expiry, _unl, _raw = panel_row_expiry(users_data[0])
+                                    if new_expiry:
+                                        logger.info(f"Fetched actual panel expiry via search: {new_expiry} (UTC)")
                         except Exception as e:
                             logger.warning(f"Could not fetch panel expiry via search: {e}")
                     
@@ -6307,16 +6358,10 @@ async def provision_xtream_service(order_id: str, order: dict, user: dict, item:
                                 search_data = resp.json()
                                 users_data = search_data.get('data', [])
                                 if users_data:
-                                    # Expiry is typically column 7 (format: "2026-03-06<br>18:08:16")
-                                    exp_raw = str(users_data[0][7]) if len(users_data[0]) > 7 else ""
-                                    exp_clean = _re.sub(r'<[^>]+>', ' ', exp_raw).strip()
-                                    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                        try:
-                                            actual_expiry = datetime.strptime(exp_clean.strip(), fmt)
-                                            logger.info(f"Actual panel expiry for {username}: {actual_expiry}")
-                                            break
-                                        except ValueError:
-                                            continue
+                                    panel_dt, _unl, _raw = panel_row_expiry(users_data[0])
+                                    if panel_dt:
+                                        actual_expiry = panel_dt
+                                        logger.info(f"Actual panel expiry for {username}: {actual_expiry} (UTC)")
                         except Exception as e:
                             logger.warning(f"Could not fetch actual expiry from panel: {e}")
                         
@@ -6597,15 +6642,10 @@ async def extend_xuione_line(xuione_service, existing_service: dict, item: dict,
                             lines_data = lines_resp.json().get('data', [])
                             for line in lines_data:
                                 if str(line.get('id')) == str(line_id) or line.get('username') == existing_service.get('xtream_username'):
-                                    exp_str = line.get('exp_date', '')
-                                    if exp_str:
-                                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                            try:
-                                                actual_expiry = datetime.strptime(str(exp_str).strip(), fmt)
-                                                logger.info(f"Got actual expiry from XuiOne panel: {actual_expiry}")
-                                                break
-                                            except ValueError:
-                                                continue
+                                    panel_dt = parse_panel_expiry(line.get('exp_date', ''))
+                                    if panel_dt:
+                                        actual_expiry = panel_dt
+                                        logger.info(f"Got actual expiry from XuiOne panel: {actual_expiry} (UTC)")
                                     break
                     except Exception as e:
                         logger.warning(f"Could not fetch actual expiry from XuiOne: {e}")
@@ -6852,15 +6892,9 @@ async def provision_xuione_service(order_id: str, order: dict, user: dict, item:
                             if resp_data.get('exp_date'):
                                 exp_val = resp_data['exp_date']
                                 try:
-                                    if str(exp_val).isdigit():
-                                        actual_expiry = datetime.fromtimestamp(int(exp_val))
-                                    else:
-                                        for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                            try:
-                                                actual_expiry = datetime.strptime(str(exp_val).strip(), fmt)
-                                                break
-                                            except ValueError:
-                                                continue
+                                    panel_dt = parse_panel_expiry(exp_val)
+                                    if panel_dt:
+                                        actual_expiry = panel_dt
                                     logger.info(f"Actual XuiOne expiry: {actual_expiry}")
                                 except Exception:
                                     pass
@@ -11423,26 +11457,10 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
                         "account_type": "subscriber"
                     }
                     
-                    # Parse expiry date
+                    # Parse expiry date (UTC-normalised by the panel service)
                     expiry_str = user_data.get("expiry", "")
-                    expiry_date = None
-                    if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
-                        expiry_str = str(expiry_str).strip()
-                        # Try epoch timestamp first
-                        try:
-                            _epoch = int(expiry_str)
-                            if _epoch > 0:
-                                expiry_date = datetime.utcfromtimestamp(_epoch)
-                        except (ValueError, TypeError, OSError):
-                            pass
-                        # Try date string formats
-                        if not expiry_date:
-                            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                try:
-                                    expiry_date = datetime.strptime(expiry_str, fmt)
-                                    break
-                                except ValueError:
-                                    continue
+                    expiry_date = parse_panel_expiry(expiry_str)
+                    expiry_unlimited = expiry_date is None and is_unlimited_expiry(expiry_str) and str(expiry_str).strip() != ""
                     
                     status = "active"
                     if expiry_date and expiry_date < datetime.utcnow():
@@ -11456,6 +11474,7 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
                         "username": username,
                         "password": user_data.get("password", ""),
                         "expiry_date": expiry_date,
+                        "expiry_unlimited": expiry_unlimited,
                         "status": status,
                         "max_connections": safe_int(user_data.get("max_connections", 1)),
                         "account_type": "subscriber",
@@ -12071,6 +12090,10 @@ async def sync_all_users_from_all_panels(current_user: dict = Depends(get_curren
         logger.warning(f"Account creation after sync failed: {e}")
         results["accounts_created"] = 0
     
+    try:
+        results["services_expiry"] = await sync_services_expiry_from_imported_users()
+    except Exception as e:
+        logger.warning(f"Service expiry sync after sync-all failed: {e}")
     return results
 
 @app.post("/api/admin/xtream/import-usernames")
@@ -12288,30 +12311,8 @@ async def sync_users_from_panel(panel_index: int = 0, current_user: dict = Depen
             
             # Parse expiry date - handle multiple formats
             expiry_str = user_data.get("expiry", "")
-            expiry_date = None
-            if expiry_str and str(expiry_str).strip() not in ["Unlimited", "NEVER", "", "None", "null", "0"]:
-                expiry_str = str(expiry_str).strip()
-                # Try epoch timestamp first (integer or string of digits)
-                try:
-                    epoch = int(expiry_str)
-                    if epoch > 0:
-                        expiry_date = datetime.utcfromtimestamp(epoch)
-                except (ValueError, TypeError, OSError):
-                    pass
-                
-                # Try date string formats
-                if not expiry_date:
-                    date_formats = [
-                        "%Y-%m-%d %H:%M:%S",
-                        "%Y-%m-%d %H:%M",
-                        "%Y-%m-%d",
-                    ]
-                    for fmt in date_formats:
-                        try:
-                            expiry_date = datetime.strptime(expiry_str, fmt)
-                            break
-                        except ValueError:
-                            continue
+            expiry_date = parse_panel_expiry(expiry_str)
+            expiry_unlimited = expiry_date is None and is_unlimited_expiry(expiry_str) and str(expiry_str).strip() != ""
             
             # Determine status
             status = "active"
@@ -12327,6 +12328,7 @@ async def sync_users_from_panel(panel_index: int = 0, current_user: dict = Depen
                 "username": username,
                 "password": user_data.get("password", ""),
                 "expiry_date": expiry_date,
+                "expiry_unlimited": expiry_unlimited,
                 "status": status,
                 "max_connections": safe_int(user_data.get("max_connections", 1)),
                 "account_type": "subscriber",
@@ -12450,8 +12452,15 @@ async def sync_users_from_panel(panel_index: int = 0, current_user: dict = Depen
     except Exception as e:
         logger.warning(f"Account creation after panel sync failed: {e}")
     
+    services_expiry = {"checked": 0, "updated": 0}
+    try:
+        services_expiry = await sync_services_expiry_from_imported_users("xtream")
+    except Exception as e:
+        logger.warning(f"Service expiry sync after panel sync failed: {e}")
+    
     return {
         "success": True,
+        "services_expiry": services_expiry,
         "synced": synced_count,
         "updated": updated_count,
         "removed": removed_count,
@@ -12464,6 +12473,13 @@ async def sync_users_from_panel(panel_index: int = 0, current_user: dict = Depen
             "removed": removed_count
         }
     }
+
+@app.post("/api/admin/services/resync-expiry")
+async def resync_services_expiry(panel_type: Optional[str] = None, current_user: dict = Depends(get_current_admin_user)):
+    """Re-copy panel expiry/status onto every linked service card (fixes stale or timezone-shifted dates)."""
+    result = await sync_services_expiry_from_imported_users(panel_type)
+    return {"success": True, **result}
+
 
 @app.get("/api/admin/imported-users")
 async def get_imported_users(panel_index: Optional[int] = None, current_user: dict = Depends(get_current_admin_user)):

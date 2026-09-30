@@ -100,10 +100,21 @@ export default function AetherPanelManagement({ settings }) {
     setEditingPanel(null);
   };
 
-  const handleRemovePanel = (index) => {
-    if (window.confirm('Remove this Aether panel?')) {
-      setPanels(panels.filter((_, i) => i !== index));
+  const handleRemovePanel = async (index) => {
+    const panel = panels[index];
+    if (!window.confirm(`Remove Aether panel "${panel?.name || panel?.panel_url || index + 1}"? Its imported users and their service records will be deleted from billing.`)) return;
+    const remaining = panels.filter((_, i) => i !== index);
+    setBusyFor(index, 'remove');
+    try {
+      await adminAPI.updateSettings({ ...settings, aether: { panels: remaining } });
+      setPanels(remaining);
+      setTokenInfo((t) => { const c = { ...t }; delete c[index]; return c; });
+      queryClient.invalidateQueries(['admin-settings']);
+      toast.success('Aether panel removed');
+    } catch (error) {
+      toast.error('Failed to remove panel: ' + (error.response?.data?.detail || error.message));
     }
+    setBusyFor(index, null);
   };
 
   const btn = {
@@ -153,8 +164,8 @@ export default function AetherPanelManagement({ settings }) {
                 <Users className="w-4 h-4 inline mr-1" />{busy[index] === 'users' ? 'Syncing...' : 'Sync Users'}
               </button>
               <button onClick={() => { setEditingPanel(index); setShowModal(true); }} className={btn.gray} data-testid={`aether-edit-btn-${index}`}>Edit</button>
-              <button onClick={() => handleRemovePanel(index)} className={btn.red} data-testid={`aether-remove-btn-${index}`}>
-                <Trash2 className="w-4 h-4" />
+              <button onClick={() => handleRemovePanel(index)} disabled={!!busy[index]} className={btn.red} title="Remove panel" data-testid={`aether-remove-btn-${index}`}>
+                {busy[index] === 'remove' ? <span className="text-xs">Removing…</span> : <Trash2 className="w-4 h-4" />}
               </button>
             </div>
           </div>
