@@ -420,6 +420,83 @@ async def startup():
     asyncio.create_task(_loop())
 
 
+# ---------------------------------------------------------------- app updates (2026-09-29)
+# Our app build (info.cmtv.nuvio, rev 3+) asks billing instead of GitHub for updates, in GitHub's release format:
+# GET /api/cmtv/app-updates/repos/cmtv/nuvio-tv/releases/latest (+ /releases for its "beta" channel). Only a build the
+# owner publishes in Admin > Nuvio > App is offered; its APKs are copied to PUB_DIR, served by nginx at /app-files/.
+updates = APIRouter(prefix="/api/cmtv/app-updates", tags=["cmtv-nuvio-updates"])
+APP_OUT = os.environ.get("NUVIO_APP_OUT", "/opt/nuvio-build/out")
+APP_PUB = os.environ.get("NUVIO_APP_PUB", "/var/www/cmtv-app/nuvio")
+APP_FILES_URL = os.environ.get("NUVIO_APP_FILES_URL", "https://billing.cmtv.info/app-files/nuvio")
+SOURCE_URL = "https://github.com/CMTV21/Nuvio-tv-cmtv"
+_BUILD = re.compile(r"^Nuvio-CMTV-(?P<v>\d+\.\d+\.\d+-cmtv\.\d+)-(?P<abi>arm64-v8a|armeabi-v7a|x86_64|x86|universal)\.apk$")
+
+
+def app_builds() -> dict:
+    """{version: {abi: {name, size, built_at}}} from the build folder"""
+    out = {}
+    if os.path.isdir(APP_OUT):
+        for name in os.listdir(APP_OUT):
+            m = _BUILD.match(name)
+            if m:
+                st = os.stat(os.path.join(APP_OUT, name))
+                out.setdefault(m["v"], {})[m["abi"]] = {"name": name, "size": st.st_size,
+                                                       "built_at": datetime.utcfromtimestamp(st.st_mtime)}
+    return out
+
+
+def _version_key(v: str):
+    m = re.match(r"(\d+)\.(\d+)\.(\d+)-cmtv\.(\d+)", v)
+    return tuple(int(x) for x in m.groups()) if m else (0, 0, 0, 0)
+
+
+async def published_release():
+    return await _db().cmtv_config.find_one({"_id": "nuvio_app_release"})
+
+
+def _release_json(rel: dict) -> dict:
+    return {"tag_name": rel["tag"], "name": rel.get("name") or f"Nuvio for CMTV {rel['tag']}", "body": rel.get("notes") or "",
+            "draft": False, "prerelease": False, "html_url": SOURCE_URL,
+            "assets": [{"name": a["name"], "browser_download_url": a["url"], "size": a["size"],
+                        "content_type": "application/vnd.android.package-archive"} for a in rel.get("assets", [])]}
+
+
+@updates.get("/repos/{owner}/{repo}/releases/latest")
+async def update_latest(owner: str, repo: str):
+    rel = await published_release()
+    if not rel or (owner, repo) != ("cmtv", "nuvio-tv"):
+        return JSONResponse({"message": "Not Found"}, status_code=404)
+    return JSONResponse(_release_json(rel), headers={"Cache-Control": "no-store"})
+
+
+@updates.get("/repos/{owner}/{repo}/releases")
+async def update_list(owner: str, repo: str):
+    rel = await published_release()
+    if (owner, repo) != ("cmtv", "nuvio-tv"):
+        return JSONResponse({"message": "Not Found"}, status_code=404)
+    return JSONResponse([_release_json(rel)] if rel else [], headers={"Cache-Control": "no-store"})
+
+
+def _publish_files(version: str, files: dict) -> list:
+    import hashlib
+    import shutil
+    dest = os.path.join(APP_PUB, version)
+    os.makedirs(dest, exist_ok=True)
+    assets = []
+    for abi, f in sorted(files.items()):
+        src, dst = os.path.join(APP_OUT, f["name"]), os.path.join(dest, f["name"])
+        if not os.path.exists(dst) or os.path.getsize(dst) != f["size"]:
+            shutil.copyfile(src, dst + ".part")
+            os.replace(dst + ".part", dst)
+        h = hashlib.sha256()
+        with open(dst, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        assets.append({"abi": abi, "name": f["name"], "size": f["size"], "sha256": h.hexdigest(),
+                       "url": f"{APP_FILES_URL}/{version}/{f['name']}"})
+    return assets
+
+
 # ---------------------------------------------------------------- admin
 def _new_expiry(current: str, months: int = 0, expiry_date: str = "") -> str:
     if expiry_date:
@@ -737,6 +814,35 @@ def init_routes():
         _cache_drop(username)
         await _sync_services(acc["_id"], status="terminated", cockpit_deleted_at=datetime.utcnow())
         return {"deleted": acc["_id"]}
+
+    @router.get("/app")
+    async def app_status(current_user: dict = Depends(admin)):
+        rel = await published_release()
+        builds = app_builds()
+        return {"published": rel, "builds": [
+            {"version": v, "abis": sorted(files), "size": max(f["size"] for f in files.values()),
+             "built_at": max(f["built_at"] for f in files.values()), "published": bool(rel and rel["tag"] == v),
+             "updater": _version_key(v) >= (1, 0, 0, 3)}
+            for v, files in sorted(builds.items(), key=lambda kv: _version_key(kv[0]), reverse=True)]}
+
+    @router.post("/app/publish")
+    async def app_publish(body: dict, current_user: dict = Depends(admin)):
+        """Offer this build to every CMTV Nuvio app (and give its download links). Publishing an older build is a
+        rollback for new installs; apps already on a newer version stay on it."""
+        version = (body.get("version") or "").strip()
+        files = app_builds().get(version)
+        if not files:
+            raise HTTPException(404, "That build isn't in the build folder")
+        assets = await asyncio.to_thread(_publish_files, version, files)
+        old = await published_release()
+        doc = {"tag": version, "name": f"Nuvio for CMTV {version}", "notes": (body.get("notes") or "").strip()[:2000],
+               "assets": assets, "published_at": datetime.utcnow(), "published_by": current_user.get("email")}
+        if old:
+            await _db().cmtv_config.update_one({"_id": "nuvio_app_release_history"}, {"$push": {"releases": {
+                k: v for k, v in old.items() if k != "_id"}}}, upsert=True)
+        await _db().cmtv_config.replace_one({"_id": "nuvio_app_release"}, {"_id": "nuvio_app_release", **doc}, upsert=True)
+        logger.info(f"Nuvio app {version} published by {current_user.get('email')}")
+        return {k: v for k, v in doc.items()}
 
     @router.get("/share-alerts")
     async def share_alerts(current_user: dict = Depends(admin)):

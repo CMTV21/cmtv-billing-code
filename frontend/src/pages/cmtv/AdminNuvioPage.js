@@ -385,21 +385,90 @@ function Addons() {
   );
 }
 
+const ABI_LABEL = { 'arm64-v8a': 'Newer Fire Sticks / Android TV (arm64)', 'armeabi-v7a': 'Older Fire Sticks (armv7)',
+  x86_64: 'Emulators / BlueStacks (x86_64)', x86: 'Old emulators (x86)', universal: 'Any device (large)' };
+const mb = (n) => `${Math.round((n || 0) / 1048576)} MB`;
+
+function AppTab() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['nuvio-app'],
+    queryFn: async () => (await api.get('/api/cmtv/nuvio/app')).data,
+  });
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState('');
+  const publish = async (b) => {
+    const msg = b.updater
+      ? `Publish ${b.version}? Every CMTV Nuvio app (from cmtv.3 on) will be offered this update.`
+      : `Publish ${b.version}? This build can't update itself later (it's from before cmtv.3), so only use it for testing.`;
+    if (!window.confirm(msg)) return;
+    setBusy(b.version);
+    try { await api.post('/api/cmtv/nuvio/app/publish', { version: b.version, notes }); toast.success(`${b.version} published`); setNotes(''); refetch(); }
+    catch (e) { toast.error(errText(e, 'Could not publish')); }
+    setBusy('');
+  };
+  if (isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
+  const pub = data?.published;
+  return (
+    <div className="max-w-4xl space-y-6">
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        <h2 className="font-bold text-gray-900 dark:text-white mb-1">Published version</h2>
+        {!pub ? <p className="text-sm text-gray-500">Nothing published yet. Apps won't be offered an update until you publish one.</p> : (
+          <>
+            <p className="text-sm text-gray-700 dark:text-gray-300"><b>{pub.tag}</b> · published {fmt(pub.published_at)} by {pub.published_by}</p>
+            {pub.notes && <p className="text-sm text-gray-500 mt-1 whitespace-pre-line">{pub.notes}</p>}
+            <div className="mt-3 space-y-1">
+              {(pub.assets || []).map((a) => (
+                <div key={a.name} className="flex items-center gap-2 text-sm">
+                  <span className="w-72 text-gray-700 dark:text-gray-300">{ABI_LABEL[a.abi] || a.abi}</span>
+                  <a className="text-blue-600 hover:underline truncate" href={a.url}>{a.name}</a>
+                  <span className="text-gray-500">{mb(a.size)}</span><CopyBtn text={a.url} />
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">Use the arm64 / armv7 links for Downloads and the Downloader code page.</p>
+          </>
+        )}
+      </div>
+      <div>
+        <h2 className="font-bold text-gray-900 dark:text-white mb-2">Builds</h2>
+        <textarea className={`${input} w-full mb-2`} rows={2} placeholder="What's new (shown in the app's update prompt, optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <div className="divide-y divide-gray-200 dark:divide-gray-700 rounded-xl border border-gray-200 dark:border-gray-700">
+          {(data?.builds || []).map((b) => (
+            <div key={b.version} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <div className="flex-1 min-w-[12rem]">
+                <p className="font-semibold text-gray-900 dark:text-white">{b.version}
+                  {b.published && <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">Published</span>}
+                  {!b.updater && <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">No auto-update</span>}</p>
+                <p className="text-xs text-gray-500">Built {fmt(b.built_at)} · {b.abis.length} files · up to {mb(b.size)}</p>
+              </div>
+              <button type="button" disabled={!!busy || b.published} onClick={() => publish(b)}
+                className={`${btn} bg-blue-600 text-white hover:bg-blue-700`}><Send className="w-4 h-4" /> {busy === b.version ? 'Publishing…' : 'Publish'}</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminNuvioPage() {
-  const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get('tab') === 'addons' ? 'addons' : 'accounts'));
+  const [tab, setTab] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return ['addons', 'app'].includes(t) ? t : 'accounts';
+  });
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Nuvio</h1>
         <span className="text-sm text-gray-500">CMTV's own Nuvio server · nuvio.cmtv.info</span>
         <div className="ml-auto flex rounded-lg bg-gray-100 dark:bg-gray-800 p-1">
-          {[['accounts', 'Accounts'], ['addons', 'Add-ons']].map(([k, l]) => (
+          {[['accounts', 'Accounts'], ['addons', 'Add-ons'], ['app', 'App']].map(([k, l]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               className={`px-4 py-1.5 rounded-md text-sm font-semibold ${tab === k ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow' : 'text-gray-600 dark:text-gray-400'}`}>{l}</button>
           ))}
         </div>
       </div>
-      {tab === 'accounts' ? <Accounts /> : <Addons />}
+      {tab === 'accounts' ? <Accounts /> : tab === 'addons' ? <Addons /> : <AppTab />}
     </div>
   );
 }

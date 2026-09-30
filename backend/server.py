@@ -231,6 +231,7 @@ cmtv_nuvio.init_routes()
 app.include_router(cmtv_nuvio.router)
 app.include_router(cmtv_nuvio.relay)
 app.include_router(cmtv_nuvio.short_relay)
+app.include_router(cmtv_nuvio.updates)   # CMTV 2026-09-29: in-app updates for our Nuvio build
 
 
 # MongoDB connection
