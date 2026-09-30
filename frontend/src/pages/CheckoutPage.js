@@ -38,6 +38,7 @@ export default function CheckoutPage() {
     action_type: i.action_type, renewal_service_id: i.renewal_service_id,
     item_type: i.item_type || 'service', quantity: i.quantity || 1,
     credits: i.credits, lineup: i.lineup, // CMTV 2026-09-28/29: reseller credit amount, Imperium line-up
+    bouquets: i.bouquets, // CMTV 2026-09-30: Imperium channel groups the customer picked
   }));
   const shippingPayload = () => hasPhysicalItems ? { shipping_address: shippingAddress, shipping_method_id: shippingMethod?.method_id } : {};
   const validateShipping = () => {

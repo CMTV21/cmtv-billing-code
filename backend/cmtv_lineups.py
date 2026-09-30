@@ -8,6 +8,12 @@ Billing products keep pointing at the Full packages. An order item may carry `li
 package for the one with the same length and connections in that line-up (matched from the panel's package list, cached
 1 h). A renewal without a choice keeps the line's current line-up (service.cmtv_lineup, else its Aether package).
   GET /api/cmtv/lineups -> the choices for the storefront/checkout
+
+Custom channel groups (2026-09-30, the user's request): the three line-ups allow the same ~70 channel groups (bouquets)
+and differ only in which are on by default. An order item may carry `bouquets` (group ids): a NEW line is then created
+with exactly those groups (they must be allowed by the line-up's package; anything else is dropped). Renewals keep the
+line's groups (the panel's renew call doesn't touch them). The line remembers its groups in service.cmtv_bouquets.
+  GET /api/cmtv/lineups/{lineup}/groups?product_id= -> the groups, their channel counts and which are standard
 """
 import logging
 import time
@@ -82,7 +88,83 @@ def variant(pkg, lineup, pk):
     return pkg
 
 
+_bq = {}   # package id -> (time, groups)
+MAIN = {"usa", "united kingdom", "canada", "live events / ppv", "live events / ppv -- usa only", "4k / uhd", "24/7",
+        "24-7 movies", "cinemania", "cine play", "australia", "new zealand"}
+
+
+def _section(g):
+    name = str(g.get("name") or "").strip().lower()
+    if name in ("xxx", "adult") or "xxx" in name or "adult" in name:
+        return "adult"
+    if (g.get("movie_count") or 0) > 0 or (g.get("series_count") or 0) > 0:
+        return "vod"
+    return "main" if name in MAIN else "world"
+
+
+async def groups_for(pkg):
+    """The channel groups a package allows (cached 1 h): [{id, name, live, movies, series, standard, section}]"""
+    hit = _bq.get(str(pkg))
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    out = []
+    try:
+        from aether_service import get_aether_service
+        panels = ((await D["get_settings"]()).get("aether") or {}).get("panels") or []
+        if panels:
+            r = await get_aether_service(panels[0]).get_package_bouquets(int(pkg))
+            for g in r.get("bouquets") or []:
+                if g.get("enabled", True) is False:
+                    continue
+                out.append({"id": int(g["id"]), "name": str(g.get("name") or "").strip(), "live": int(g.get("stream_count") or 0),
+                            "movies": int(g.get("movie_count") or 0), "series": int(g.get("series_count") or 0),
+                            "standard": bool(g.get("default_included")), "section": _section(g), "order": g.get("order") or 0})
+    except Exception as e:
+        log.warning(f"line-ups: couldn't read the groups of package {pkg}: {e}")
+    if out:
+        out.sort(key=lambda g: (g["order"], g["name"]))
+        _bq[str(pkg)] = (time.time(), out)
+    return out
+
+
+def clean_bouquets(raw):
+    """A customer's group picks as a list of unique ints (None if empty or not a list)"""
+    if not isinstance(raw, (list, tuple)):
+        return None
+    out = []
+    for v in raw[:120]:
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            continue
+        if v > 0 and v not in out:
+            out.append(v)
+    return out or None
+
+
 async def apply(product: dict, item: dict):
+    """Imperium subscriber item: the chosen line-up's package, plus the customer's own channel groups on a new line."""
+    out = await _apply_lineup(product, item)
+    picks = clean_bouquets(item.get("bouquets"))
+    if not picks or item.get("renewal_service_id") or out is None or out.get("panel_type") != "aether" \
+            or out.get("account_type", "subscriber") != "subscriber" or out.get("is_trial"):
+        return out
+    pkg = out.get("panel_package_id") or out.get("xtream_package_id")
+    allowed = await groups_for(pkg) if pkg else []
+    if not allowed:
+        log.warning(f"line-ups: groups of package {pkg} unknown; the line gets the line-up's standard groups")
+        return out
+    ids = {g["id"] for g in allowed}
+    keep = [b for b in picks if b in ids]
+    if len(keep) < len(picks):
+        log.warning(f"line-ups: {len(picks) - len(keep)} picked group(s) not allowed by package {pkg}, left out")
+    if not keep or set(keep) == {g["id"] for g in allowed if g["standard"]}:
+        return out   # same as the line-up's own groups
+    log.info(f"line-ups: {out.get('name')} with {len(keep)} chosen channel groups")
+    return {**out, "bouquets": keep, "cmtv_bouquets": keep}
+
+
+async def _apply_lineup(product: dict, item: dict):
     """For an Imperium subscriber item: a copy of the product pointing at the chosen (or kept) line-up's package.
     Anything else comes back unchanged."""
     if not product or product.get("panel_type") != "aether" or product.get("account_type", "subscriber") != "subscriber" \
@@ -130,8 +212,30 @@ async def remember(order_id: str, order: dict):
         if it.get("lineup") in LINEUPS and not it.get("renewal_service_id"):
             await D["db"].services.update_many({"order_id": order_id, "panel_type": "aether", "cmtv_lineup": {"$exists": False}},
                                                {"$set": {"cmtv_lineup": it["lineup"]}})
+        picks = clean_bouquets(it.get("bouquets"))
+        if picks and not it.get("renewal_service_id"):   # 2026-09-30: the groups the customer picked
+            await D["db"].services.update_many({"order_id": order_id, "panel_type": "aether", "cmtv_bouquets": {"$exists": False}},
+                                               {"$set": {"cmtv_bouquets": picks}})
 
 
 @router.get("/lineups")
 async def lineups():
     return {"lineups": [{"key": k, "label": v["label"], "note": v["note"]} for k, v in LINEUPS.items()], "default": "full"}
+
+
+@router.get("/lineups/{lineup}/groups")
+async def lineup_groups(lineup: str, product_id: str):
+    """Public (the storefront shows it before sign-in): the channel groups a customer can pick for this plan + line-up"""
+    from fastapi import HTTPException
+    p = await D["db"].products.find_one({"_id": _oid(product_id)}) if _oid(product_id) else None
+    if not p or p.get("panel_type") != "aether" or p.get("account_type", "subscriber") != "subscriber" or p.get("is_trial") \
+            or lineup not in LINEUPS:
+        raise HTTPException(status_code=404, detail="No channel groups for this plan")
+    pk = await packages()
+    base = p.get("panel_package_id") or p.get("xtream_package_id")
+    pkg = variant(base, lineup, pk) if pk else base
+    groups = await groups_for(pkg) if pkg else []
+    if not groups:
+        raise HTTPException(status_code=503, detail="Channel groups can't be loaded right now")
+    return {"lineup": lineup, "groups": [{k: g[k] for k in ("id", "name", "live", "movies", "series", "standard", "section")}
+                                         for g in groups]}

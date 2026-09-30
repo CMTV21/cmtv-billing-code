@@ -6,6 +6,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { rememberPlan, pendingPlan, pendingCredits, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
 import ResellerCredits, { creditPrice } from '../../components/cmtv/ResellerCredits'; // 2026-09-28: any credit amount
 import { LINEUPS, lineupName } from '../../components/cmtv/lineups'; // 2026-09-29: Imperium channel line-ups
+import ChannelPicker, { customName } from '../../components/cmtv/ChannelPicker'; // 2026-09-30: pick your own channel groups
 import api from '../../api/api';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -269,6 +270,7 @@ function PlanCard({ card, family, grouped, allProducts }) {
   const [open, setOpen] = useState(false);
   const [channels, setChannels] = useState(null);
   const [lineup, setLineup] = useState('full');   // 2026-09-29: Imperium channel line-up (same price)
+  const [bouquets, setBouquets] = useState(null);   // 2026-09-30: the customer's own channel groups (null = the line-up's)
   const [vodApp, setVodApp] = useState('nuvio');   // 2026-09-30: CMTV+ movies & series app (Nuvio, or Stremio on request)
   const products = card.products;
   const first = products[0];
@@ -295,8 +297,8 @@ function PlanCard({ card, family, grouped, allProducts }) {
     const { term, price } = firstPrice(p);
     const withLineup = family === 'imperium' && p.account_type === 'subscriber' && !p.is_trial;
     const withStremio = vodChoice && vodApp === 'stremio';   // 2026-09-30: shows on the order as "CMTV+ (with Stremio)"
-    addItem({ product_id: p.id, product_name: withLineup ? lineupName(p.name, lineup) : withStremio ? `${p.name} (with Stremio)` : p.name, term_months: term, price,
-              account_type: p.account_type, ...(withLineup ? { lineup } : {}) });
+    addItem({ product_id: p.id, product_name: withLineup ? customName(lineupName(p.name, lineup), bouquets) : withStremio ? `${p.name} (with Stremio)` : p.name, term_months: term, price,
+              account_type: p.account_type, ...(withLineup ? { lineup, ...(bouquets ? { bouquets } : {}) } : {}) });
     window.location.href = '/checkout';
   };
   const showChannels = async () => {
@@ -332,6 +334,9 @@ function PlanCard({ card, family, grouped, allProducts }) {
             </select>
             <small>{LINEUPS.find((l) => l.key === lineup)?.note} Same price.</small>
           </label>
+        )}
+        {family === 'imperium' && first?.account_type === 'subscriber' && !first?.is_trial && (
+          <ChannelPicker productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />
         )}
         {vodChoice && (
           <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>
