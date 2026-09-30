@@ -280,6 +280,28 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
   const [bouquets, setBouquets] = useState(null);   // 2026-09-30: the customer's own channel groups (null = the line-up's)
   const [vodApp, setVodApp] = useState('nuvio');   // 2026-09-30: CMTV+ movies & series app (Nuvio, or Stremio on request)
   const products = card.products;
+  // 2026-09-30: line-up / channel choices by panel, so the trial cards (Trials group) get them too
+  const impLine = products[0]?.panel_type === 'aether' && products[0]?.account_type === 'subscriber';
+  const cctvLine = products[0]?.panel_type === 'xtream' && products[0]?.account_type === 'subscriber';
+  // a paid plan starts from the line-up / channels the customer used on their trial
+  const { data: myServices } = useQuery({
+    queryKey: ['services'], enabled: !!user && (impLine || cctvLine) && !products[0]?.is_trial, staleTime: 60000,
+    queryFn: async () => (await api.get('/api/services')).data || [],
+  });
+  const fromTrial = useMemo(() => {
+    if (!Array.isArray(myServices)) return null;
+    const panel = impLine ? 'aether' : 'xtream';
+    return myServices.find((s) => s.panel_type === panel && s.is_trial && (s.cmtv_lineup || (s.cmtv_bouquets || []).length)) || null;
+  }, [myServices, impLine]);
+  const [trialApplied, setTrialApplied] = useState(false);
+  const trialDone = React.useRef(false);
+  React.useEffect(() => {   // line-up first; the picker then resets its groups, and this effect (parent, runs after it) sets them
+    if (!fromTrial || trialDone.current) return;
+    if (impLine && fromTrial.cmtv_lineup && fromTrial.cmtv_lineup !== lineup) { setLineup(fromTrial.cmtv_lineup); return; }
+    trialDone.current = true;
+    if ((fromTrial.cmtv_bouquets || []).length) setBouquets(fromTrial.cmtv_bouquets);
+    setTrialApplied(true);
+  }, [fromTrial, lineup, impLine]);
   const first = products[0];
   const money = (v) => `${symbol}${convertPrice(v).toFixed(2)}`;
 
@@ -306,8 +328,8 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
 
   const buy = (p) => {
     const { term, price } = firstPrice(p);
-    const withLineup = family === 'imperium' && p.account_type === 'subscriber' && !p.is_trial;
-    const withGroups = family === 'cctv' && p.account_type === 'subscriber' && !p.is_trial;   // 2026-09-30: CCTV channel groups
+    const withLineup = p.panel_type === 'aether' && p.account_type === 'subscriber';   // 2026-09-30: trials too
+    const withGroups = p.panel_type === 'xtream' && p.account_type === 'subscriber';   // 2026-09-30: CCTV channel groups, trials too
     const withStremio = vodChoice && vodApp === 'stremio';   // 2026-09-30: shows on the order as "CMTV+ (with Stremio)"
     const name = withLineup ? customName(lineupName(p.name, lineup), bouquets) : withGroups ? customName(p.name, bouquets)
       : withStremio ? `${p.name} (with Stremio)` : p.name;
@@ -342,7 +364,8 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
       <div className="rows">
         {showIntro && <div className="desc"><FormattedText text={intro} /></div>}
         {focused && <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--gold, #d8b35a)', fontWeight: 700 }}>Choose your channel line-up, then tap your plan below.</p>}
-        {family === 'imperium' && first?.account_type === 'subscriber' && !first?.is_trial && (
+        {trialApplied && <p style={{ margin: '0 0 8px', fontSize: 12.5, color: 'var(--muted)' }}>Set to match your trial. Change it if you like.</p>}
+        {impLine && (
           <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>
             <span style={{ fontWeight: 700, color: 'var(--text)' }}>Channel line-up</span>
             <select value={lineup} onChange={(e) => setLineup(e.target.value)} aria-label="Channel line-up"
@@ -352,10 +375,10 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
             <small>{LINEUPS.find((l) => l.key === lineup)?.note} Same price.</small>
           </label>
         )}
-        {family === 'imperium' && first?.account_type === 'subscriber' && !first?.is_trial && (
+        {impLine && (
           <ChannelPicker productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />
         )}
-        {family === 'cctv' && first?.account_type === 'subscriber' && !first?.is_trial && (
+        {cctvLine && (
           <ChannelPicker source="cctv" productId={first.id} value={bouquets} onChange={setBouquets} />
         )}
         {vodChoice && (

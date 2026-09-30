@@ -65,28 +65,44 @@ async def packages():
     return pk
 
 
+# 2026-09-30: the panel also has trial packages per line-up ("Trial - Full Package - 48 hr" and so on)
+TRIAL_PREFIX = {"full": "Trial - Full Package - ", "no_adult": "Trial - Full Package (No Adult) - ", "na": "Trial - US/UK/CA/PPV - "}
+
+
+def _name_lineup(name):
+    """(line-up, is_trial) from a package name, or (None, None). Longest prefix first ("(No adult)")."""
+    n = str(name or "").lower()
+    for key, pre in sorted(TRIAL_PREFIX.items(), key=lambda kv: -len(kv[1])):
+        if n.startswith(pre.lower()):
+            return key, True
+    for key, v in sorted(LINEUPS.items(), key=lambda kv: -len(kv[1]["prefix"])):
+        if n.startswith(v["prefix"].lower()):
+            return key, False
+    return None, None
+
+
 def lineup_of(pkg, pk):
     """Which line-up a package id belongs to (None if not one of ours)."""
     p = next((x for x in pk if str(x.get("id")) == str(pkg)), None)
-    if not p:
-        return None
-    name = str(p.get("name") or "")
-    for key, v in sorted(LINEUPS.items(), key=lambda kv: -len(kv[1]["prefix"])):   # longest prefix first ("(No adult)")
-        if name.startswith(v["prefix"]):
-            return key
-    return None
+    return _name_lineup(p.get("name"))[0] if p else None
 
 
 def variant(pkg, lineup, pk):
-    """The package with the same length and connections as `pkg`, in `lineup`. Returns pkg itself if there's no match."""
+    """The package with the same length and connections as `pkg`, in `lineup` (a trial package maps to the same-length
+    trial package of that line-up). Returns pkg itself if there's no match."""
     src = next((x for x in pk if str(x.get("id")) == str(pkg)), None)
-    want = LINEUPS.get(lineup)
-    if not src or not want or lineup_of(pkg, pk) is None:
+    if not src or lineup not in LINEUPS:
         return pkg
+    cur, trial = _name_lineup(src.get("name"))
+    if cur is None:
+        return pkg
+    if trial:
+        want = (TRIAL_PREFIX[lineup] + str(src.get("name") or "")[len(TRIAL_PREFIX[cur]):]).lower()
+        hit = next((x for x in pk if str(x.get("name") or "").lower() == want), None)
+        return hit.get("id") if hit else pkg
     for x in pk:
-        if str(x.get("name") or "").startswith(want["prefix"]) and lineup_of(x.get("id"), pk) == lineup \
-                and x.get("duration") == src.get("duration") and x.get("max_connections") == src.get("max_connections") \
-                and not x.get("is_trial"):
+        if _name_lineup(x.get("name")) == (lineup, False) and x.get("duration") == src.get("duration") \
+                and x.get("max_connections") == src.get("max_connections") and not x.get("is_trial"):
             return x.get("id")
     return pkg
 
@@ -216,12 +232,13 @@ def _cctv_ids(product):
     return out
 
 
-def _is_line_plan(p, panel):
-    return bool(p) and p.get("panel_type") == panel and p.get("account_type", "subscriber") == "subscriber" and not p.get("is_trial")
+def _is_line_plan(p, panel, trials=False):
+    return bool(p) and p.get("panel_type") == panel and p.get("account_type", "subscriber") == "subscriber" \
+        and (trials or not p.get("is_trial"))
 
 
 async def _apply_cctv(product: dict, item: dict):
-    if not _is_line_plan(product, "xtream"):
+    if not _is_line_plan(product, "xtream", trials=True):   # 2026-09-30: trials can pick groups too
         return product
     allowed = _cctv_ids(product)
     if item.get("renewal_service_id"):   # renewals re-post a group list: send the line's own picks
@@ -251,7 +268,7 @@ async def apply(product: dict, item: dict):
     out = await _apply_lineup(product, item)
     picks = clean_bouquets(item.get("bouquets"))
     if not picks or item.get("renewal_service_id") or out is None or out.get("panel_type") != "aether" \
-            or out.get("account_type", "subscriber") != "subscriber" or out.get("is_trial"):
+            or out.get("account_type", "subscriber") != "subscriber":
         return out
     pkg = out.get("panel_package_id") or out.get("xtream_package_id")
     allowed = await groups_for(pkg) if pkg else []
@@ -271,9 +288,8 @@ async def apply(product: dict, item: dict):
 async def _apply_lineup(product: dict, item: dict):
     """For an Imperium subscriber item: a copy of the product pointing at the chosen (or kept) line-up's package.
     Anything else comes back unchanged."""
-    if not product or product.get("panel_type") != "aether" or product.get("account_type", "subscriber") != "subscriber" \
-            or product.get("is_trial"):
-        return product
+    if not product or product.get("panel_type") != "aether" or product.get("account_type", "subscriber") != "subscriber":
+        return product   # 2026-09-30: trials included (the panel has a trial package per line-up)
     choice = item.get("lineup") if item.get("lineup") in LINEUPS else None
     db = D["db"]
     svc = None
@@ -304,7 +320,10 @@ async def _apply_lineup(product: dict, item: dict):
         await db.services.update_one({"_id": svc["_id"]}, {"$set": {"cmtv_lineup": choice, "cmtv_lineup_at": datetime.utcnow()}})
     log.info(f"line-ups: {product.get('name')} -> {choice} package {new}")
     new = str(new) if isinstance(base, str) else new   # same type as the product stores
-    out = {**product, "xtream_package_id": new, "cmtv_lineup": choice}
+    # 2026-09-30: products store a fixed group list (Full's, adult included) that create_line sends as bouquet_ids; with
+    # another line-up that list would override the package (North America = everything, No adult = with adult). The
+    # line-up's package decides instead (custom picks, if any, are set by apply() afterwards).
+    out = {**product, "xtream_package_id": new, "cmtv_lineup": choice, "bouquets": None}
     if product.get("panel_package_id"):
         out["panel_package_id"] = new
     return out
@@ -339,8 +358,7 @@ async def lineup_groups(lineup: str, product_id: str):
     """Public (the storefront shows it before sign-in): the channel groups a customer can pick for this plan + line-up"""
     from fastapi import HTTPException
     p = await D["db"].products.find_one({"_id": _oid(product_id)}) if _oid(product_id) else None
-    if not p or p.get("panel_type") != "aether" or p.get("account_type", "subscriber") != "subscriber" or p.get("is_trial") \
-            or lineup not in LINEUPS:
+    if not _is_line_plan(p, "aether", trials=True) or lineup not in LINEUPS:
         raise HTTPException(status_code=404, detail="No channel groups for this plan")
     pk = await packages()
     base = p.get("panel_package_id") or p.get("xtream_package_id")
@@ -357,7 +375,7 @@ async def cctv_groups(product_id: str):
     """Public: the channel groups a customer can pick for a CCTV plan (all of the plan's groups start ticked)"""
     from fastapi import HTTPException
     p = await D["db"].products.find_one({"_id": _oid(product_id)}) if _oid(product_id) else None
-    if not _is_line_plan(p, "xtream"):
+    if not _is_line_plan(p, "xtream", trials=True):
         raise HTTPException(status_code=404, detail="No channel groups for this plan")
     names = await _cctv_names(p.get("xtream_package_id"))
     groups = []

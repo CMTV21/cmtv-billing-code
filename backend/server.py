@@ -3914,7 +3914,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if getattr(item, "bouquets", None):
             item.bouquets = cmtv_lineups.clean_bouquets(item.bouquets)
             if product.get("panel_type") not in ("aether", "xtream") or product.get("account_type", "subscriber") != "subscriber" \
-                    or product.get("is_trial") or item.renewal_service_id:
+                    or item.renewal_service_id:   # 2026-09-30: trials can pick groups too
                 item.bouquets = None
         actual_total += item.price
 
