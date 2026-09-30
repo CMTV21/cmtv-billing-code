@@ -57,7 +57,8 @@ async def packages():
         panels = ((await D["get_settings"]()).get("aether") or {}).get("panels") or []
         if panels:
             r = await get_aether_service(panels[0]).get_packages()
-            pk = (r.get("packages") if isinstance(r, dict) else r) or []
+            # all_packages: the trial packages too (2026-09-30: trials switch line-up); "packages" is the paid ones only
+            pk = ((r.get("all_packages") or r.get("packages")) if isinstance(r, dict) else r) or []
     except Exception as e:
         log.warning(f"line-ups: couldn't read Imperium packages: {e}")
     if pk:
