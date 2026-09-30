@@ -313,6 +313,7 @@ short_relay = APIRouter(prefix="/nv", tags=["cmtv-nuvio-relay"])
 # with their renewal in the cart) and "Get help" (QR to the support bot). Pictures are drawn here (Pillow + qrcode).
 SUPPORT_URL = "https://t.me/Cmtv_support_bot"
 SUPPORT_EMAIL = "cmtv@pm.me"
+IMG_REV = "3"   # bump when the pictures' design changes (3 = 2026-09-30: corner QR/status + big card labels)
 _img_cache = {}   # (token, kind, shape, state) -> png bytes
 _FONT_PATHS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 
@@ -354,16 +355,29 @@ def _draw(kind: str, shape: str, info: dict, username: str) -> bytes:
     for i, c in enumerate([(34, 230, 242), (46, 139, 255), (139, 92, 246), (236, 72, 153)]):   # the CMTV colour line
         d.rectangle([i * w // 4, 0, (i + 1) * w // 4, 8], fill=c)
     if shape == "backdrop":
-        # the app draws its title, text and logo over the left side: keep that plain, big QR on the right
+        # The app uses this picture twice (owner's TV test 2026-09-30): as the row's card, and big behind its own title
+        # (text on the left, the row of cards over the bottom ~45%). So: QR / status in the TOP-RIGHT corner (clear of
+        # the cards), big label in the BOTTOM-LEFT (readable on the card, hidden behind the cards in the big view).
+        ended = not info["live"]
         url = {"renew": info["renew_url"], "help": SUPPORT_URL}.get(kind)
+        box = (w - 330, 44, w - 50, 324)   # 280 px square
         if url:
             q = qrcode.QRCode(border=2, box_size=10)
             q.add_data(url)
             q.make(fit=True)
-            img = q.make_image(fill_color="black", back_color="white").convert("RGB").resize((400, 400))
-            im.paste(img, (w - 460, 150))
+            im.paste(q.make_image(fill_color="black", back_color="white").convert("RGB").resize((box[2] - box[0],) * 2), box[:2])
             cap = "Scan to renew" if kind == "renew" else "Scan to message us"
-            d.text((w - 260, 585), cap, font=_font(30), fill=(34, 230, 242), anchor="mm")
+            d.text(((box[0] + box[2]) // 2, box[3] + 30), cap, font=_font(26), fill=(34, 230, 242), anchor="mm")
+        else:   # Your plan: status badge in the same corner
+            colour = (255, 120, 140) if ended else (34, 230, 242)
+            d.rounded_rectangle(box, radius=36, outline=colour, width=8)
+            d.text(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2 - 18), "ENDED" if ended else "ACTIVE", font=_font(52), fill=colour, anchor="mm")
+            d.text(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2 + 40), info["expires"], font=_font(24, False), fill=(200, 208, 230), anchor="mm")
+        label = {"plan": "Your plan", "renew": "Renew", "help": "Support"}[kind]
+        sub = {"plan": ("Switched off" if info["off"] else ("Ended " if ended else "Active until ") + info["expires"]),
+               "renew": "Scan the code with your phone", "help": f"Telegram · {SUPPORT_EMAIL}"}[kind]
+        d.text((64, h - 190), label, font=_font(110), fill=(233, 237, 248))
+        d.text((68, h - 62), sub, font=_font(34), fill=(255, 120, 140) if (kind == "plan" and ended) else (34, 230, 242))
         out = io.BytesIO()
         im.save(out, "PNG", optimize=True)
         return out.getvalue()
@@ -412,8 +426,8 @@ async def _cmtv_addon(acc: dict, token: str, rest: str):
     cors = {"Access-Control-Allow-Origin": "*"}
     base = f"{ADDON_BASE}/{token}/{CMTV_SLUG}"
     info = await _cmtv_info(acc)
-    ver = hashlib_md5(info["state"])
-    items = [("plan", "Your plan"), ("renew", "Renew your plan"), ("help", "Get help")]
+    ver = hashlib_md5(info["state"] + IMG_REV)   # new design -> new picture addresses, so apps don't show cached old ones
+    items = [("plan", "Your plan"), ("renew", "Renew"), ("help", "Support")]
     if not info["live"]:
         items = [items[1], items[0], items[2]]
 
