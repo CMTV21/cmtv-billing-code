@@ -62,8 +62,22 @@ def _rand(chars, n):
     return "".join(secrets.choice(chars) for _ in range(n))
 
 
+def login_id(username: str) -> str:
+    """The account's id on the server for what the customer types (2026-09-30): lowercase, and an "@" with no dot after
+    it (old Stremio logins like "Rob@2025") becomes "_at_" -> "rob_at_2025". The CMTV app (cmtv.4+) does the same."""
+    u = (username or "").strip().lower()
+    if "@" in u and "." not in u.split("@", 1)[1]:
+        u = u.replace("@", "_at_")
+    return u
+
+
 def email_for(username: str) -> str:
-    return f"{username.lower()}@{EMAIL_DOMAIN}"
+    return f"{login_id(username)}@{EMAIL_DOMAIN}"
+
+
+def shown_login(acc: dict) -> str:
+    """What the customer types (e.g. "Rob@2025"); the id for everyone else"""
+    return (acc or {}).get("login") or (acc or {}).get("_id", "")
 
 
 def _today() -> str:
@@ -177,13 +191,14 @@ async def _repush(username: str):
 
 # ---------------------------------------------------------------- accounts
 async def get_account(username: str):
-    return await _db().cmtv_nuvio_accounts.find_one({"_id": (username or "").lower(), "deleted": {"$ne": True}})
+    return await _db().cmtv_nuvio_accounts.find_one({"_id": login_id(username), "deleted": {"$ne": True}})
 
 
 async def create_account(username: str, password: str, expires: str, notes: str = "") -> dict:
-    username = username.lower()
+    typed = (username or "").strip()
+    username = login_id(typed)
     if not _USERNAME.match(username):
-        raise NuvioError("usernames are 3-32 letters/numbers (. _ - allowed)")
+        raise NuvioError("usernames are 3-32 letters/numbers (. _ - allowed, or an old-style login like Rob@2025)")
     if await _db().cmtv_nuvio_accounts.find_one({"_id": username}):   # deleted ones keep their name retired
         raise NuvioError("already exists")
     st, u = await nv("POST", "/auth/v1/admin/users", {
@@ -194,6 +209,7 @@ async def create_account(username: str, password: str, expires: str, notes: str 
     if st not in (200, 201) or not isinstance(u, dict) or not u.get("id"):
         raise NuvioError(f"creating the account failed ({st}: {_err(u)})")
     acc = {"_id": username, "username": username, "nuvio_id": u["id"], "email": email_for(username), "password": password,
+           **({"login": typed} if typed.lower() != username else {}),
            "expires": expires, "status": "active", "token": secrets.token_urlsafe(18), "notes": notes,
            "created_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
     await _db().cmtv_nuvio_accounts.insert_one(acc)
@@ -210,7 +226,7 @@ async def create_account(username: str, password: str, expires: str, notes: str 
 
 
 async def set_expiry(username: str, expires: str) -> dict:
-    await _db().cmtv_nuvio_accounts.update_one({"_id": username.lower()},
+    await _db().cmtv_nuvio_accounts.update_one({"_id": login_id(username)},
                                               {"$set": {"expires": expires, "status": "active", "updated_at": datetime.utcnow()}})
     _cache_drop(username)
     await _repush(username)   # 2026-09-30: CMTV row back to the end after a renewal
@@ -219,7 +235,7 @@ async def set_expiry(username: str, expires: str) -> dict:
 
 async def handle(request: dict) -> dict:
     """cockpit_service._call for module "nuviocloud": same request/answer shapes as the Cockpit helper"""
-    action, username = request.get("action"), (request.get("username") or "").lower()
+    action, username = request.get("action"), (request.get("username") or "").strip()   # login_id() applied inside
     try:
         if action == "get":
             acc = await get_account(username)
@@ -238,8 +254,11 @@ async def handle(request: dict) -> dict:
 
 
 async def _linked(username: str):
-    rx = {"$regex": f"^{re.escape(username)}$", "$options": "i"}
-    return [s async for s in D["services"].find({"cockpit_module": MODULE, "username": rx})]
+    """Billing services for this account: their username is what the customer types (e.g. Rob@2025) or the id"""
+    acc = await _db().cmtv_nuvio_accounts.find_one({"_id": login_id(username)}, {"login": 1}) or {}
+    names = {login_id(username), username, acc.get("login") or ""} - {""}
+    rxs = [{"username": {"$regex": f"^{re.escape(n)}$", "$options": "i"}} for n in names]
+    return [s async for s in D["services"].find({"cockpit_module": MODULE, "$or": rxs})]
 
 
 async def _sync_services(username: str, **fields):
@@ -255,7 +274,7 @@ _hit_seen = {}      # (token, ip) -> last logged
 
 def _cache_drop(username: str):
     for t, (_, a) in list(_acc_cache.items()):
-        if a and a.get("_id") == username.lower():
+        if a and a.get("_id") == login_id(username):
             _acc_cache.pop(t, None)
 
 
@@ -466,7 +485,7 @@ async def _cmtv_addon(acc: dict, token: str, rest: str):
         key = (token, m.group(1), m.group(2), info["state"])
         png = _img_cache.get(key)
         if not png:
-            png = await asyncio.to_thread(_draw, m.group(1), m.group(2), info, acc["_id"])
+            png = await asyncio.to_thread(_draw, m.group(1), m.group(2), info, shown_login(acc))
             if len(_img_cache) > 500:
                 _img_cache.clear()
             _img_cache[key] = png
@@ -823,7 +842,7 @@ def init_routes():
                 summary = {}
         owners = {}
         async for s in D["services"].find({"cockpit_module": MODULE}):
-            owners.setdefault((s.get("username") or "").lower(), s)
+            owners.setdefault(login_id(s.get("username") or ""), s)
         users = {}
         ids = [_oid(s.get("user_id")) for s in owners.values() if _oid(s.get("user_id"))]
         async for u in D["users"].find({"_id": {"$in": ids}}, {"name": 1, "email": 1}):
@@ -835,7 +854,7 @@ def init_routes():
             u = users.get(str((svc or {}).get("user_id"))) if svc else None
             sm = summary.get(a["nuvio_id"], {})
             sh = shares.get(a["_id"])
-            out.append({"username": a["_id"], "expires": a.get("expires"), "status": a.get("status", "active"),
+            out.append({"username": a["_id"], "login": shown_login(a), "expires": a.get("expires"), "status": a.get("status", "active"),
                         "live": is_live(a), "max_devices": a.get("max_devices") or DEFAULT_MAX_DEVICES,
                         "devices": sm.get("devices", 0), "last_seen": sm.get("last_seen"), "profiles": sm.get("profiles", 0),
                         "watched": sm.get("watched", 0), "in_progress": sm.get("in_progress", 0),
@@ -852,7 +871,7 @@ def init_routes():
     @router.post("/accounts")
     async def admin_create(body: dict, current_user: dict = Depends(admin)):
         """New account (optionally for a customer: billing service + login email)"""
-        username = (body.get("username") or "").strip().lower() or _rand(_USER_CHARS, 9)
+        username = (body.get("username") or "").strip() or _rand(_USER_CHARS, 9)   # as typed; login_id() inside
         password = (body.get("password") or "").strip() or _rand(_PASS_CHARS, 10)
         if len(password) < 4:
             raise HTTPException(400, "Password: at least 4 characters")
@@ -899,7 +918,7 @@ def init_routes():
     @router.post("/accounts/{username}/disable")
     async def disable(username: str, current_user: dict = Depends(admin)):
         await _must(username)
-        await _db().cmtv_nuvio_accounts.update_one({"_id": username.lower()}, {"$set": {
+        await _db().cmtv_nuvio_accounts.update_one({"_id": login_id(username)}, {"$set": {
             "status": "off", "switched_off_at": datetime.utcnow(), "updated_at": datetime.utcnow()}})
         _cache_drop(username)
         await _sync_services(username, status="suspended")
@@ -909,7 +928,7 @@ def init_routes():
     @router.post("/accounts/{username}/enable")
     async def enable(username: str, current_user: dict = Depends(admin)):
         acc = await _must(username)
-        await _db().cmtv_nuvio_accounts.update_one({"_id": username.lower()}, {"$set": {"status": "active", "updated_at": datetime.utcnow()}})
+        await _db().cmtv_nuvio_accounts.update_one({"_id": login_id(username)}, {"$set": {"status": "active", "updated_at": datetime.utcnow()}})
         _cache_drop(username)
         await _repush(username)
         await _sync_services(username, status="active" if (acc.get("expires") or "") >= _today() else "expired")
@@ -996,7 +1015,7 @@ def init_routes():
     async def delete(username: str, body: dict, current_user: dict = Depends(admin)):
         """Wipe (profiles, add-ons, history) and remove the account on the server. Billing keeps a copy."""
         acc = await _must(username)
-        if (body.get("confirm") or "").lower() != acc["_id"]:
+        if login_id(body.get("confirm") or "") != acc["_id"]:
             raise HTTPException(400, "Type the username to confirm")
         try:
             st, profiles = await nv("POST", "/rest/v1/rpc/sync_pull_profiles", {}, as_user=acc["nuvio_id"])

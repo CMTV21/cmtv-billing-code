@@ -232,7 +232,7 @@ function Row({ a, refresh }) {
     <>
       <tr className="border-t border-gray-200 dark:border-gray-700 align-top">
         <td className="px-3 py-3">
-          <button type="button" className="font-semibold text-blue-700 dark:text-blue-300 hover:underline" onClick={() => setOpen(!open)}>{a.username}</button>
+          <button type="button" className="font-semibold text-blue-700 dark:text-blue-300 hover:underline" onClick={() => setOpen(!open)}>{a.login || a.username}</button>
           {a.share_alert && <span title={`${a.share_alert.ips} internet connections at once (${ago(a.share_alert.at)})`} className="ml-2 inline-flex items-center text-amber-600"><AlertTriangle className="w-4 h-4" /></span>}
           {a.notes && <p className="text-xs text-gray-500">{a.notes}</p>}
         </td>
@@ -299,7 +299,7 @@ function Accounts() {
   });
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return (data?.accounts || []).filter((a) => !t || [a.username, a.customer?.name, a.customer?.email, a.notes].some((v) => (v || '').toLowerCase().includes(t)));
+    return (data?.accounts || []).filter((a) => !t || [a.username, a.login, a.customer?.name, a.customer?.email, a.notes].some((v) => (v || '').toLowerCase().includes(t)));
   }, [data, q]);
   const refresh = () => qc.invalidateQueries({ queryKey: ['nuvio-accounts'] });
   return (
