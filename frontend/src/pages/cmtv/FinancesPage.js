@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import api from '../../api/api';
 import '../../components/cmtv/cmtv-finance.css';
 import CreditsMargins from './CreditsMargins';   // 2026-09-27: Credits & margins tab
+import FinanceInbox from './FinanceInbox';   // 2026-09-30: Needs recording tab
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (a, b) => (b ? Math.round(((a - b) / Math.abs(b)) * 100) : null);
@@ -248,12 +249,12 @@ export default function FinancesPage() {
         </div>
 
         <div className="cm-tabs" role="tablist" aria-label="Finances view">
-          {[['overview', 'Overview'], ['credits', 'Credits & margins']].map(([k, l]) => (
+          {[['overview', 'Overview'], ['inbox', `Needs recording${s?.billing?.to_record ? ` (${s.billing.to_record})` : ''}`], ['credits', 'Credits & margins']].map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
           ))}
         </div>
 
-        {tab === 'credits' ? <CreditsMargins /> : (<>
+        {tab === 'credits' ? <CreditsMargins /> : tab === 'inbox' ? <FinanceInbox cfg={cfg} onChanged={refresh} /> : (<>
         {panel && (
           <div className="panel">
             <h2>{panel === 'payment' ? 'Record payment' : 'Add expense'}</h2>
@@ -309,7 +310,8 @@ export default function FinancesPage() {
               <div className="panel">
                 <h2 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>Payments · {monthLabel(month)}
                   <button type="button" className="btn small" onClick={sync} disabled={busy === 'sync'} style={{ marginLeft: 'auto' }}><RefreshCw className="w-3.5 h-3.5" /> {busy === 'sync' ? 'Checking...' : 'Check billing orders'}</button></h2>
-                <p className="hint">Billing orders add themselves every 10 minutes{cfg?.cutover ? ` (from ${String(cfg.cutover).slice(0, 10)})` : ''}. {s.billing.needs_review > 0 && <span className="pill warn">{s.billing.needs_review} need a credits check</span>}</p>
+                <p className="hint">Billing orders add themselves every 10 minutes{cfg?.cutover ? ` (from ${String(cfg.cutover).slice(0, 10)})` : ''}. {s.billing.needs_review > 0 && <span className="pill warn">{s.billing.needs_review} need a credits check</span>}
+                  {s.billing.to_record > 0 && <button type="button" className="pill warn" style={{ marginLeft: 6, cursor: 'pointer', border: 0 }} onClick={() => setTab('inbox')}>{s.billing.to_record} sale{s.billing.to_record > 1 ? 's' : ''} to record</button>}</p>
                 <Transactions month={month} />
               </div>
               <div className="panel">

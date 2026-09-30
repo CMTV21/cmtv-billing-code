@@ -292,7 +292,34 @@ async def _sync_loop():
             await sync_billing_orders()
         except Exception as e:
             logger.error(f"finance sync failed: {type(e).__name__}: {e}")
+        try:   # 2026-09-30: sales made outside billing -> Needs recording (cmtv_fin_inbox.py)
+            import cmtv_fin_inbox
+            await cmtv_fin_inbox.scan()
+        except Exception as e:
+            logger.error(f"finance inbox scan failed: {type(e).__name__}: {e}")
         await asyncio.sleep(600)
+
+
+async def add_manual(data: dict, user: dict, extra: dict = None) -> dict:
+    """A payment recorded by hand (Record payment, or a Needs recording item). Returns the saved row."""
+    cfg = await config()
+    server = str(data.get("server") or "").strip()
+    if not server:
+        raise HTTPException(status_code=400, detail="Choose a server")
+    try:
+        amount = float(data.get("amount"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Enter the amount received")
+    row = complete(cfg, {
+        "date": _clean_date(data.get("date")), "server": server, "customer": str(data.get("customer") or "").strip(),
+        "new_user": bool(data.get("new_user")), "amount": amount,
+        "method": data.get("method") if data.get("method") in METHODS else "Other",
+        "credits": data.get("credits") or 0, "cost_per_credit": data.get("cost_per_credit"),
+        "notes": str(data.get("notes") or "").strip(), "source": "manual",
+        "created_at": datetime.utcnow(), "created_by": user.get("email"), **(extra or {}),
+    })
+    res = await D["tx"].insert_one(row)
+    return _row_out(await D["tx"].find_one({"_id": res.inserted_id}))
 
 
 # ---------------- summary ----------------
@@ -364,6 +391,7 @@ async def summary(month: Optional[str] = None):
         "auto_renew": await D["services"].count_documents({"auto_renew.status": "ACTIVE"}),
         "paying_customers": len(await D["orders"].distinct("user_id", {"status": "paid"})),
         "needs_review": await D["tx"].count_documents({"needs_review": True, "deleted": {"$ne": True}}),
+        "to_record": await D["db"].cmtv_fin_inbox.count_documents({"status": "open"}),   # 2026-09-30
     }
     return out
 
@@ -528,24 +556,10 @@ def init_routes():
 
     @router.post("/transactions")
     async def api_add_transaction(data: dict, user=Depends(admin)):
-        cfg = await config()
-        server = str(data.get("server") or "").strip()
-        if not server:
-            raise HTTPException(status_code=400, detail="Choose a server")
-        try:
-            amount = float(data.get("amount"))
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail="Enter the amount received")
-        row = complete(cfg, {
-            "date": _clean_date(data.get("date")), "server": server, "customer": str(data.get("customer") or "").strip(),
-            "new_user": bool(data.get("new_user")), "amount": amount,
-            "method": data.get("method") if data.get("method") in METHODS else "Other",
-            "credits": data.get("credits") or 0, "cost_per_credit": data.get("cost_per_credit"),
-            "notes": str(data.get("notes") or "").strip(), "source": "manual",
-            "created_at": datetime.utcnow(), "created_by": user.get("email"),
-        })
-        res = await D["tx"].insert_one(row)
-        return _row_out(await D["tx"].find_one({"_id": res.inserted_id}))
+        return await add_manual(data, user)
+
+    import cmtv_fin_inbox   # 2026-09-30: Needs recording (sales made outside billing)
+    cmtv_fin_inbox.add_routes(router, admin)
 
     @router.put("/transactions/{tx_id}")
     async def api_edit_transaction(tx_id: str, data: dict, user=Depends(admin)):
