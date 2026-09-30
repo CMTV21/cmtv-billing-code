@@ -269,9 +269,10 @@ class BackgroundJobScheduler:
             
             from server import (
                 get_xtream_service, get_settings, imported_users_collection,
-                create_customer_for_imported_user
+                create_customer_for_imported_user, sync_services_expiry_from_imported_users
             )
             from xtreamui_service import XtreamUIService
+            from panel_expiry import parse_expiry, is_unlimited
             
             total_synced = 0
             total_updated = 0
@@ -301,15 +302,9 @@ class BackgroundJobScheduler:
                             if not username:
                                 continue
                             from datetime import datetime
-                            expiry_date = None
                             exp_str = user_data.get("expiry", "")
-                            if exp_str and exp_str not in ["Unlimited", "NEVER", ""]:
-                                for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                    try:
-                                        expiry_date = datetime.strptime(str(exp_str).strip(), fmt)
-                                        break
-                                    except (ValueError, TypeError):
-                                        continue
+                            expiry_date = parse_expiry(exp_str)
+                            expiry_unlimited = expiry_date is None and is_unlimited(exp_str) and str(exp_str).strip() != ""
                             import re
                             max_conn_raw = user_data.get("max_connections", 1)
                             max_conn_str = re.sub(r'<[^>]+>', '', str(max_conn_raw)).strip()
@@ -325,6 +320,7 @@ class BackgroundJobScheduler:
                                 "account_type": "subscriber",
                                 "max_connections": max_connections,
                                 "expiry_date": expiry_date,
+                                "expiry_unlimited": expiry_unlimited,
                                 "status": user_data.get("status", "active"),
                                 "last_synced": datetime.utcnow()
                             }
@@ -361,18 +357,12 @@ class BackgroundJobScheduler:
                             uname = user_data.get("username", "")
                             if not uname:
                                 continue
-                            exp = None
                             exp_str = user_data.get("expiry", "")
-                            if exp_str and exp_str not in ["Unlimited", "NEVER", ""]:
-                                for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                    try:
-                                        exp = datetime.strptime(str(exp_str).strip(), fmt)
-                                        break
-                                    except Exception:
-                                        continue
+                            exp = parse_expiry(exp_str)
                             doc = {"username": uname, "password": user_data.get("password", ""), "panel_type": "xuione", "panel_index": i,
                                    "panel_name": panel_name, "account_type": "subscriber", "max_connections": user_data.get("max_connections", 1),
-                                   "expiry_date": exp, "status": user_data.get("status", "active"), "last_synced": datetime.utcnow()}
+                                   "expiry_date": exp, "expiry_unlimited": exp is None and is_unlimited(exp_str) and str(exp_str).strip() != "",
+                                   "status": user_data.get("status", "active"), "last_synced": datetime.utcnow()}
                             r = await imported_users_collection.update_one({"username": uname, "panel_name": panel_name}, {"$set": doc}, upsert=True)
                             if r.upserted_id: total_synced += 1
                             elif r.modified_count: total_updated += 1
@@ -401,18 +391,12 @@ class BackgroundJobScheduler:
                             line_owner = user_data.get("owner", "").strip()
                             if reseller_username and line_owner and line_owner != reseller_username:
                                 continue
-                            exp = None
                             exp_str = user_data.get("expiry", "")
-                            if exp_str and exp_str not in ["Unlimited", "NEVER", ""]:
-                                for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]:
-                                    try:
-                                        exp = datetime.strptime(str(exp_str).strip(), fmt)
-                                        break
-                                    except Exception:
-                                        continue
+                            exp = user_data.get("expiry_date") or parse_expiry(exp_str)
                             doc = {"username": uname, "password": user_data.get("password", ""), "panel_type": "onestream", "panel_index": i,
                                    "panel_name": panel_name, "account_type": "subscriber", "max_connections": user_data.get("max_connections", 1),
-                                   "expiry_date": exp, "status": user_data.get("status", "active"), "last_synced": datetime.utcnow()}
+                                   "expiry_date": exp, "expiry_unlimited": exp is None and not exp_str,
+                                   "status": user_data.get("status", "active"), "last_synced": datetime.utcnow()}
                             r = await imported_users_collection.update_one({"username": uname, "panel_name": panel_name}, {"$set": doc}, upsert=True)
                             if r.upserted_id: total_synced += 1
                             elif r.modified_count: total_updated += 1
@@ -449,7 +433,8 @@ class BackgroundJobScheduler:
                                 exp = datetime.fromtimestamp(int(exp_ts), tz=timezone.utc).replace(tzinfo=None)
                             doc = {"username": uname, "password": line.get("password", ""), "panel_type": "nxtdash", "panel_index": i,
                                    "panel_name": panel_name, "account_type": "subscriber", "max_connections": line.get("max_connections", 1),
-                                   "expiry_date": exp, "status": "active" if line.get("enabled") else "suspended", "last_synced": datetime.utcnow()}
+                                   "expiry_date": exp, "expiry_unlimited": exp is None and (not exp_ts or str(exp_ts) == "0"),
+                                   "status": "active" if line.get("enabled") else "suspended", "last_synced": datetime.utcnow()}
                             r = await imported_users_collection.update_one({"username": uname, "panel_name": panel_name}, {"$set": doc}, upsert=True)
                             if r.upserted_id: total_synced += 1
                             elif r.modified_count: total_updated += 1
@@ -480,6 +465,7 @@ class BackgroundJobScheduler:
                                "panel_name": panel_name, "account_type": "subscriber", "aether_line_id": str(line.get("id", "")),
                                "aether_package_id": line.get("package_id"), "max_connections": line.get("max_connections", 1),
                                "expiry_date": None if line.get("unlimited") else AetherService.parse_exp(line.get("exp_date")),
+                               "expiry_unlimited": bool(line.get("unlimited")),
                                "status": AetherService.line_status(line), "is_trial": 1 if line.get("trial") else 0,
                                "last_synced": datetime.utcnow()}
                         r = await imported_users_collection.update_one({"username": uname, "panel_name": panel_name}, {"$set": doc}, upsert=True)
@@ -493,6 +479,12 @@ class BackgroundJobScheduler:
             
             # Create accounts for any unlinked users
             await self._create_accounts_for_unlinked()
+            
+            # Push fresh panel expiry/status onto linked service cards (what customers and expiry emails use)
+            try:
+                await sync_services_expiry_from_imported_users()
+            except Exception as e:
+                logger.warning(f"Service expiry sync after auto-sync failed: {e}")
             
         except Exception as e:
             logger.error(f"Error in sync_imported_users job: {e}")

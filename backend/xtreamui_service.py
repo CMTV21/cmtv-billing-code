@@ -560,34 +560,17 @@ class XtreamUIService:
             # Format based on test: [id, username, password, owner, status_icons..., expiry, connections, max_conn, ...]
             users = []
             import re
+            from panel_expiry import row_expiry, to_panel_string
             
-            date_re = re.compile(r'\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?|\d{1,2}/\d{1,2}/\d{4}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?')
-            unlimited_re = re.compile(r'^(unlimited|never|lifetime|n/a)$', re.I)
             conn_re = re.compile(r'^\d+\s*/\s*(\d+)$')
 
             def _strip(cell) -> str:
                 return re.sub(r'<[^>]+>', '', str(cell).replace('<br>', ' ').replace('<br/>', ' ')).strip()
 
             def _find_expiry(row) -> tuple:
-                # Column layout varies across XtreamUI builds; scan cells for a date-like value
-                for idx in range(3, len(row)):
-                    text = _strip(row[idx])
-                    if not text:
-                        continue
-                    m = date_re.search(text)
-                    if m:
-                        val = m.group(0).replace('T', ' ')
-                        sm = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})(.*)$', val)
-                        if sm:
-                            val = f"{sm.group(3)}-{int(sm.group(1)):02d}-{int(sm.group(2)):02d}{sm.group(4)}"
-                        return val, str(row[idx])
-                    if unlimited_re.match(text):
-                        return text, str(row[idx])
-                    if text.isdigit() and len(text) == 10:
-                        return text, str(row[idx])
-                if len(row) > 7:
-                    return _strip(row[7]), str(row[7])
-                return "", ""
+                # Prefer the exact epoch XtreamUI embeds in data-order (timezone-safe); fall back to displayed text
+                dt, unlimited, raw = row_expiry(row)
+                return to_panel_string(dt, unlimited), raw
 
             def _find_max_conn(row) -> str:
                 for idx in range(3, len(row)):

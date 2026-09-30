@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminAPI } from '../api/api';
-import { ArrowLeft, Users, Filter, Ban, CheckCircle, Server, UserCog, CreditCard, Search, ChevronLeft, ChevronRight, Trash2, Plus, X, RefreshCw, Clock, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, Users, Filter, Ban, CheckCircle, Server, UserCog, CreditCard, Search, ChevronLeft, ChevronRight, Trash2, Plus, X, RefreshCw, Clock, Download, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 import { useTimezone, formatDateTime, formatDate } from '../utils/timezone';
 import { toast } from 'sonner';
 
@@ -394,6 +394,27 @@ export default function AdminImportedUsers() {
               {isSyncing ? 'Syncing...' : 'Sync Users'}
             </button>
             <button
+              onClick={async () => {
+                setIsSyncing(true);
+                setSyncResult(null);
+                try {
+                  const response = await adminAPI.resyncServicesExpiry();
+                  setSyncResult({ success: true, message: `Checked ${response.data.checked} services — ${response.data.updated} expiry date${response.data.updated === 1 ? '' : 's'} corrected from panel data.` });
+                } catch (error) {
+                  setSyncResult({ success: false, error: error.response?.data?.detail || error.message });
+                } finally {
+                  setIsSyncing(false);
+                }
+              }}
+              disabled={isSyncing}
+              title="Re-copy each panel user's real expiry onto their service card"
+              className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 transition font-semibold disabled:opacity-50"
+              data-testid="resync-expiry-btn"
+            >
+              <Calendar className="w-5 h-5" />
+              Fix Service Expiry
+            </button>
+            <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-semibold"
               data-testid="create-user-btn"
@@ -411,9 +432,14 @@ export default function AdminImportedUsers() {
               <div>
                 {syncResult.success ? (
                   <>
-                    <p className="font-semibold text-green-800 dark:text-green-200">
-                      Sync Complete: {syncResult.total_synced} new users, {syncResult.total_updated} updated
-                      {syncResult.total_removed > 0 && `, ${syncResult.total_removed} removed (from deleted panels)`}
+                    <p className="font-semibold text-green-800 dark:text-green-200" data-testid="sync-result-text">
+                      {syncResult.message ? syncResult.message : (
+                        <>
+                          Sync Complete: {syncResult.total_synced} new users, {syncResult.total_updated} updated
+                          {syncResult.total_removed > 0 && `, ${syncResult.total_removed} removed (from deleted panels)`}
+                          {syncResult.services_expiry && `, ${syncResult.services_expiry.updated} service expiry date${syncResult.services_expiry.updated === 1 ? '' : 's'} corrected`}
+                        </>
+                      )}
                     </p>
                     {syncResult.panels_synced?.length > 0 && (
                       <p className="text-sm text-green-600 dark:text-green-300 mt-1">
