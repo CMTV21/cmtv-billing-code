@@ -13346,11 +13346,28 @@ async def extend_imported_user(user_id: str, data: ExtendImportedUserRequest, cu
             # Call the panel's extend subscriber method
             logger.info(f"Extending subscriber {username} on XtreamUI panel with package {data.package_id}")
             
+            # CMTV local change 2026-09-30: keep the line's own channel groups (a customer's picks), else the billing plan's
+            # list (Brazil/Iran/Africa stay off, as in billing renewals); the panel package's full list only for lines billing doesn't know
+            try:
+                _svc = await services_collection.find_one({"xtream_username": username, "panel_type": "xtream",
+                                                           "status": {"$nin": ["duplicate"]}, "cmtv_bouquets": {"$exists": True}})
+                if _svc and _svc.get("cmtv_bouquets"):
+                    bouquets = [int(x) for x in _svc["cmtv_bouquets"]]
+                    logger.info(f"Extend {username}: keeping the line's {len(bouquets)} chosen channel groups")
+                else:
+                    _svc = await services_collection.find_one({"xtream_username": username, "panel_type": "xtream",
+                                                               "status": {"$nin": ["duplicate"]}, "product_id": {"$nin": [None, ""]}})
+                    _prod = await products_collection.find_one({"_id": str_to_objectid(_svc["product_id"])}) if _svc else None
+                    if _prod and _prod.get("bouquets") and not _prod.get("is_trial"):
+                        bouquets = [int(x) for x in _prod["bouquets"]]
+                        logger.info(f"Extend {username}: the billing plan's {len(bouquets)} channel groups")
+            except Exception as _e:
+                logger.warning(f"Extend {username}: couldn't read the line's channel groups ({_e}); using the package's")
             panel_extend_result = session_client.extend_subscriber(
                 username=username,
                 password=password,
                 package_id=data.package_id,
-                bouquets=bouquets,  # Package bouquets from panel API
+                bouquets=bouquets,  # Package bouquets from panel API (CMTV: or the line's / plan's own, above)
                 max_connections=max_connections,
                 reseller_notes=f"Extended by Admin - {current_user.get('email', 'Unknown')}"
             )
