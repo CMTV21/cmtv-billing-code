@@ -45,6 +45,7 @@ class AccountType(str, Enum):
     SUBSCRIBER = "subscriber"
     RESELLER = "reseller"
     MANUAL = "manual"
+    PHYSICAL = "physical"
 
 # User Models
 class UserCreate(BaseModel):
@@ -126,6 +127,18 @@ class OrderItemCreate(BaseModel):
     account_type: AccountType
     renewal_service_id: Optional[str] = None  # Service ID to extend (if action_type='extend')
     action_type: Optional[str] = None  # 'extend' or 'create_new'
+    item_type: Optional[str] = "service"  # 'service' or 'physical'
+    quantity: Optional[int] = 1
+
+class ShippingAddress(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+    address1: str
+    address2: Optional[str] = ""
+    city: str
+    state: Optional[str] = ""
+    postal_code: str
+    country: str  # ISO-2
 
 class OrderCreate(BaseModel):
     items: List[OrderItemCreate]
@@ -133,6 +146,52 @@ class OrderCreate(BaseModel):
     coupon_code: Optional[str] = None
     use_credits: float = 0.0
     reseller_credentials: Optional[dict] = None  # For custom reseller username/password
+    shipping_address: Optional[ShippingAddress] = None
+    shipping_method_id: Optional[str] = None
+
+class PhysicalItemSpecs(BaseModel):
+    cpu: Optional[str] = ""
+    gpu: Optional[str] = ""
+    ram: Optional[str] = ""
+    storage: Optional[str] = ""
+    ethernet: Optional[str] = ""
+    wifi: Optional[str] = ""
+    bluetooth: Optional[str] = ""
+
+class PhysicalItemCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    price: float
+    compare_at_price: Optional[float] = None
+    sku: Optional[str] = ""
+    images: List[str] = []
+    weight: float = 0.0
+    weight_unit: str = "kg"
+    length: Optional[float] = 0.0
+    width: Optional[float] = 0.0
+    height: Optional[float] = 0.0
+    dimension_unit: str = "cm"
+    stock_quantity: int = 0
+    track_stock: bool = True
+    specs: PhysicalItemSpecs = Field(default_factory=PhysicalItemSpecs)
+    extra_specs: List[dict] = []  # [{label, value}]
+    active: bool = True
+    display_order: int = 0
+
+class ShippingRateItem(BaseModel):
+    physical_item_id: str
+    quantity: int = 1
+
+class ShippingRateRequest(BaseModel):
+    items: List[ShippingRateItem]
+    ship_to: dict  # {country, state, postal_code, city}
+
+class ShipmentUpdate(BaseModel):
+    status: Optional[str] = None  # pending, processing, shipped, delivered, cancelled
+    carrier: Optional[str] = None
+    tracking_number: Optional[str] = None
+    tracking_url: Optional[str] = None
+    notes: Optional[str] = None
 
 class Order(BaseModel):
     id: Optional[str] = None
@@ -518,6 +577,7 @@ class EmailTemplateType(str, Enum):
     PAYMENT_RECEIVED = "payment_received"
     SERVICE_SUSPENDED = "service_suspended"
     SERVICE_CANCELLED = "service_cancelled"
+    ORDER_SHIPPED = "order_shipped"
 
 class EmailTemplate(BaseModel):
     id: Optional[str] = None

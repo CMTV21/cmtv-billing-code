@@ -12,7 +12,7 @@ def hex_to_rgb(hex_color):
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
-def generate_invoice_pdf(invoice: dict, user: dict, items: list = None, settings: dict = None) -> bytes:
+def generate_invoice_pdf(invoice: dict, user: dict, items: list = None, settings: dict = None, order: dict = None) -> bytes:
     """Generate invoice PDF using the admin's invoice template settings"""
     
     inv_settings = (settings or {}).get("invoice", {})
@@ -177,7 +177,7 @@ def generate_invoice_pdf(invoice: dict, user: dict, items: list = None, settings
                 pdf.set_fill_color(255, 255, 255)
             
             name = item.get("product_name", "Service")
-            qty = 1
+            qty = max(1, int(item.get("quantity") or 1))
             price = item.get("price", 0)
             line_total = price * qty
             total += line_total
@@ -198,6 +198,19 @@ def generate_invoice_pdf(invoice: dict, user: dict, items: list = None, settings
         pdf.cell(30, 7, f"{currency_symbol}{invoice.get('total', 0):.2f}  ", 0, 0, "R", True)
         pdf.ln()
         total = invoice.get("total", 0)
+
+    shipping_cost = float((order or {}).get("shipping_cost") or 0) if isinstance(order, dict) else 0.0
+    if shipping_cost > 0:
+        method = (order.get("shipping_method") or {}) if isinstance(order, dict) else {}
+        label = f"Shipping - {method.get('service_name', '')}".strip(" -")
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(100, 7, f"  {label}", 0, 0, "L", True)
+        pdf.cell(30, 7, "1", 0, 0, "C", True)
+        pdf.cell(30, 7, f"{currency_symbol}{shipping_cost:.2f}", 0, 0, "R", True)
+        pdf.cell(30, 7, f"{currency_symbol}{shipping_cost:.2f}  ", 0, 0, "R", True)
+        pdf.ln()
+        total += shipping_cost
     
     # ===== TOTALS =====
     pdf.ln(4)

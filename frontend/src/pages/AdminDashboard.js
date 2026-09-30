@@ -7,8 +7,7 @@ import { useCurrencyStore } from '../store/currency';
 import { 
   Home, ShoppingCart, Users, Server, MessageSquare, FileText, 
   BarChart3, Settings, LogOut, DollarSign, TrendingUp, Plus, Shield, 
-  UserPlus, Menu, X, Package, Mail, Download, Tag, RefreshCw, ChevronDown, ChevronRight, BookOpen, Smartphone
-} from 'lucide-react';
+  UserPlus, Menu, X, Package, Mail, Download, Tag, RefreshCw, ChevronDown, ChevronRight, BookOpen, Smartphone, Truck, Box } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -61,10 +60,20 @@ export default function AdminDashboard() {
         { id: 'customers-list', label: 'Customers', icon: Users, path: '/admin/customers' },
         { id: 'orders', label: 'Orders', icon: ShoppingCart, path: '/admin/orders' },
         { id: 'invoices', label: 'Invoices', icon: FileText, path: '/admin/invoices' },
-        { id: 'imported-users', label: 'Imported Users', icon: Users, path: '/admin/imported-users' }
+        { id: 'imported-users', label: 'Imported Users', icon: Users, path: '/admin/imported-users' },
+        { id: 'shipments', label: 'Shipments', icon: Truck, path: '/admin/shipments' }
       ]
     },
-    { id: 'products', label: 'Products', icon: Package, path: '/admin/products' },
+    { 
+      id: 'products', 
+      label: 'Products', 
+      icon: Package, 
+      path: '/admin/products',
+      subItems: [
+        { id: 'products-list', label: 'Services & Plans', icon: Package, path: '/admin/products' },
+        { id: 'physical-items', label: 'Physical Items', icon: Box, path: '/admin/physical-items' }
+      ]
+    },
     { 
       id: 'email', 
       label: 'Email', 
@@ -86,7 +95,7 @@ export default function AdminDashboard() {
     if (!isStaff) return true;
     const permMap = {
       'dashboard': 'dashboard', 'customers-section': 'customers', 'customers-list': 'customers',
-      'imported-users': 'imported_users', 'orders': 'orders', 'invoices': 'orders',
+      'imported-users': 'imported_users', 'orders': 'orders', 'invoices': 'orders', 'shipments': 'orders',
       'services': 'services', 'tickets': 'tickets',
     };
     const perm = permMap[item.id];

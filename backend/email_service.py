@@ -787,6 +787,40 @@ class EmailService:
             logger.error(traceback.format_exc())
             return False
     
+    async def send_password_reset(self, customer_email: str, customer_name: str, reset_link: str,
+                                  expires_in: str = "60 minutes", customer_id: str = None):
+        """Password reset link — uses the editable template, with a plain fallback."""
+        if not self.enabled:
+            return False
+        template = None
+        if self.db is not None:
+            template = await self.db.email_templates.find_one({"template_type": "password_reset", "is_active": True})
+        variables = {"customer_name": customer_name or "there", "reset_link": reset_link, "expires_in": expires_in}
+        if template:
+            subject = template["subject"]
+            content = template["html_content"]
+            text = template.get("text_content") or ""
+            for key, value in variables.items():
+                subject = subject.replace(f"{{{{{key}}}}}", value)
+                content = content.replace(f"{{{{{key}}}}}", value)
+                text = text.replace(f"{{{{{key}}}}}", value)
+        else:
+            subject = "Reset your password"
+            content = (f"<p>Hi {variables['customer_name']},</p><p>Click the link below to reset your password:</p>"
+                       f'<p><a href="{reset_link}">Reset my password</a></p><p>Or copy this link into your browser:<br>{reset_link}</p>'
+                       f"<p>This link expires in {expires_in}. If you did not request this, ignore this email.</p>")
+            text = f"Hi {variables['customer_name']},\n\nReset your password:\n\n{reset_link}\n\nThis link expires in {expires_in}."
+        return await self.send_email(
+            to_email=customer_email,
+            subject=subject,
+            html_content=self._wrap_email(content, "", customer_email, "transactional"),
+            text_content=text or None,
+            email_type="transactional",
+            template_type="password_reset",
+            customer_id=customer_id,
+            recipient_name=customer_name
+        )
+
     async def send_welcome_email(
         self,
         customer_email: str,
@@ -829,6 +863,43 @@ class EmailService:
             recipient_name=customer_name
         )
     
+    async def send_order_shipped(self, customer_email: str, customer_name: str, order_id: str, carrier_name: str,
+                                 tracking_number: str, tracking_url: str, items: list, shipping_address: dict, customer_id: str = None):
+        """Order shipped notification (physical items)"""
+        if self.db is None:
+            return False
+        template = await self.db.email_templates.find_one({"template_type": "order_shipped", "is_active": True})
+        if not template:
+            logger.warning("Order shipped template not found")
+            return False
+        items_html = "".join(f'<li style="margin: 0 0 4px;">{i.get("quantity", 1)} × {i.get("name", "")}</li>' for i in items or [])
+        addr = shipping_address or {}
+        address_html = "<br>".join(p for p in [addr.get("name"), addr.get("address1"), addr.get("address2"),
+                                                 " ".join(x for x in [addr.get("city"), addr.get("state"), addr.get("postal_code")] if x),
+                                                 addr.get("country")] if p)
+        tracking_link = f'<a href="{tracking_url}" style="color: #2563eb;">{tracking_number}</a>' if tracking_url else (tracking_number or "N/A")
+        variables = {
+            "customer_name": customer_name,
+            "order_id": order_id[-8:].upper() if order_id else "",
+            "carrier": carrier_name,
+            "tracking_number": tracking_number or "N/A",
+            "tracking_url": tracking_url or "",
+            "tracking_link": tracking_link,
+            "items": f"<ul style=\"margin: 8px 0; padding-left: 18px;\">{items_html}</ul>",
+            "shipping_address": address_html,
+            "dashboard_link": f"{self.backend_url}/orders",
+        }
+        subject = template["subject"]
+        content = template["html_content"]
+        for key, value in variables.items():
+            subject = subject.replace(f"{{{{{key}}}}}", str(value))
+            content = content.replace(f"{{{{{key}}}}}", str(value))
+        wrapped_content = self._wrap_email(content, template["name"], customer_email, "transactional")
+        return await self.send_email(
+            to_email=customer_email, subject=subject, html_content=wrapped_content,
+            email_type="transactional", template_type="order_shipped", customer_id=customer_id, recipient_name=customer_name,
+        )
+
     async def send_service_renewed(
         self,
         customer_email: str,

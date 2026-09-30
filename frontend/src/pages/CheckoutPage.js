@@ -3,10 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ordersAPI, servicesAPI } from '../api/api';
 import { useCartStore, useAuthStore } from '../store/store';
-import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign, Minus, Package } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
+import { CheckoutShipping, EMPTY_ADDRESS } from '../components/CheckoutShipping';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -18,7 +19,25 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { items, removeItem, clearCart, getTotal, updateItemAction } = useCartStore();
+  const { items, removeItem, clearCart, getTotal, updateItemAction, updateQuantity } = useCartStore();
+  const hasPhysicalItems = items.some((i) => i.item_type === 'physical');
+  const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
+  const [shippingRates, setShippingRates] = useState(null);
+  const [shippingMethod, setShippingMethod] = useState(null);
+  const shippingCost = hasPhysicalItems && shippingMethod ? Number(shippingMethod.price || 0) : 0;
+  const getGrandTotal = () => getTotal() + shippingCost;
+  const buildOrderItems = () => items.map(i => ({
+    product_id: i.product_id, product_name: i.product_name,
+    term_months: i.term_months || 0, price: i.price, account_type: i.account_type,
+    action_type: i.action_type, renewal_service_id: i.renewal_service_id,
+    item_type: i.item_type || 'service', quantity: i.quantity || 1,
+  }));
+  const shippingPayload = () => hasPhysicalItems ? { shipping_address: shippingAddress, shipping_method_id: shippingMethod?.method_id } : {};
+  const validateShipping = () => {
+    if (!hasPhysicalItems) return true;
+    if (!shippingMethod) { setError('Please enter your shipping address and choose a shipping method.'); return false; }
+    return true;
+  };
   const { symbol: currencySymbol, convertPrice, code: currencyCode } = useCurrencyStore();
   const [error, setError] = React.useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -143,7 +162,7 @@ export default function CheckoutPage() {
       }
       
       // Free trial / fully paid with credits
-      const finalTotal = Math.max(0, getTotal() - discountAmount - creditsUsed);
+      const finalTotal = Math.max(0, getGrandTotal() - discountAmount - creditsUsed);
       if (finalTotal === 0) {
         clearCart();
         toast.success('Order placed! Your service is being provisioned.');
@@ -187,11 +206,12 @@ export default function CheckoutPage() {
       return;
     }
     
-    const finalTotal = Math.max(0, getTotal() - discountAmount - creditsUsed);
+    if (!validateShipping()) return;
     
     createOrderMutation.mutate({
-      items: items,
-      total: getTotal(),
+      items: buildOrderItems(),
+      total: getGrandTotal(),
+      ...shippingPayload(),
       coupon_code: appliedCouponCode,
       use_credits: creditsUsed,
       reseller_credentials: hasNewResellerProduct ? {
@@ -206,12 +226,9 @@ export default function CheckoutPage() {
     try {
       if (!currentOrderId) {
         const orderData = {
-          items: items.map(i => ({
-            product_id: i.product_id, product_name: i.product_name,
-            term_months: i.term_months, price: i.price, account_type: i.account_type,
-            action_type: i.action_type, renewal_service_id: i.renewal_service_id
-          })),
-          total: getTotal(),
+          items: buildOrderItems(),
+          total: getGrandTotal(),
+          ...shippingPayload(),
           coupon_code: appliedCouponCode,
           use_credits: creditsUsed,
           reseller_credentials: hasNewResellerProduct ? {
@@ -275,12 +292,9 @@ export default function CheckoutPage() {
   const handleStripePay = async () => {
     try {
       const orderData = {
-        items: items.map(i => ({
-          product_id: i.product_id, product_name: i.product_name,
-          term_months: i.term_months, price: i.price, account_type: i.account_type,
-          action_type: i.action_type, renewal_service_id: i.renewal_service_id
-        })),
-        total: getTotal(),
+        items: buildOrderItems(),
+        total: getGrandTotal(),
+        ...shippingPayload(),
         coupon_code: appliedCouponCode,
         use_credits: creditsUsed,
         reseller_credentials: hasNewResellerProduct ? {
@@ -320,7 +334,7 @@ export default function CheckoutPage() {
     // Square form will handle payment
     if (!currentOrderId) {
       // Create order first
-      const orderData = { items: items, total: getTotal() };
+      const orderData = { items: buildOrderItems(), total: getGrandTotal(), ...shippingPayload() };
       createOrderMutation.mutate(orderData);
     }
   };
@@ -344,7 +358,7 @@ export default function CheckoutPage() {
       console.log('Starting Blockonomics Bitcoin payment...');
       
       // Create order first
-      const orderData = { items: items, total: getTotal() };
+      const orderData = { items: buildOrderItems(), total: getGrandTotal(), ...shippingPayload() };
       const orderResponse = await ordersAPI.create(orderData);
       const orderId = orderResponse.data.order_id;
       setCurrentOrderId(orderId);
@@ -424,12 +438,9 @@ export default function CheckoutPage() {
       setHelcimLoading(true);
 
       const orderData = {
-        items: items.map(i => ({
-          product_id: i.product_id, product_name: i.product_name,
-          term_months: i.term_months, price: i.price, account_type: i.account_type,
-          action_type: i.action_type, renewal_service_id: i.renewal_service_id
-        })),
-        total: getTotal(),
+        items: buildOrderItems(),
+        total: getGrandTotal(),
+        ...shippingPayload(),
         coupon_code: appliedCouponCode,
         use_credits: creditsUsed,
         reseller_credentials: hasNewResellerProduct ? {
@@ -651,15 +662,28 @@ export default function CheckoutPage() {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <h3 className="font-semibold text-gray-900 dark:text-white">{item.product_name}</h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                          {item.term_months} {item.term_months === 1 ? 'Month' : 'Months'}
-                        </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-300">
-                          {item.account_type === 'subscriber' ? 'Subscriber' : 'Reseller'}
-                        </p>
+                        {item.item_type === 'physical' ? (
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/30 px-2 py-0.5 rounded-full"><Package className="w-3 h-3" /> Physical item · ships to you</span>
+                            <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg">
+                              <button onClick={() => updateQuantity(item.product_id, (item.quantity || 1) - 1)} className="p-1 text-gray-600 dark:text-gray-300 hover:text-blue-600" data-testid={`cart-qty-minus-${index}`}><Minus className="w-3.5 h-3.5" /></button>
+                              <span className="w-7 text-center text-sm font-semibold text-gray-900 dark:text-white" data-testid={`cart-qty-${index}`}>{item.quantity || 1}</span>
+                              <button onClick={() => updateQuantity(item.product_id, (item.quantity || 1) + 1)} className="p-1 text-gray-600 dark:text-gray-300 hover:text-blue-600" data-testid={`cart-qty-plus-${index}`}><Plus className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              {item.term_months} {item.term_months === 1 ? 'Month' : 'Months'}
+                            </p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              {item.account_type === 'subscriber' ? 'Subscriber' : 'Reseller'}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-xl font-bold text-gray-900 dark:text-white">{currencySymbol}{convertPrice(item.price).toFixed(2)}</span>
+                        <span className="text-xl font-bold text-gray-900 dark:text-white">{currencySymbol}{convertPrice(item.price * (item.quantity || 1)).toFixed(2)}</span>
                         <button
                           onClick={() => removeItem(item.product_id, item.term_months)}
                           className="text-red-600 hover:text-red-700"
@@ -864,9 +888,18 @@ export default function CheckoutPage() {
                   </div>
                 )}
                 
+                {hasPhysicalItems && (
+                  <div className="flex justify-between" data-testid="summary-shipping-line">
+                    <span className="text-gray-600 dark:text-gray-300">Shipping</span>
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      {shippingMethod ? (shippingCost === 0 ? 'Free' : `${currencySymbol}${convertPrice(shippingCost).toFixed(2)}`) : <span className="text-xs text-gray-500 font-normal">calculated below</span>}
+                    </span>
+                  </div>
+                )}
+                
                 <div className="flex justify-between text-lg font-bold border-t pt-4">
                   <span className="text-gray-900 dark:text-white">Total</span>
-                  <span className="text-blue-600">{currencySymbol}{convertPrice(Math.max(0, getTotal() - discountAmount - creditsUsed)).toFixed(2)}</span>
+                  <span className="text-blue-600" data-testid="summary-total">{currencySymbol}{convertPrice(Math.max(0, getGrandTotal() - discountAmount - creditsUsed)).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -1213,7 +1246,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-700">
                         <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getGrandTotal()).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1240,7 +1273,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700">
                         <p className="text-sm font-medium text-purple-900 dark:text-purple-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getGrandTotal()).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1264,7 +1297,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
                         <p className="text-sm font-medium text-green-900 dark:text-green-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getGrandTotal()).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1288,7 +1321,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
                         <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getGrandTotal()).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1312,7 +1345,7 @@ export default function CheckoutPage() {
                       </div>
                       <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
                         <p className="text-sm font-medium text-green-900 dark:text-green-200">
-                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getTotal()).toFixed(2)} {currencyCode}</span>
+                          Amount: <span className="font-bold">{currencySymbol}{convertPrice(getGrandTotal()).toFixed(2)} {currencyCode}</span>
                         </p>
                       </div>
                     </div>
@@ -1357,7 +1390,7 @@ export default function CheckoutPage() {
                 ) : paymentMethod === 'square' && settings?.square?.enabled ? (
                   currentOrderId ? (
                     <SquarePaymentForm
-                      amount={getTotal()}
+                      amount={getGrandTotal()}
                       orderId={currentOrderId}
                       settings={settings.square}
                       onSuccess={handleSquareSuccess}
@@ -1514,8 +1547,8 @@ export default function CheckoutPage() {
                           const headers = { Authorization: `Bearer ${authToken}` };
                           // Create order first
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
-                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id })),
-                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsUsed
+                            items: buildOrderItems(),
+                            total: getGrandTotal(), ...shippingPayload(), coupon_code: appliedCouponCode, use_credits: creditsUsed
                           }, { headers });
                           const orderId = orderRes.data.order_id || orderRes.data.id;
                           // Create the GhostPay invoice through our backend so it is tracked and polled server-side
@@ -1564,8 +1597,8 @@ export default function CheckoutPage() {
                           // Send card data to backend for server-side tokenization & payment
                           const authToken = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
                           const orderRes = await axios.post(`${API_URL}/api/orders`, {
-                            items: items.map(i => ({ product_id: i.product_id, product_name: i.product_name, term_months: i.term_months, price: i.price, account_type: i.account_type, action_type: i.action_type, renewal_service_id: i.renewal_service_id })),
-                            total: getTotal(), coupon_code: appliedCouponCode, use_credits: creditsUsed,
+                            items: buildOrderItems(),
+                            total: getGrandTotal(), ...shippingPayload(), coupon_code: appliedCouponCode, use_credits: creditsUsed,
                             reseller_credentials: hasNewResellerProduct ? { username: resellerUsername, password: resellerPassword, add_credits_to_existing: resellerAddCredits } : null
                           }, { headers: { Authorization: `Bearer ${authToken}` }});
                           const orderId = orderRes.data.order_id || orderRes.data.id;
@@ -1592,7 +1625,7 @@ export default function CheckoutPage() {
                       data-testid="tagadapay-pay-btn"
                     >
                       <CreditCard className="w-5 h-5" />
-                      {ghostpayLoading ? 'Processing...' : `Pay $${getTotal().toFixed(2)}`}
+                      {ghostpayLoading ? 'Processing...' : `Pay $${getGrandTotal().toFixed(2)}`}
                     </button>
                   </div>
                 ) : (

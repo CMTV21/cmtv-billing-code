@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { productsAPI, panelsAPI } from '../api/api';
+import { productsAPI, panelsAPI, physicalItemsAPI } from '../api/api';
+import { PhysicalItemCard } from '../components/PhysicalItemCard';
 import { useAuthStore, useCartStore } from '../store/store';
 import { useBrandingStore } from '../store/branding';
 import { useCurrencyStore } from '../store/currency';
@@ -34,6 +35,11 @@ export default function HomePage() {
       const response = await productsAPI.getAll();
       return response.data;
     },
+  });
+
+  const { data: physicalItems = [] } = useQuery({
+    queryKey: ['physical-items-public'],
+    queryFn: async () => (await physicalItemsAPI.getAll()).data,
   });
 
   // Fetch panel names (public endpoint)
@@ -448,6 +454,21 @@ export default function HomePage() {
 
         </div>
       </section>
+
+      {/* Physical Items / Devices */}
+      {physicalItems.length > 0 && (
+        <section id="devices" className="bg-gray-50 dark:bg-gray-950/60 border-t border-gray-200 dark:border-gray-800" data-testid="devices-section">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+            <div className="text-center mb-10">
+              <h2 className="text-2xl sm:text-4xl font-bold dark:text-white">Devices &amp; Hardware</h2>
+              <p className="text-gray-600 dark:text-gray-400 mt-2 text-sm sm:text-base">Plug-and-play boxes shipped to your door. Shipping is calculated at checkout.</p>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {physicalItems.map((item) => (<PhysicalItemCard key={item.id} item={item} />))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-12">

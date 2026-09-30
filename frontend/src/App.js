@@ -23,6 +23,8 @@ import InvoicesPage from './pages/InvoicesPage';
 import ReferralDashboard from './pages/ReferralDashboard';
 import LicenseActivationRequired from './pages/LicenseActivationRequired';
 import EmailVerificationPage from './pages/EmailVerificationPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminCustomers from './pages/AdminCustomers';
 import AdminOrders from './pages/AdminOrders';
@@ -43,6 +45,8 @@ import ChatbotWidget from './components/ChatbotWidget';
 import { useTimezone } from './utils/timezone';
 import AnalyticsDashboard from './pages/AnalyticsDashboard';
 import AdminImportedUsers from './pages/AdminImportedUsers';
+import AdminPhysicalItems from './pages/AdminPhysicalItems';
+import AdminShipments from './pages/AdminShipments';
 import TicketsPage from './pages/TicketsPage';
 import DownloadsPage from './pages/DownloadsPage';
 import PayPalSuccessPage from './pages/PayPalSuccessPage';
@@ -198,6 +202,8 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/link-email" element={<LinkEmailPage />} />
             <Route path="/verify-email" element={<EmailVerificationPage />} />
             <Route path="/products" element={<ProductsPage />} />
@@ -283,6 +289,8 @@ function App() {
               }
             />
             <Route path="/admin/imported-users" element={<ProtectedRoute><AdminRoute><AdminImportedUsers /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/physical-items" element={<ProtectedRoute><AdminRoute><AdminPhysicalItems /></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/shipments" element={<ProtectedRoute><AdminRoute><AdminShipments /></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/launcher" element={<ProtectedRoute><AdminRoute><LauncherDashboard /></AdminRoute></ProtectedRoute>} />
 
             <Route
