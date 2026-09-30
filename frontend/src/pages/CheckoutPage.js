@@ -749,6 +749,10 @@ export default function CheckoutPage() {
                 ))}
               </div>
             </div>
+            {hasPhysicalItems && (
+              <CheckoutShipping items={items} address={shippingAddress} setAddress={setShippingAddress}
+                rates={shippingRates} setRates={setShippingRates} selectedMethod={shippingMethod} setSelectedMethod={setShippingMethod} />
+            )}
           </div>
 
           {/* Order Summary */}

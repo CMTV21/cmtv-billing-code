@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Truck, X, ExternalLink, PackageCheck } from 'lucide-react';
+import { ArrowLeft, Truck, X, ExternalLink, PackageCheck, Tag, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { shippingAPI } from '../api/api';
 import { countryName } from '../utils/countries';
 import { formatDate } from '../utils/timezone';
+import { ShippoLabelModal, downloadLabel } from '../components/ShippoLabelModal';
 
 const CARRIERS = [['ups', 'UPS'], ['fedex', 'FedEx'], ['purolator', 'Purolator'], ['canadapost', 'Canada Post'], ['usps', 'USPS'], ['other', 'Other']];
 const STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
@@ -24,11 +25,15 @@ export default function AdminShipments() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('all');
   const [editing, setEditing] = useState(null);
+  const [labelFor, setLabelFor] = useState(null);
 
   const { data: shipments = [], isLoading } = useQuery({
     queryKey: ['admin-shipments', filter],
     queryFn: async () => (await shippingAPI.adminShipments(filter === 'all' ? undefined : filter)).data,
   });
+  const { data: shippingCfg } = useQuery({ queryKey: ['shipping-settings'], queryFn: async () => (await shippingAPI.adminSettings()).data });
+  const shippoOn = !!shippingCfg?.shippo?.enabled && !!shippingCfg?.shippo?.api_token_set;
+  const sym = shippingCfg?.currency?.symbol || '$';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -73,7 +78,7 @@ export default function AdminShipments() {
                 <div className="md:col-span-3">
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Ship to</p>
                   <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug">{formatAddress(s.shipping_address).map((l, i) => (<span key={i}>{l}<br /></span>))}</p>
-                  <p className="text-xs text-gray-500 mt-1">{s.shipping_method?.carrier_name} · {s.shipping_method?.service_name} · ${Number(s.shipping_cost || 0).toFixed(2)}</p>
+                  <p className="text-xs text-gray-500 mt-1">{s.shipping_method?.carrier_name} · {s.shipping_method?.service_name} · {sym}{Number(s.shipping_cost || 0).toFixed(2)}</p>
                 </div>
                 <div className="md:col-span-3 flex flex-col items-start md:items-end justify-between gap-2">
                   {s.tracking_number ? (
@@ -84,7 +89,17 @@ export default function AdminShipments() {
                       ) : <span className="font-mono text-gray-800 dark:text-gray-200">{s.tracking_number}</span>}
                     </div>
                   ) : <p className="text-xs text-gray-400 italic">No tracking yet</p>}
-                  <button onClick={() => setEditing(s)} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700" data-testid={`update-shipment-${s.id}`}>Update</button>
+                  {s.label_file && (
+                    <p className="text-[11px] text-gray-500 md:text-right">Label bought {formatDate(s.label_purchased_at)}{s.label_cost != null ? ` · ${Number(s.label_cost).toFixed(2)} ${s.label_currency || ''}` : ''}{s.label_test ? ' · TEST' : ''}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2 md:justify-end">
+                    {s.label_file ? (
+                      <button onClick={() => downloadLabel(s)} className="px-3 py-2 rounded-lg border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 text-sm font-semibold hover:bg-violet-50 dark:hover:bg-violet-900/30 inline-flex items-center gap-1.5" data-testid={`download-label-${s.id}`}><FileDown className="w-4 h-4" /> Label PDF</button>
+                    ) : shippoOn && s.status !== 'cancelled' && (
+                      <button onClick={() => setLabelFor(s)} className="px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 inline-flex items-center gap-1.5" data-testid={`buy-label-${s.id}`}><Tag className="w-4 h-4" /> Buy label</button>
+                    )}
+                    <button onClick={() => setEditing(s)} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700" data-testid={`update-shipment-${s.id}`}>Update</button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -92,6 +107,7 @@ export default function AdminShipments() {
         )}
       </main>
       {editing && <ShipmentModal shipment={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); queryClient.invalidateQueries(['admin-shipments']); }} />}
+      {labelFor && <ShippoLabelModal shipment={labelFor} onClose={() => setLabelFor(null)} onPurchased={() => { setLabelFor(null); queryClient.invalidateQueries(['admin-shipments']); }} />}
     </div>
   );
 }

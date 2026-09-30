@@ -83,6 +83,11 @@ export const shippingAPI = {
   adminTestRates: (data) => api.post('/api/admin/shipping/test-rates', data),
   adminShipments: (status) => api.get('/api/admin/shipments', { params: status ? { status } : {} }),
   adminUpdateShipment: (id, data) => api.put(`/api/admin/shipments/${id}`, data),
+  shippoTest: () => api.post('/api/admin/shipping/shippo/test'),
+  shippoRegisterWebhook: () => api.post('/api/admin/shipping/shippo/register-webhook'),
+  shipmentShippoRates: (id) => api.post(`/api/admin/shipments/${id}/shippo-rates`, null, { timeout: 60000 }),
+  shipmentBuyLabel: (id, rate_id) => api.post(`/api/admin/shipments/${id}/buy-label`, { rate_id }, { timeout: 90000 }),
+  shipmentLabel: (id) => api.get(`/api/admin/shipments/${id}/label`, { responseType: 'blob' }),
 };
 
 // Services API

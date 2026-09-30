@@ -15,6 +15,7 @@ import random
 import string
 import secrets
 import hashlib
+import hmac
 import asyncio
 import re
 import shutil
@@ -67,6 +68,12 @@ from unsubscribe_manager import UnsubscribeManager
 from invoice_service import get_invoice_generator
 from shipping_service import (
     get_shipping_rates, merge_shipping_settings, carrier_tracking_url, CARRIERS as SHIPPING_CARRIERS,
+)
+from shippo_service import (
+    ShippoClient, ShippoError, to_shippo_address, address_complete as shippo_address_complete,
+    build_parcel as build_shippo_parcel, normalize_rates as normalize_shippo_rates,
+    shipment_messages as shippo_shipment_messages, provider_code as shippo_provider_code, new_webhook_token,
+    convert_amount as convert_shippo_amount,
 )
 
 # Import 2FA and reCAPTCHA services
@@ -129,6 +136,7 @@ imported_users_collection = db.imported_users
 physical_items_collection = db.physical_items
 shipments_collection = db.shipments
 shipping_settings_collection = db.shipping_settings
+shipping_quotes_collection = db.shipping_quotes
 password_reset_tokens_collection = db.password_reset_tokens
 
 # Deduplicate imported users and create unique index on startup
@@ -659,6 +667,8 @@ async def startup_event():
     await services_collection.create_index("user_id")
     await password_reset_tokens_collection.create_index("expires_at", expireAfterSeconds=0)
     await password_reset_tokens_collection.create_index("token_hash")
+    await shipping_quotes_collection.create_index("created_at", expireAfterSeconds=48 * 3600)
+    await shipping_quotes_collection.create_index("rate_id")
     
     # Create default admin user if not exists
     admin_exists = await users_collection.find_one({"role": "admin"})
@@ -3491,8 +3501,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             raise HTTPException(status_code=400, detail="Shipping address and shipping method are required for physical items")
         shipping_address = order_data.shipping_address.dict()
         ship_settings = await get_shipping_settings()
-        quote = await get_shipping_rates(ship_settings, physical_entries, shipping_address)
-        shipping_method = next((o for o in quote["options"] if o.get("method_id") == order_data.shipping_method_id), None)
+        shipping_method = await resolve_shipping_method(ship_settings, physical_entries, shipping_address, order_data.shipping_method_id, user_id)
         if not shipping_method:
             raise HTTPException(status_code=400, detail="Selected shipping method is not available for this address. Please re-select shipping.")
         shipping_cost = float(shipping_method["price"])
@@ -4910,8 +4919,9 @@ async def delete_physical_item(item_id: str, current_user: dict = Depends(get_cu
 @app.get("/api/shipping/config")
 async def get_shipping_config_public():
     s = await get_shipping_settings()
+    shippo = s.get("shippo") or {}
     return {"ship_from_country": s["ship_from"].get("country", ""), "weight_unit": s.get("weight_unit", "kg"),
-            "enabled": bool([m for m in s["methods"] if m.get("enabled", True)])}
+            "enabled": bool([m for m in s["methods"] if m.get("enabled", True)]) or bool(shippo.get("enabled") and shippo.get("api_token"))}
 
 
 @app.post("/api/shipping/rates")
@@ -4927,36 +4937,194 @@ async def quote_shipping_rates(req: ShippingRateRequest, current_user: dict = De
     if not (req.ship_to or {}).get("country"):
         raise HTTPException(status_code=400, detail="Destination country is required")
     settings = await get_shipping_settings()
-    return await get_shipping_rates(settings, entries, req.ship_to)
+    result = await get_shipping_rates(settings, entries, req.ship_to)
+    live = await shippo_quote(settings, entries, req.ship_to, current_user["sub"])
+    return await merge_rate_options(result, live)
+
+
+async def store_currency_code() -> str:
+    return ((await get_settings()).get("currency") or "USD").upper()
+
+
+async def merge_rate_options(result: dict, live: dict) -> dict:
+    """Table + Shippo options in one list, every option tagged with the store currency (shipping inherits the global currency)."""
+    code = await store_currency_code()
+    for o in result["options"]:
+        o.setdefault("currency", code)
+    result["options"] = sorted(result["options"] + live["options"], key=lambda o: (o["price"], o["service_name"]))
+    result["live_messages"] = live["messages"]
+    result["currency"] = code
+    result["currency_symbol"] = CURRENCY_SYMBOLS.get(code, "$")
+    return result
+
+
+async def shippo_quote(settings: dict, entries: list, ship_to: dict, user_id: str, email: str = "") -> dict:
+    """Live multi-carrier rates via Shippo, converted into the store currency; cached per rate id so checkout can re-validate the price server-side."""
+    cfg = settings.get("shippo") or {}
+    if not cfg.get("enabled") or not cfg.get("api_token"):
+        return {"options": [], "messages": []}
+    if not shippo_address_complete(ship_to):
+        return {"options": [], "messages": ["Enter the full street address to see live carrier rates."]}
+    if not shippo_address_complete(settings.get("ship_from") or {}):
+        logger.warning("Shippo enabled but ship-from address is incomplete")
+        return {"options": [], "messages": []}
+    try:
+        client = ShippoClient(cfg["api_token"])
+        parcel = build_shippo_parcel(entries, cfg.get("default_parcel"), settings.get("weight_unit", "kg"))
+        shipment = await client.create_shipment(
+            to_shippo_address(settings["ship_from"]), to_shippo_address(ship_to, email), parcel, metadata=f"quote user {user_id}"
+        )
+    except ShippoError as e:
+        logger.error(f"Shippo quote failed: {e} {e.detail or ''}")
+        return {"options": [], "messages": [f"Live rates unavailable right now ({e})"]}
+    options = normalize_shippo_rates(shipment, cfg, await store_currency_code(), CURRENCY_RATES)
+    now = datetime.utcnow()
+    for opt in options:
+        await shipping_quotes_collection.update_one(
+            {"rate_id": opt["shippo"]["rate_id"]},
+            {"$set": {"rate_id": opt["shippo"]["rate_id"], "user_id": user_id, "option": opt, "ship_to": ship_to,
+                      "parcel": parcel, "item_ids": sorted(str(e["item"]["_id"]) for e in entries), "created_at": now}},
+            upsert=True,
+        )
+    return {"options": options, "messages": shippo_shipment_messages(shipment) if not options else []}
+
+
+async def resolve_shipping_method(settings: dict, entries: list, ship_to: dict, method_id: str, user_id: str) -> Optional[dict]:
+    """Server-side price lookup for the method the customer picked (table re-quote or cached Shippo rate)."""
+    if method_id and method_id.startswith("shippo:"):
+        cached = await shipping_quotes_collection.find_one({"rate_id": method_id.split(":", 1)[1], "user_id": user_id})
+        if not cached:
+            return None
+        cached_to = cached.get("ship_to") or {}
+        if (cached_to.get("country") or "").upper() != (ship_to.get("country") or "").upper() or \
+           (cached_to.get("postal_code") or "").replace(" ", "").upper() != (ship_to.get("postal_code") or "").replace(" ", "").upper():
+            return None
+        if cached.get("item_ids") != sorted(str(e["item"]["_id"]) for e in entries):
+            return None
+        return cached["option"]
+    quote = await get_shipping_rates(settings, entries, ship_to)
+    return next((o for o in quote["options"] if o.get("method_id") == method_id), None)
 
 
 @app.get("/api/admin/shipping/settings")
 async def get_shipping_settings_admin(current_user: dict = Depends(get_current_admin_user)):
     s = await get_shipping_settings()
     s["carrier_catalog"] = {c: {"name": v["name"], "credential_fields": v["credential_fields"]} for c, v in SHIPPING_CARRIERS.items()}
+    token = s["shippo"].get("api_token") or ""
+    s["shippo"]["api_token"] = f"{token[:12]}…{token[-4:]}" if len(token) > 16 else ""
+    s["shippo"]["api_token_set"] = bool(token)
+    s["shippo"]["mode"] = "test" if token.startswith("shippo_test_") else ("live" if token else "")
+    s["shippo"]["webhook_url"] = shippo_webhook_url(s["shippo"].get("webhook_token", ""))
+    code = await store_currency_code()
+    s["currency"] = {"code": code, "symbol": CURRENCY_SYMBOLS.get(code, "$"), "inherited_from": "general"}
     return s
+
+
+def shippo_webhook_url(token: str) -> str:
+    base = (os.getenv("SITE_URL") or os.getenv("BACKEND_PUBLIC_URL") or "").rstrip("/")
+    return f"{base}/api/webhooks/shippo?token={token}" if base and token else ""
 
 
 @app.put("/api/admin/shipping/settings")
 async def update_shipping_settings_admin(request: Request, current_user: dict = Depends(get_current_admin_user)):
     body = await request.json()
     body.pop("carrier_catalog", None)
+    body.pop("currency", None)
     for method in body.get("methods", []) or []:
         if not method.get("id"):
             method["id"] = str(uuid.uuid4())
+    existing = await get_shipping_settings()
+    shippo_in = body.get("shippo") or {}
+    for k in ("api_token_set", "mode", "webhook_url"):
+        shippo_in.pop(k, None)
+    token_in = (shippo_in.get("api_token") or "").strip()
+    if not token_in or "…" in token_in:
+        shippo_in["api_token"] = existing["shippo"].get("api_token", "")  # masked/blank → keep stored key
+    shippo_in["webhook_token"] = existing["shippo"].get("webhook_token") or new_webhook_token()
+    shippo_in["webhook_registered_id"] = existing["shippo"].get("webhook_registered_id", "")
+    body["shippo"] = shippo_in
     merged = merge_shipping_settings(body)
     merged["updated_at"] = datetime.utcnow()
     await shipping_settings_collection.update_one({}, {"$set": merged}, upsert=True)
-    return await get_shipping_settings()
+    return await get_shipping_settings_admin(current_user)
+
+
+@app.post("/api/admin/shipping/shippo/test")
+async def test_shippo_connection(current_user: dict = Depends(get_current_admin_user)):
+    s = await get_shipping_settings()
+    try:
+        client = ShippoClient(s["shippo"].get("api_token", ""))
+        carriers = await client.list_carrier_accounts()
+    except ShippoError as e:
+        raise HTTPException(status_code=e.status if e.status in (400, 401) else 502, detail=str(e))
+    wanted = {"ups", "fedex", "usps", "canada_post", "purolator"}
+    return {
+        "success": True, "mode": "test" if client.is_test else "live", "carriers": carriers,
+        "missing_preferred": sorted(wanted - {c["carrier"] for c in carriers if c["active"]}),
+        "message": f"Connected ({'test' if client.is_test else 'live'} mode) — {len(carriers)} carrier account(s) available",
+    }
+
+
+@app.post("/api/admin/shipping/shippo/register-webhook")
+async def register_shippo_webhook(current_user: dict = Depends(get_current_admin_user)):
+    s = await get_shipping_settings()
+    url = shippo_webhook_url(s["shippo"].get("webhook_token", ""))
+    if not url:
+        raise HTTPException(status_code=400, detail="Save shipping settings first (webhook token) and make sure SITE_URL/BACKEND_PUBLIC_URL is set")
+    try:
+        client = ShippoClient(s["shippo"].get("api_token", ""))
+        hook = await client.register_webhook(url)
+    except ShippoError as e:
+        raise HTTPException(status_code=502, detail=f"{e}: {e.detail or ''}")
+    await shipping_settings_collection.update_one({}, {"$set": {"shippo.webhook_registered_id": hook.get("object_id", ""), "shippo.webhook_registered_url": url}})
+    return {"success": True, "webhook_id": hook.get("object_id"), "url": url, "is_test": hook.get("is_test")}
+
+
+@app.post("/api/webhooks/shippo")
+async def shippo_tracking_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Shippo track_updated events → shipment tracking status (idempotent, answers fast)."""
+    s = await get_shipping_settings()
+    expected = s["shippo"].get("webhook_token", "")
+    if not expected or not hmac.compare_digest(request.query_params.get("token", ""), expected):
+        raise HTTPException(status_code=401, detail="Invalid webhook token")
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    if payload.get("event") not in ("track_updated", "transaction_updated"):
+        return {"ok": True, "ignored": payload.get("event")}
+    data = payload.get("data") or {}
+    tracking_number = data.get("tracking_number") or ""
+    if not tracking_number:
+        return {"ok": True}
+    status_obj = data.get("tracking_status") or {}
+    changes = {"tracking_status": status_obj, "tracking_history": (data.get("tracking_history") or [])[-25:],
+               "tracking_eta": data.get("eta"), "tracking_updated_at": datetime.utcnow(), "updated_at": datetime.utcnow()}
+    shippo_status = (status_obj.get("status") or "").upper()
+    shipment = await shipments_collection.find_one({"tracking_number": tracking_number})
+    if shipment:
+        if shippo_status == "DELIVERED" and shipment.get("status") != "delivered":
+            changes["status"] = "delivered"
+            changes["delivered_at"] = datetime.utcnow()
+        elif shippo_status in ("TRANSIT", "PRE_TRANSIT") and shipment.get("status") in ("pending", "processing"):
+            changes["status"] = "shipped"
+            changes["shipped_at"] = shipment.get("shipped_at") or datetime.utcnow()
+        await shipments_collection.update_one({"_id": shipment["_id"]}, {"$set": changes})
+    return {"ok": True}
 
 
 @app.post("/api/admin/shipping/test-rates")
 async def test_shipping_rates_admin(request: Request, current_user: dict = Depends(get_current_admin_user)):
-    """Admin sandbox: quote the configured table for an arbitrary weight/value/destination"""
+    """Admin sandbox: quote the configured table (and Shippo, when a full address is given) for an arbitrary parcel"""
     body = await request.json()
     settings = await get_shipping_settings()
-    fake_item = {"price": float(body.get("subtotal", 0)), "weight": float(body.get("weight", 0)), "weight_unit": settings.get("weight_unit", "kg")}
-    return await get_shipping_rates(settings, [{"item": fake_item, "quantity": 1}], {"country": body.get("country", "")})
+    fake_item = {"_id": "test", "price": float(body.get("subtotal", 0)), "weight": float(body.get("weight", 0)), "weight_unit": settings.get("weight_unit", "kg")}
+    entries = [{"item": fake_item, "quantity": 1}]
+    ship_to = {"country": body.get("country", ""), "state": body.get("state", ""), "city": body.get("city", ""),
+               "postal_code": body.get("postal_code", ""), "address1": body.get("address1", ""), "name": "Rate Test"}
+    result = await get_shipping_rates(settings, entries, ship_to)
+    live = await shippo_quote(settings, entries, ship_to, f"admin:{current_user['sub']}")
+    return await merge_rate_options(result, live)
 
 
 async def create_shipment_for_order(order_id: str, order: dict, user: dict, physical_items: list):
@@ -5036,6 +5204,126 @@ async def update_shipment_admin(shipment_id: str, update: ShipmentUpdate, backgr
                 updated.get("items", []), updated.get("shipping_address") or {}, updated["user_id"],
             )
     return _serialize_shipment(updated)
+
+
+async def _shipment_entries(shipment: dict) -> list:
+    entries = []
+    for line in shipment.get("items", []):
+        pitem = await physical_items_collection.find_one({"_id": str_to_objectid(line["physical_item_id"])}) if line.get("physical_item_id") else None
+        entries.append({"item": pitem or {"weight": 0, "price": line.get("unit_price", 0)}, "quantity": max(1, int(line.get("quantity", 1)))})
+    return entries
+
+
+@app.post("/api/admin/shipments/{shipment_id}/shippo-rates")
+async def shipment_shippo_rates(shipment_id: str, current_user: dict = Depends(get_current_admin_user)):
+    """Fresh live rates for this shipment so the admin can buy the label (customer's pick is flagged as recommended)."""
+    shipment = await shipments_collection.find_one({"_id": str_to_objectid(shipment_id)})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    settings = await get_shipping_settings()
+    cfg = settings["shippo"]
+    if not cfg.get("enabled") or not cfg.get("api_token"):
+        raise HTTPException(status_code=400, detail="Shippo is not enabled in Shipping settings")
+    if not shippo_address_complete(settings.get("ship_from") or {}):
+        raise HTTPException(status_code=400, detail="Ship-from address is incomplete (Shipping settings)")
+    if not shippo_address_complete(shipment.get("shipping_address") or {}):
+        raise HTTPException(status_code=400, detail="Customer shipping address is incomplete")
+    entries = await _shipment_entries(shipment)
+    parcel = build_shippo_parcel(entries, cfg.get("default_parcel"), settings.get("weight_unit", "kg"))
+    try:
+        client = ShippoClient(cfg["api_token"])
+        result = await client.create_shipment(
+            to_shippo_address(settings["ship_from"]), to_shippo_address(shipment["shipping_address"], shipment.get("customer_email", "")),
+            parcel, metadata=f"order {shipment['order_id']}",
+        )
+    except ShippoError as e:
+        raise HTTPException(status_code=502, detail=f"{e}")
+    options = normalize_shippo_rates(result, {**cfg, "markup_percent": 0, "markup_flat": 0})
+    code = await store_currency_code()
+    chosen = (shipment.get("shipping_method") or {}).get("shippo") or {}
+    chosen_token = chosen.get("servicelevel_token")
+    for opt in options:
+        opt["recommended"] = bool(chosen_token) and opt["shippo"].get("servicelevel_token") == chosen_token
+        opt["store_amount"] = convert_shippo_amount(opt["price"], opt["currency"], code, CURRENCY_RATES)
+    await shipments_collection.update_one({"_id": shipment["_id"]}, {"$set": {"shippo_shipment_id": result.get("object_id"), "shippo_parcel": parcel}})
+    return {"shipment_id": result.get("object_id"), "parcel": parcel, "options": options, "messages": shippo_shipment_messages(result),
+            "customer_paid": float(shipment.get("shipping_cost", 0)), "customer_choice": chosen,
+            "currency": code, "currency_symbol": CURRENCY_SYMBOLS.get(code, "$")}
+
+
+class BuyLabelRequest(BaseModel):
+    rate_id: str
+
+
+@app.post("/api/admin/shipments/{shipment_id}/buy-label")
+async def shipment_buy_label(shipment_id: str, body: BuyLabelRequest, background_tasks: BackgroundTasks,
+                             current_user: dict = Depends(get_current_admin_user)):
+    shipment = await shipments_collection.find_one({"_id": str_to_objectid(shipment_id)})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    if shipment.get("shippo_transaction_id") and shipment.get("label_file"):
+        raise HTTPException(status_code=409, detail="A label was already purchased for this shipment")
+    settings = await get_shipping_settings()
+    cfg = settings["shippo"]
+    try:
+        client = ShippoClient(cfg.get("api_token", ""))
+        tx = await client.purchase_label(body.rate_id, metadata=f"order {shipment['order_id']}")
+        if tx.get("status") != "SUCCESS":
+            msgs = "; ".join((m.get("text") or "") for m in tx.get("messages", []) or []) or tx.get("status", "unknown")
+            raise HTTPException(status_code=422, detail=f"Label purchase failed: {msgs}")
+        label_bytes = await client.download(tx["label_url"]) if tx.get("label_url") else b""
+        rate = tx.get("rate") if isinstance(tx.get("rate"), dict) else {}
+        if not rate:
+            try:
+                rate = await client.get_rate(body.rate_id)
+            except ShippoError as e:
+                logger.warning(f"Could not fetch Shippo rate {body.rate_id} after purchase: {e}")
+    except ShippoError as e:
+        raise HTTPException(status_code=502, detail=f"{e}")
+    label_file = ""
+    if label_bytes:
+        label_file = await save_private("labels", f"label_{shipment_id}_{uuid.uuid4().hex[:8]}.pdf", label_bytes)
+    provider = rate.get("provider") or ""
+    carrier = shippo_provider_code(provider) if provider else (shipment.get("carrier") or "other")
+    changes = {
+        "shippo_transaction_id": tx.get("object_id"), "shippo_rate_id": body.rate_id,
+        "label_url": tx.get("label_url", ""), "label_file": label_file, "label_purchased_at": datetime.utcnow(),
+        "label_cost": money_str_to_float(rate.get("amount")),
+        "label_currency": rate.get("currency", ""), "label_service": (rate.get("servicelevel") or {}).get("name", ""),
+        "tracking_number": tx.get("tracking_number", ""), "tracking_url": tx.get("tracking_url_provider", "") or carrier_tracking_url(carrier, tx.get("tracking_number", "")),
+        "carrier": carrier, "status": "shipped", "shipped_at": shipment.get("shipped_at") or datetime.utcnow(),
+        "label_test": bool(tx.get("test")), "updated_at": datetime.utcnow(),
+    }
+    await shipments_collection.update_one({"_id": shipment["_id"]}, {"$set": changes})
+    updated = await shipments_collection.find_one({"_id": shipment["_id"]})
+    if shipment.get("status") != "shipped":
+        email_service = await get_configured_email_service()
+        if email_service and updated.get("customer_email"):
+            background_tasks.add_task(
+                email_service.send_order_shipped,
+                updated["customer_email"], updated.get("customer_name", ""), updated["order_id"],
+                provider or SHIPPING_CARRIERS.get(carrier, SHIPPING_CARRIERS["other"])["name"],
+                updated.get("tracking_number", ""), updated.get("tracking_url", ""),
+                updated.get("items", []), updated.get("shipping_address") or {}, updated["user_id"],
+            )
+    return _serialize_shipment(updated)
+
+
+def money_str_to_float(value) -> Optional[float]:
+    try:
+        return round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.get("/api/admin/shipments/{shipment_id}/label")
+async def shipment_label_pdf(shipment_id: str, current_user: dict = Depends(get_current_admin_user)):
+    shipment = await shipments_collection.find_one({"_id": str_to_objectid(shipment_id)})
+    if not shipment or not shipment.get("label_file"):
+        raise HTTPException(status_code=404, detail="No label for this shipment")
+    if not os.path.exists(shipment["label_file"]):
+        raise HTTPException(status_code=404, detail="Label file missing on disk")
+    return FileResponse(shipment["label_file"], media_type="application/pdf", filename=f"label-{shipment['order_id'][-8:]}.pdf")
 
 
 async def provision_order_services(order_id: str, order: dict, user: dict):
@@ -8243,13 +8531,27 @@ async def change_currency(data: ChangeCurrencyRequest, current_user: dict = Depe
         )
         converted += 1
     
+    # Shipping inherits the global currency → convert the rate table + Shippo flat markup too
+    ship = await shipping_settings_collection.find_one({}) or {}
+    if ship:
+        cv = lambda v: round(float(v or 0) * conversion_factor, 2) if v not in (None, "", 0, 0.0) else v
+        methods = ship.get("methods") or []
+        for m in methods:
+            for k in ("base_rate", "rate_per_unit", "free_shipping_over"):
+                m[k] = cv(m.get(k))
+            for b in m.get("brackets") or []:
+                b["price"] = cv(b.get("price"))
+        shippo_cfg = ship.get("shippo") or {}
+        shippo_cfg["markup_flat"] = cv(shippo_cfg.get("markup_flat"))
+        await shipping_settings_collection.update_one({"_id": ship["_id"]}, {"$set": {"methods": methods, "shippo": shippo_cfg, "updated_at": datetime.utcnow()}})
+
     # Save currency setting
     await settings_collection.update_one({}, {"$set": {"currency": new_currency}}, upsert=True)
     
     logger.info(f"Currency changed from {old_currency} to {new_currency} (factor: {conversion_factor:.4f}), {converted} products converted")
     
     return {
-        "message": f"Currency changed to {new_currency}. {converted} products converted.",
+        "message": f"Currency changed to {new_currency}. {converted} products converted; shipping rates follow the new currency.",
         "old_currency": old_currency,
         "new_currency": new_currency,
         "conversion_factor": round(conversion_factor, 4),
@@ -9618,7 +9920,7 @@ async def test_email_template(
 # ===== FILE UPLOAD ENDPOINTS =====
 
 # Self-hosted local storage (see local_storage.py). UPLOADS_DIR env lets operators mount a persistent volume
-from local_storage import UPLOAD_BASE_DIR, category_dir, save_upload
+from local_storage import UPLOAD_BASE_DIR, category_dir, save_upload, save_private
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = category_dir("attachments")
 HERO_IMAGES_DIR = category_dir("hero")

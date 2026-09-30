@@ -29,7 +29,7 @@ export function CheckoutShipping({ items, address, setAddress, rates, setRates, 
     try {
       const res = await shippingAPI.rates({
         items: physical.map((i) => ({ physical_item_id: i.product_id, quantity: i.quantity || 1 })),
-        ship_to: { country: address.country, state: address.state, postal_code: address.postal_code, city: address.city },
+        ship_to: { name: address.name, phone: address.phone, address1: address.address1, address2: address.address2, city: address.city, state: address.state, postal_code: address.postal_code, country: address.country },
       });
       setRates(res.data);
       if (res.data.options?.length === 1) setSelectedMethod(res.data.options[0]);
