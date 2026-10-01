@@ -9,6 +9,17 @@ import api, { authAPI } from '../../api/api';
 import { useAuthStore } from '../../store/store';
 import { AuthShell, Note, PasswordInput, RecaptchaLegal } from '../../components/cmtv/AuthShell';
 
+// 2026-10-01: "Remember this device" for the admin 2FA step (backend: cmtv_trusted_devices.py). The key stays in this browser.
+const DEVICE_KEY = 'cmtv_2fa_device';
+const deviceKey = () => { try { return localStorage.getItem(DEVICE_KEY) || ''; } catch { return ''; } };
+const saveDeviceKey = (v) => { try { if (v) localStorage.setItem(DEVICE_KEY, v); else localStorage.removeItem(DEVICE_KEY); } catch { /* private mode */ } };
+const deviceLabel = () => {
+  const ua = navigator.userAgent || '';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iPhone/iPad' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+  return os ? `${browser} on ${os}` : browser;
+};
+
 export default function CmtvLoginPage() {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
@@ -17,6 +28,7 @@ export default function CmtvLoginPage() {
   const [successMessage, setSuccessMessage] = useState('');
   const [requires2FA, setRequires2FA] = useState(false);
   const [totpCode, setTotpCode] = useState('');
+  const [rememberDevice, setRememberDevice] = useState(false);   // 2026-10-01: skip the 2FA code on this browser for 30 days
   const [showResendVerification, setShowResendVerification] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [resending, setResending] = useState(false);
@@ -44,9 +56,11 @@ export default function CmtvLoginPage() {
     mutationFn: (data) => authAPI.login(data),
     onSuccess: (response) => {
       if (response.data.requires_2fa) {
+        if (deviceKey()) saveDeviceKey(null);   // the remembered device key no longer works (expired or removed)
         setRequires2FA(true);
         setError('');
       } else {
+        if (response.data.device_token) saveDeviceKey(response.data.device_token);
         setAuth(response.data.user, response.data.access_token);
         const params = new URLSearchParams(window.location.search);
         const redirectTo = params.get('redirect');
@@ -85,7 +99,11 @@ export default function CmtvLoginPage() {
       }
     }
     const loginData = { ...formData, recaptcha_token: recaptchaToken };
-    if (requires2FA) loginData.totp_code = totpCode;
+    if (deviceKey()) loginData.device_token = deviceKey();
+    if (requires2FA) {
+      loginData.totp_code = totpCode;
+      if (rememberDevice) { loginData.remember_device = true; loginData.device_label = deviceLabel(); }
+    }
     loginMutation.mutate(loginData);
   };
 
@@ -143,6 +161,11 @@ export default function CmtvLoginPage() {
             <p>Enter the 6-digit code from your authenticator app.</p>
             <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength="6" value={totpCode}
               onChange={(e) => setTotpCode(e.target.value.replace(/[^0-9]/g, ''))} placeholder="000000" aria-label="6-digit code" autoFocus />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 13.5, cursor: 'pointer' }}>
+              <input type="checkbox" checked={rememberDevice} onChange={(e) => setRememberDevice(e.target.checked)} />
+              Remember this device for 30 days
+            </label>
+            <p style={{ margin: '4px 0 0', fontSize: 12, opacity: 0.75 }}>Only on your own device. You'll still need your password.</p>
           </div>
         )}
 

@@ -257,6 +257,12 @@ cmtv_announce.D["get_current_admin_user"] = get_current_admin_user
 cmtv_announce.init_routes()
 app.include_router(cmtv_announce.router)
 
+# CMTV local change 2026-10-01: admin 2FA "remember this device for 30 days" (cmtv_trusted_devices.py)
+import cmtv_trusted_devices
+cmtv_trusted_devices.init(get_current_admin_user=get_current_admin_user)   # db is set at startup
+cmtv_trusted_devices.init_routes()
+app.include_router(cmtv_trusted_devices.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -1000,6 +1006,7 @@ async def startup_event():
                     get_email_service=get_configured_email_service)  # CMTV 2026-09-29: Nuvio server accounts
     await cmtv_nuvio.startup()   # sharing check (hourly)
     cmtv_announce.init(db=db)   # CMTV 2026-09-30: customer update posts
+    cmtv_trusted_devices.init(db=db)   # CMTV 2026-10-01: 2FA remembered devices
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
                     create_access_token=create_access_token,
@@ -2053,7 +2060,11 @@ async def login(credentials: UserLogin):
         )
     
     # Step 4: Check 2FA for admin users
-    if user.get("role") == "admin" and user.get("totp_enabled"):
+    # CMTV local change 2026-10-01: a remembered device (cmtv_trusted_devices.py) skips the code; the password was checked above
+    new_device_token = None
+    device_ok = bool(user.get("role") == "admin" and user.get("totp_enabled") and credentials.device_token
+                     and await cmtv_trusted_devices.is_trusted(db, user, credentials.device_token))
+    if user.get("role") == "admin" and user.get("totp_enabled") and not device_ok:
         if not credentials.totp_code:
             # Return special response indicating 2FA is required
             return {
@@ -2070,6 +2081,8 @@ async def login(credentials: UserLogin):
         totp_secret = user.get("totp_secret")
         if not TwoFactorService.verify_totp(totp_secret, credentials.totp_code):
             raise HTTPException(status_code=401, detail="Invalid 2FA code")
+        if credentials.remember_device:   # CMTV 2026-10-01
+            new_device_token = await cmtv_trusted_devices.issue(db, user, credentials.device_label or "")
     
     # Step 5: Create access token
     access_token = create_access_token(data={
@@ -2082,6 +2095,7 @@ async def login(credentials: UserLogin):
         "access_token": access_token,
         "token_type": "bearer",
         "requires_2fa": False,
+        "device_token": new_device_token,   # CMTV 2026-10-01: set only when "remember this device" was ticked
         "needs_email_link": needs_email_link,
         "user": {
             "id": str(user["_id"]),
@@ -2248,6 +2262,7 @@ async def disable_2fa(
         }
     )
     
+    await cmtv_trusted_devices.revoke_all(db, user_id, "2FA turned off")   # CMTV 2026-10-01
     return {"message": "2FA disabled successfully"}
 
 @app.get("/api/auth/2fa/status")

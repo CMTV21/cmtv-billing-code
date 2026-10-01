@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Shield, Copy, Check, X, Download } from 'lucide-react';
 import api from '../api/api';
 import { toast } from 'sonner';
+import RememberedDevices from './cmtv/RememberedDevices'; // CMTV local change 2026-10-01
 
 export default function TwoFactorSetup() {
   const [step, setStep] = useState('initial'); // initial, setup, verify, complete
@@ -121,6 +122,7 @@ export default function TwoFactorSetup() {
             Disable 2FA
           </button>
         </div>
+        <RememberedDevices />{/* CMTV local change 2026-10-01: remembered devices for 2FA */}
       </div>
     );
   }

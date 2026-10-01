@@ -60,6 +60,9 @@ class UserLogin(BaseModel):
     password: str
     recaptcha_token: Optional[str] = None
     totp_code: Optional[str] = None  # For 2FA verification
+    remember_device: Optional[bool] = None  # CMTV local change 2026-10-01: remember this device for the 2FA step
+    device_token: Optional[str] = None  # CMTV 2026-10-01: a remembered device's key (cmtv_trusted_devices.py)
+    device_label: Optional[str] = None  # CMTV 2026-10-01: e.g. "Chrome on Windows"
 
 class User(BaseModel):
     id: Optional[str] = None
