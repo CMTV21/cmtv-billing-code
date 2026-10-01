@@ -13,7 +13,7 @@ const ROWS = [
   ['Channel catch-up', null, true],
   ['Sports replay', null, true],
   ['24/7 themed channels', 'Some', 'Extensive'],
-  ['Connection options', '1 / 2 / 4 / 6', '2 / 4 / 5'],
+  ['Connection options', '1 / 2 / 4 / 6', '1 / 2 / 4 / 5'],   // 2026-10-01: Imperium 1 connection added
   ['Works with all CMTV apps', true, true],
 ];
 const CYAN = '#22e6f2';
