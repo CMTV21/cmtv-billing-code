@@ -87,7 +87,7 @@ export default function ResellerCredits({ lockServer = null, topup = null, compa
       <p className="rc-note">{topup
         ? `The credits go straight onto your panel ${topup} once you've paid.`
         : 'At checkout choose a new reseller panel (your own username and password) or add the credits to the panel you already have.'}
-        {max < (data?.max || 1000) ? ` Up to ${max} ${s.label} credits online right now; message us for more.` : ''}</p>
+        {/* 2026-10-01: no "up to N right now" (that was CMTV's own balance) */}</p>
       </>)}
     </div>
   );

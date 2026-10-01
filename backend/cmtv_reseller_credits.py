@@ -131,7 +131,14 @@ async def custom_price(product: dict, credits: int):
         raise ValueError(f"Choose between {MIN_CREDITS} and {MAX_CREDITS} credits (message us for more)")
     bal = await (imperium_balance if server == "imperium" else cctv_balance)(max_age=60)   # 2026-09-29: CCTV capped too
     if bal is not None and int(credits) > bal:
-        raise ValueError(f"Only {int(bal)} {LABEL[server]} credits can be bought online right now. Message us for more.")
+        # 2026-10-01: never tell customers CMTV's own balance (the owner: private); tell the owner instead
+        try:
+            await _ops(f"⚠️ A reseller tried to buy {int(credits)} {LABEL[server]} credits online, more than your "
+                       f"{LABEL[server]} balance ({bal:g}). Top up, or sell it by hand.", "billing")
+        except Exception:
+            pass
+        raise ValueError(f"That many {LABEL[server]} credits can't be bought online right now. "
+                         "Message us on Telegram or email cmtv@pm.me and we'll set it up.")
     rate = rate_for(await tiers_for(server), int(credits))
     return round(int(credits) * rate, 2), f"{LABEL[server]} Reseller Credits - {int(credits)} credits"
 
@@ -497,10 +504,8 @@ async def pricing():
                 base = p
         if not base:
             continue
-        mx = MAX_CREDITS
-        bal = await (imperium_balance if server == "imperium" else cctv_balance)()   # 2026-09-29: both servers capped
-        if bal is not None:
-            mx = min(MAX_CREDITS, int(bal // 10 * 10) if bal >= MIN_CREDITS else int(bal))
+        # 2026-10-01: the cap on CMTV's own balance is checked only at checkout (custom_price); this public list
+        # no longer reveals the balance (it used to send max = balance, shown as "up to N credits right now")
         out[server] = {"label": LABEL[server], "product_id": str(base["_id"]), "tiers": await tiers_for(server),
-                       "max": mx, "available": mx >= MIN_CREDITS}
+                       "max": MAX_CREDITS, "available": True}
     return {"min": MIN_CREDITS, "max": MAX_CREDITS, "servers": out}
