@@ -176,7 +176,7 @@ export default function CmtvHomePage() {
     if (tab === 'all') return g;
     if (g.family === 'trials' && (tab === 'cctv' || tab === 'imperium' || tab === 'addons')) {
       // CMTV local change 2026-09-25: add-on trials (Stremio, CMTVpn, Audiobooks) show under Add-ons
-      const cards = g.cards.filter((c) => new RegExp(tab === 'addons' ? 'stremio|vpn|audiobook' : tab, 'i').test(c.name));
+      const cards = g.cards.filter((c) => new RegExp(tab === 'addons' ? 'stremio|nuvio|vpn|audiobook' : tab, 'i').test(c.name));
       return cards.length ? { ...g, cards } : null;
     }
     return g.family === tab ? g : null;
