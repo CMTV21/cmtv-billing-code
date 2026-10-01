@@ -2,7 +2,8 @@
 // his HomePage.js is left untouched, so his updates to it can't clash with this design.
 // Reuses the same data and flows: products + product groups from the API, the cart store, login redirect, checkout.
 import React, { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
+import SiteNav from '../../components/cmtv/SiteNav'; // 2026-10-01: site menu
 import { rememberPlan, pendingPlan, pendingCredits, pendingExtra, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
 import ResellerCredits, { creditPrice } from '../../components/cmtv/ResellerCredits'; // 2026-09-28: any credit amount
 import { LINEUPS, lineupName } from '../../components/cmtv/lineups'; // 2026-09-29: Imperium channel line-ups
@@ -164,11 +165,23 @@ export default function CmtvHomePage() {
     })();
   }, [products, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 2026-10-01: the site menu (SiteNav) links here with ?tab= and &go=; follow them on every click (location.key),
+  // also when already on the store: switch the tab, then scroll to the plans / trials / comparison / resellers
+  const location = useLocation();
+  const tabParam = params.get('tab');
+  const goParam = params.get('go');
   React.useEffect(() => {
-    if (params.get('tab') !== 'trials' || !groups.length) return;
-    const el = document.getElementById('group-trials');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [groups.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (['all', 'cctv', 'imperium', 'addons', 'resellers'].includes(tabParam)) setTab(tabParam);
+    else if (tabParam === 'trials') setTab('all');
+  }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (!groups.length || params.get('add')) return;
+    const target = goParam || (tabParam === 'trials' ? 'trials' : tabParam ? 'plans' : null);
+    const id = { trials: 'group-trials', compare: 'compare', resellers: 'group-resellers', plans: 'plans' }[target];
+    if (!id) return;
+    const t = setTimeout(() => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+    return () => clearTimeout(t);
+  }, [groups.length, location.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabs = TABS.filter((t) => t.key === 'all' || groups.some((g) => g.family === t.key));
 
@@ -196,6 +209,7 @@ export default function CmtvHomePage() {
             <img src={BRAND.siteLogo} alt="" />
             <span>{branding.site_name || 'CMTV'}</span>
           </Link>
+          <SiteNav />{/* 2026-10-01: site menu */}
           <span className="hide-sm"><CurrencySwitcher /></span>
           {user ? (
             <>
@@ -247,10 +261,10 @@ export default function CmtvHomePage() {
           )}
 
           {isLoading ? <div className="spinner" aria-label="Loading plans" /> : visible.length === 0 ? (
-            <p className="empty">No plans to show here right now.</p>
+            tab === 'resellers' && !canResell ? null : <p className="empty">No plans to show here right now.</p>
           ) : visible.map((g, gi) => (
             <div key={g.id} id={`group-${g.family}`} style={{ scrollMarginTop: 80 }}>
-              {gi === compareAt && <div style={{ margin: '28px 0 8px' }}><ServiceComparison /></div>}
+              {gi === compareAt && <div id="compare" style={{ margin: '28px 0 8px', scrollMarginTop: 80 }}><ServiceComparison /></div>}
               {g.name && <div className={`family fam-${g.family}`}><span>{g.name}</span></div>}
               {g.hasSubgroups && (() => {
                 const { intro } = splitDescription(g.cards[0]?.products[0]?.description);

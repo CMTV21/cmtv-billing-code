@@ -7,6 +7,7 @@ import api from '../../api/api';
 import { useAuthStore } from '../../store/store';
 import { BRAND } from './brand';
 import { WEBPLAYER } from './webPlayer';
+import SiteNav from './SiteNav';
 import './cmtv-account.css';
 
 const TABS = [
@@ -46,11 +47,13 @@ export function AccountHeader() {
     <header className="ca-bar">
       <div className="ca-bar-in">
         <Link className="ca-brand" to="/" aria-label="CMTV home"><img src={BRAND.siteLogo} alt="" /><span>CMTV</span></Link>
-        <nav className="ca-tabs" aria-label="Account">
-          {tabs.map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard' || to === '/'}>{label}</NavLink>)}
-          {/* 2026-10-01: the CMTV Web Player (each TV line's card has a one-tap "Watch in browser" too) */}
-          {user && <a href={WEBPLAYER} target="_blank" rel="noopener noreferrer" title="Watch in your browser">Web Player</a>}
-        </nav>
+        {user ? (
+          <nav className="ca-tabs" aria-label="Account">
+            {tabs.map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard' || to === '/'}>{label}</NavLink>)}
+            {/* 2026-10-01: the CMTV Web Player (each TV line's card has a one-tap "Watch in browser" too) */}
+            <a href={WEBPLAYER} target="_blank" rel="noopener noreferrer" title="Watch in your browser">Web Player</a>
+          </nav>
+        ) : <SiteNav />}{/* 2026-10-01: visitors get the same site menu as the storefront */}
         {user ? (
           <div className="ca-who" ref={ref}>
             <Link className="ca-credit" to="/referrals" title="Account credit, used automatically at checkout if you choose">
