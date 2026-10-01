@@ -198,6 +198,11 @@ function CreateTicketModal({ onClose, onSuccess }) {
       toast.success('Ticket created successfully!');
       onSuccess();
     },
+    // CMTV local change 2026-10-01: a failed ticket showed nothing at all (a customer said it "would not let me submit")
+    onError: (err) => {
+      toast.error('Could not send your ticket: ' + (err.response?.data?.detail || err.message || 'please try again')
+        + '. You can also message @Cmtv_support_bot on Telegram.');
+    },
   });
 
   const handleSubmit = (e) => {
@@ -206,8 +211,10 @@ function CreateTicketModal({ onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full">
+    // CMTV local change 2026-10-01: the window can scroll (on phones the Create Ticket button was pushed off-screen,
+    // especially with the "Known issues" list above the form)
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full my-auto max-h-[calc(100vh-2rem)] overflow-y-auto">
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Support Ticket</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
@@ -227,7 +234,7 @@ function CreateTicketModal({ onClose, onSuccess }) {
               className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
             >
               <option value="">General Question</option>
-              {services?.map((service) => (
+              {(Array.isArray(services) ? services : []).map((service) => ( /* CMTV 2026-10-01: an error reply isn't a list */
                 <option key={service.id} value={service.id}>
                   {service.product_name} - {service.xtream_username}
                 </option>
