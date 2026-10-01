@@ -89,10 +89,17 @@ export default function CmtvHomePage() {
     queryFn: async () => (await axios.get(`${API_URL}/api/product-groups`)).data,
   });
 
+  // 2026-10-01: reseller credits only for existing / approved resellers (the server refuses everyone else too)
+  const { data: resellerAccess } = useQuery({
+    queryKey: ['reseller-access', user?.id || user?.email || ''], enabled: !!user, staleTime: 60000,
+    queryFn: async () => (await api.get('/api/cmtv/reseller/access')).data,
+  });
+  const canResell = !!resellerAccess?.allowed;
+
   // Groups in the admin's order, each with its cards (one per sub-group, or one per product)
   const groups = useMemo(() => {
     if (!products) return [];
-    const list = [...products];
+    const list = products.filter((p) => canResell || p.account_type !== 'reseller');
     const byOrder = (a, b) => (a.display_order || 0) - (b.display_order || 0);
     const grps = [...(productGroups || [])].map((g, i) => ({ ...g, _i: i }))
       .sort((a, b) => (a.display_order ?? a._i) - (b.display_order ?? b._i) || a._i - b._i);
@@ -116,7 +123,7 @@ export default function CmtvHomePage() {
     const rest = list.filter((p) => !p.group_id || !known.has(p.group_id)).sort(byOrder);
     if (rest.length) out.push({ id: 'other', name: '', family: 'other', hasSubgroups: false, cards: rest.map((p) => ({ id: p.id, name: p.name, products: [p] })) });
     return out;
-  }, [products, productGroups]);
+  }, [products, productGroups, canResell]);
 
   // a plan chosen on cmtv.info (?add=) or picked here while signed out: cart + checkout once signed in
   const [focusPlan, setFocusPlan] = useState(null);   // 2026-09-30: plan opened from a cmtv.info link (highlighted)
@@ -262,6 +269,11 @@ export default function CmtvHomePage() {
               )}
             </div>
           ))}
+          {/* 2026-10-01: reseller credits are for approved resellers only: everyone else gets the application link */}
+          {!isLoading && !canResell && (tab === 'all' || tab === 'resellers') && (
+            <p style={{ margin: '28px 0 0', fontSize: 14, color: 'var(--muted)', textAlign: 'center' }}>Want to resell CMTV?{' '}
+              <a href="https://cmtv.info/partners/" style={{ color: 'var(--cyan)', fontWeight: 700 }}>Apply to become a reseller &rarr;</a></p>
+          )}
         </div>
       </section>
 

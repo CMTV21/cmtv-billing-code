@@ -3923,6 +3923,9 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         product = await products_collection.find_one({"_id": str_to_objectid(item.product_id)})
         if not product:
             raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}")
+        # CMTV local change 2026-10-01: reseller credits only for existing / approved resellers (cmtv_reseller_credits.access)
+        if product.get("account_type") == "reseller" and not await cmtv_reseller_credits.may_buy(user_id):
+            raise HTTPException(status_code=403, detail=cmtv_reseller_credits.NOT_ALLOWED)
         product_prices = product.get("prices", {}) or {}
         actual_price = float(list(product_prices.values())[0]) if product_prices else 0.0
         # CMTV local change 2026-09-28: reseller credits in a chosen amount (50-1000) are priced per credit on the

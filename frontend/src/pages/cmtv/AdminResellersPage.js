@@ -73,6 +73,46 @@ function Applications() {
   );
 }
 
+// 2026-10-01: only existing resellers and customers approved here can buy reseller credits (storefront + checkout)
+function ApprovedBox() {
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const { data, refetch } = useQuery({ queryKey: ['cmtv-reseller-approved'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin/approved')).data });
+  const set = async (body, msg) => {
+    setBusy(true);
+    try {
+      const r = (await api.post('/api/cmtv/reseller/admin/approve', body)).data;
+      toast.success(`${r.name || r.email} ${msg}`);
+      setEmail(''); refetch();
+    } catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); }
+    setBusy(false);
+  };
+  const list = data?.approved || [];
+  return (
+    <div className="rs-notice">
+      <b>Approve a new reseller</b>
+      <div style={{ fontSize: 13, opacity: 0.8, margin: '4px 0 8px' }}>
+        Reseller credits are hidden from the store and refused at checkout for everyone except your current resellers (top-ups)
+        and the customers approved here. They need a billing account first.
+      </div>
+      <div className="row">
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Customer's email"
+          aria-label="Customer's email" style={{ flex: 1, minWidth: 200 }} />
+        <button type="button" className="rv-btn glow" disabled={busy || !email.includes('@')}
+          onClick={() => set({ email, approved: true }, 'can now buy reseller credits')}>Approve</button>
+      </div>
+      {list.length > 0 && (
+        <ul>{list.map((a) => (
+          <li key={a.user_id}><b>{a.name || a.email}</b> ({a.email}) · approved {day(a.approved_at)}{a.has_panel ? ' · has a panel' : ''}{' '}
+            <button type="button" className="rv-btn" disabled={busy}
+              onClick={() => window.confirm(`Take back reseller approval for ${a.email}?`) && set({ user_id: a.user_id, approved: false }, 'is no longer approved')}>Remove</button>
+          </li>
+        ))}</ul>
+      )}
+    </div>
+  );
+}
+
 export default function AdminResellersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cmtv-resellers-admin'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin')).data });
@@ -119,6 +159,7 @@ export default function AdminResellersPage() {
         </div>
       </div>
 
+      <ApprovedBox />
       <NoticeBox />
       <Applications />
 

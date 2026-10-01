@@ -334,6 +334,27 @@ def _iso(v):
     return v.isoformat() + "Z" if isinstance(v, datetime) else None
 
 
+# ---------- who may buy reseller credits (2026-10-01) ----------
+# The owner's rule: reseller credits are far cheaper than subscriptions, so only real resellers may buy them:
+# admins, customers who already have an active reseller panel (top-ups), and customers the owner approved in
+# Admin > Resellers (users.cmtv_reseller_approved; history in cmtv_reseller_approvals). create_order refuses the rest.
+APPLY_URL = "https://cmtv.info/partners/"
+NOT_ALLOWED = ("Reseller credits are only for approved CMTV resellers. "
+               f"To become one, apply at {APPLY_URL} or message support.")
+
+
+async def access(uid: str) -> dict:
+    db = D["db"]
+    u = await db.users.find_one({"_id": _oid(uid)}, {"role": 1, "cmtv_reseller_approved": 1}) or {}
+    existing = bool(await db.services.find_one({"user_id": str(uid), "account_type": "reseller", "status": "active"}))
+    approved = bool(u.get("cmtv_reseller_approved"))
+    return {"allowed": u.get("role") == "admin" or existing or approved, "existing": existing, "approved": approved}
+
+
+async def may_buy(uid: str) -> bool:
+    return (await access(uid))["allowed"]
+
+
 def init_routes():
     """Routes that need the signed-in customer / admin (dependencies passed in from server.py)"""
     current = D["get_current_user"]
@@ -363,6 +384,48 @@ def init_routes():
                         "credits": r["credits"], "as_of": _iso(r["as_of"]), "low_level": low,
                         "demo": bool(s.get("cmtv_demo"))})
         return {"panels": out}
+
+    @router.get("/access")
+    async def my_access(current_user: dict = Depends(current)):
+        """2026-10-01: may this customer buy reseller credits? (the storefront shows the Resellers tab only if so)"""
+        return await access(current_user["sub"])
+
+    @router.get("/admin/approved")
+    async def admin_approved(current_user: dict = Depends(admin)):
+        db = D["db"]
+        out = []
+        async for u in db.users.find({"cmtv_reseller_approved": True}, {"name": 1, "email": 1, "cmtv_reseller_approved_at": 1}):
+            uid = str(u["_id"])
+            out.append({"user_id": uid, "name": u.get("name"), "email": u.get("email"),
+                        "approved_at": _iso(u.get("cmtv_reseller_approved_at")),
+                        "has_panel": bool(await db.services.find_one({"user_id": uid, "account_type": "reseller", "status": "active"}))})
+        return {"approved": out, "apply_url": APPLY_URL}
+
+    @router.post("/admin/approve")
+    async def admin_approve(data: dict = Body(...), current_user: dict = Depends(admin)):
+        """{email | user_id, approved: true|false}: let a customer buy reseller credits (or take that back)."""
+        db = D["db"]
+        approved = bool(data.get("approved", True))
+        email = str(data.get("email") or "").strip()
+        if data.get("user_id"):
+            users = await db.users.find({"_id": _oid(data["user_id"])}).to_list(2)
+        elif email:
+            import re
+            users = await db.users.find({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"},
+                                         "role": {"$nin": ["merged"]}}).to_list(3)
+        else:
+            raise HTTPException(status_code=400, detail="Enter the customer's email.")
+        if not users:
+            raise HTTPException(status_code=404, detail="No customer account with that email. They need to sign up first.")
+        if len(users) > 1:
+            raise HTTPException(status_code=409, detail="More than one account has that email: open the customer's profile instead.")
+        u = users[0]
+        now = datetime.utcnow()
+        await db.users.update_one({"_id": u["_id"]}, {"$set": {"cmtv_reseller_approved": approved,
+                                                                "cmtv_reseller_approved_at": now if approved else None}})
+        await db.cmtv_reseller_approvals.insert_one({"user_id": str(u["_id"]), "email": u.get("email"), "approved": approved,
+                                                     "by": current_user.get("sub"), "at": now})
+        return {"ok": True, "user_id": str(u["_id"]), "name": u.get("name"), "email": u.get("email"), "approved": approved}
 
     @router.get("/guide")
     async def reseller_guide(current_user: dict = Depends(current)):
