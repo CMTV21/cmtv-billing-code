@@ -29,7 +29,8 @@
 .cmtv-nav .sn-panel b { margin: 12px 0 4px; font: 600 11px 'Figtree', system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #6b7799; }
 .cmtv-nav .sn-panel a { padding: 10px 4px; color: #e9edf8; text-decoration: none; font: 500 15px 'Figtree', system-ui, sans-serif; border-bottom: 1px solid #1b2643; }
 @media (max-width: 1080px) {
-  .cmtv-nav { flex: 0 0 auto; margin-left: auto; order: 5; }
+  .cmtv-nav { flex: 0 0 auto; margin-left: 8px; order: 5; }
+  .ca-bar-in .ca-who { margin-left: auto; }
   .cmtv-nav .sn-links { display: none; }
   .cmtv-nav .sn-burger { display: inline-flex; }
   .cmtv .bar .brand { margin-right: auto; }
