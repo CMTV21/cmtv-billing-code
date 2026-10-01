@@ -147,3 +147,12 @@
 .cmtv .trial-tile .t-go { width: 100%; justify-content: center; margin-top: auto; padding: 10px 14px; }
 .cmtv .trial-tile .t-head .play-tile { margin: 0; border-radius: 10px; box-shadow: none; background: linear-gradient(135deg, #22e6f2 0%, #5b4bff 55%, #c026d3 100%); }
 .cmtv .trial-tile .t-head .play-tile::after { margin-left: 4px; border-width: 9px 0 9px 15px; }
+
+/* 2026-10-01: add-on tiles (same .trial-tile, paid) */
+.cmtv .trial-tile.t-addon { border-top-color: var(--violet); }
+.cmtv .trial-tile .t-price { margin-left: auto; text-align: right; font: 800 18px var(--display); color: var(--cyan); white-space: nowrap; }
+.cmtv .trial-tile .t-price small { font: 600 12px var(--body); color: var(--muted); margin-left: 2px; }
+.cmtv .trial-tile .t-bundle { margin: -4px 0 0; font-size: 13px; color: var(--muted); }
+.cmtv .trial-tile .t-bundle b { color: #86efac; }
+.cmtv .trial-tile .t-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.cmtv .trial-tile .t-details { border-top: 1px solid var(--line); padding-top: 10px; font-size: 13.5px; color: var(--muted); }

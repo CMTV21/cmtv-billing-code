@@ -11,6 +11,7 @@ export const BRAND = {
     'CMTVpn': '/cmtv/cmtvpn.png',
     'CMTV Audiobooks': '/cmtv/cmtv-audiobooks.png',
     'Nuvio': '/cmtv/nuvio.png', // 2026-09-30
+    'Stremio': '/cmtv/stremio.png', // 2026-10-01: official logo from stremio.com
   },
   // Short line under the logo on an add-on card
   taglines: {

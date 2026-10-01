@@ -263,7 +263,7 @@ export default function CmtvHomePage() {
                     <a href="https://cmtv.info/partners/" style={{ color: 'var(--cyan)', fontWeight: 700 }}>See what's included and our partner services &rarr;</a></p>
                 </>
               ) : (
-                <div className={g.family === 'trials' ? 'trial-grid' : 'stack'}>{/* 2026-10-01: trials as tiles */}
+                <div className={g.family === 'trials' || g.family === 'addons' ? 'trial-grid' : 'stack'}>{/* 2026-10-01: trials + add-ons as tiles */}
                   {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} focus={focusPlan} />)}
                 </div>
               )}
@@ -291,6 +291,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
   const [lineup, setLineup] = useState('full');   // 2026-09-29: Imperium channel line-up (same price)
   const [bouquets, setBouquets] = useState(null);   // 2026-09-30: the customer's own channel groups (null = the line-up's)
   const [vodApp, setVodApp] = useState('nuvio');   // 2026-09-30: CMTV+ movies & series app (Nuvio, or Stremio on request)
+  const [more, setMore] = useState(false);   // 2026-10-01: "What's included" on an add-on tile
   const products = card.products;
   // 2026-09-30: line-up / channel choices by panel, so the trial cards (Trials group) get them too
   const impLine = products[0]?.panel_type === 'aether' && products[0]?.account_type === 'subscriber';
@@ -357,32 +358,67 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
     catch { setChannels([]); }
   };
 
-  // 2026-10-01: free trials as compact tiles (the owner found six full cards too bulky); same buy() and choices
-  if (family === 'trials' && products.length === 1) {
+  // 2026-10-01: free trials and add-ons as compact tiles (the owner found the full cards too bulky); same buy() and choices
+  if ((family === 'trials' || family === 'addons') && products.length === 1) {
+    const isAddon = family === 'addons';
     const paidOf = (allProducts || []).find((p) => p.id === first.cmtv_trial_of);
-    const service = impLine ? 'Imperium' : cctvLine ? 'CCTV' : (paidOf?.name || String(first.name).replace(/\s*\d+[- ]?(day|hour)s?\s*trial$/i, '').trim());
+    const service = isAddon ? first.name : impLine ? 'Imperium' : cctvLine ? 'CCTV'
+      : (paidOf?.name || String(first.name).replace(/\s*\d+[- ]?(day|hour)s?\s*trial$/i, '').trim());
     const tlogo = impLine ? BRAND.imperiumLogo : cctvLine ? BRAND.cctvLogo : lookup(BRAND.logos, service);
     const summary = String(intro || first.description || '').split('\n')[0].replace(/^\*\*[^*]+\*\*:\s*/, '').replace(/\*\*/g, '');
-    const hasOptions = impLine || cctvLine;
+    const hasOptions = impLine || cctvLine || vodChoice;
+    const { term, price } = firstPrice(first);
+    const free = first.is_trial && price === 0;
+    const tagline = isAddon ? lookup(BRAND.taglines, first.name) : null;
+    const meta = isAddon ? (tagline || termLabel(first))
+      : `${termLabel(first)}${first.panel_type !== 'manual' ? ` · ${conns} connection${conns !== 1 ? 's' : ''}` : ''}`;
     return (
-      <div className={`trial-tile${impLine ? ' t-imperium' : cctvLine ? ' t-cctv' : ''}`} ref={cardRef}
+      <div className={`trial-tile${impLine ? ' t-imperium' : cctvLine ? ' t-cctv' : isAddon ? ' t-addon' : ''}`} ref={cardRef}
         style={focused ? { boxShadow: '0 0 0 2px var(--gold, #d8b35a)' } : undefined}>
         <div className="t-head">
           {tlogo ? <img src={tlogo} alt="" /> : <div className="play-tile" aria-hidden="true" />}
           <div>
             <h4>{service}</h4>
-            <div className="t-meta">{termLabel(first)}{first.panel_type !== 'manual' && ` · ${conns} connection${conns !== 1 ? 's' : ''}`}</div>
+            <div className="t-meta">{meta}</div>
           </div>
-          <span className="t-free">FREE</span>
+          {free ? <span className="t-free">FREE</span> : (
+            <span className="t-price">{money(price)}<small>/{term === 12 ? 'year' : term === 1 ? 'month' : `${term} mo`}</small></span>
+          )}
         </div>
         {summary && <p className="t-sum">{summary.charAt(0).toUpperCase() + summary.slice(1)}</p>}
-        {hasOptions && (
-          <button type="button" className="t-opts-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-            {open ? 'Hide options' : impLine ? 'Options: line-up & channels' : 'Options: pick your channels'}
-            {bouquets && !open ? ' · customised' : impLine && lineup !== 'full' && !open ? ' · changed' : ''}
-          </button>
+        {bundleTotal > price && (
+          <p className="t-bundle">{money(bundleTotal)} if bought separately · <b>save {Math.round((1 - price / bundleTotal) * 100)}%</b></p>
         )}
-        {hasOptions && open && (
+        {(hasOptions || (isAddon && details)) && (
+          <div className="t-links">
+            {hasOptions && (
+              <button type="button" className="t-opts-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+                {open ? 'Hide options' : impLine ? 'Options: line-up & channels' : cctvLine ? 'Options: pick your channels' : 'Options: movies & series app'}
+                {bouquets && !open ? ' · customised' : impLine && lineup !== 'full' && !open ? ' · changed' : vodChoice && vodApp !== 'nuvio' && !open ? ' · Stremio' : ''}
+              </button>
+            )}
+            {isAddon && details && (
+              <button type="button" className="t-link" aria-expanded={more} onClick={() => setMore((v) => !v)}>
+                <Package className="w-3.5 h-3.5" /> {more ? 'Hide details' : "What's included"}
+              </button>
+            )}
+          </div>
+        )}
+        {more && details && <div className="t-details"><FormattedText text={details} /></div>}
+        {vodChoice && open && (
+          <div className="t-opts">
+            <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13, color: 'var(--muted)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--text)' }}>Movies &amp; series app</span>
+              <select value={vodApp} onChange={(e) => setVodApp(e.target.value)} aria-label="Movies and series app"
+                style={{ background: 'var(--deep, #0a1020)', color: 'var(--text, #e9edf8)', border: '1px solid var(--cyan, #22e6f2)', borderRadius: 10, padding: '7px 9px', fontSize: 14 }}>
+                <option value="nuvio">Nuvio (recommended)</option>
+                <option value="stremio">Stremio</option>
+              </select>
+              <small>{vodApp === 'nuvio' ? 'Profiles, cloud sync, made for TV.' : 'The classic Stremio app.'} Same price.</small>
+            </label>
+          </div>
+        )}
+        {(impLine || cctvLine) && open && (
           <div className="t-opts">
             {impLine && (
               <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 8px', fontSize: 13, color: 'var(--muted)' }}>
@@ -401,7 +437,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
             )}
           </div>
         )}
-        <button type="button" className="btn btn-glow t-go" onClick={() => buy(first)}>Start free trial</button>
+        <button type="button" className="btn btn-glow t-go" onClick={() => buy(first)}>{free ? 'Start free trial' : `Get ${service}`}</button>
         {channels !== null && (
           <div className="modal-bg" onClick={() => setChannels(null)}>
             <div className="modal" role="dialog" aria-label={`${service} channels`} onClick={(e) => e.stopPropagation()}>
