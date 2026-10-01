@@ -35,3 +35,4 @@
   .cmtv-nav .sn-burger { display: inline-flex; }
   .cmtv .bar .brand { margin-right: auto; }
 }
+@media (max-width: 440px) { .cmtv .bar .brand span { display: none; } }
