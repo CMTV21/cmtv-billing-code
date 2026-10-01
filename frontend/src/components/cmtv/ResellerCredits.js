@@ -24,7 +24,8 @@ export default function ResellerCredits({ lockServer = null, topup = null, compa
   const { addItem } = useCartStore();
   const { data } = useQuery({ queryKey: ['reseller-pricing'], queryFn: async () => (await api.get('/api/cmtv/reseller/pricing')).data, staleTime: 300000 });
   const servers = data?.servers || {};
-  const keys = Object.keys(servers);
+  // 2026-10-01: Nuvio credits only in the Nuvio tab / box (lockServer="nuvio"), not among the TV panel credits
+  const keys = Object.keys(servers).filter((k) => k !== 'nuvio' || lockServer === 'nuvio');
   const [server, setServer] = useState(lockServer || 'cctv');
   const [credits, setCredits] = useState(100);
   const s = lockServer ? servers[lockServer] : (servers[server] || servers[keys[0]]);

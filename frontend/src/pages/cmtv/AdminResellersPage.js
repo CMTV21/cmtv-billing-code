@@ -113,6 +113,56 @@ function ApprovedBox() {
   );
 }
 
+// 2026-10-01: Nuvio resellers (cmtv_nuvio_reseller.py): switch on (with welcome credits), balances, credit changes, add-on set
+function NuvioResellersBox() {
+  const [email, setEmail] = useState('');
+  const [free, setFree] = useState(10);
+  const [busy, setBusy] = useState(false);
+  const { data, refetch } = useQuery({ queryKey: ['nuvio-resellers-admin'], queryFn: async () => (await api.get('/api/cmtv/nuvio-reseller/admin')).data });
+  const post = async (path, body, ok) => {
+    setBusy(true);
+    try { const r = (await api.post(`/api/cmtv/nuvio-reseller/admin/${path}`, body)).data; toast.success(ok(r)); refetch(); }
+    catch (e) { toast.error(e.response?.data?.detail || 'Could not save'); }
+    setBusy(false);
+  };
+  const list = data?.resellers || [];
+  return (
+    <div className="rs-notice">
+      <b>Nuvio resellers</b>
+      <div style={{ fontSize: 13, opacity: 0.8, margin: '4px 0 8px' }}>
+        They make and run Nuvio accounts in Reseller tools &gt; Nuvio. $0.50 a credit; 1 credit = 1 account-month with 2 devices,
+        +1 for 3-4 devices, +1 for 4K. Free 48 h trials (10 a week).
+        {data && !data.reseller_addons_ready && ' No reseller add-ons yet (Admin > Nuvio > Add-ons, For: Resellers\' customers), so everyone uses your own add-ons for now.'}
+      </div>
+      <div className="row">
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Customer's email" aria-label="Customer's email" style={{ flex: 1, minWidth: 200 }} />
+        <label style={{ fontSize: 13 }}>Welcome credits <input type="number" min="0" value={free} onChange={(e) => setFree(e.target.value)} style={{ width: 70 }} /></label>
+        <button type="button" className="rv-btn glow" disabled={busy || !email.includes('@')}
+          onClick={() => post('enable', { email, on: true, free_credits: Number(free) }, (r) => `${r.name || r.email}: Nuvio reselling on${r.free_credits ? `, ${r.free_credits} credits` : ''}`)}>Switch on</button>
+      </div>
+      {list.length > 0 && (
+        <ul>{list.map((r) => (
+          <li key={r.user_id}><b>{r.name || r.email}</b> ({r.email}) · <b>{r.balance}</b> credits · {r.accounts} account{r.accounts === 1 ? '' : 's'}{r.trials ? ` (${r.trials} trials)` : ''} ·
+            add-ons: {r.pool === 'reseller' ? 'reseller set' : 'yours'}{' '}
+            <button type="button" className="rv-btn" disabled={busy} onClick={() => {
+              const v = window.prompt(`Add (or remove with -) credits for ${r.name || r.email}:`, '10'); if (!v) return;
+              const why = window.prompt('Reason (they see it in their history):', 'Credit from CMTV'); if (!why) return;
+              post('credit', { user_id: r.user_id, delta: Number(v), reason: why }, (x) => `Balance now ${x.balance}`);
+            }}>Credits</button>{' '}
+            <button type="button" className="rv-btn" disabled={busy}
+              onClick={() => window.confirm(`Move ${r.name || r.email} and their accounts to ${r.pool === 'reseller' ? 'your own' : 'the reseller'} add-ons?`)
+                && post('pool', { user_id: r.user_id, pool: r.pool === 'reseller' ? 'retail' : 'reseller' }, (x) => `${x.moved} accounts moved`)}>
+              Use {r.pool === 'reseller' ? 'your add-ons' : 'reseller add-ons'}</button>{' '}
+            <button type="button" className="rv-btn" disabled={busy}
+              onClick={() => window.confirm(`Switch off Nuvio reselling for ${r.name || r.email}? Their accounts keep running to their end dates.`)
+                && post('enable', { user_id: r.user_id, on: false }, () => 'Switched off')}>Switch off</button>
+          </li>
+        ))}</ul>
+      )}
+    </div>
+  );
+}
+
 export default function AdminResellersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cmtv-resellers-admin'], queryFn: async () => (await api.get('/api/cmtv/reseller/admin')).data });
@@ -160,6 +210,7 @@ export default function AdminResellersPage() {
       </div>
 
       <ApprovedBox />
+      <NuvioResellersBox />
       <NoticeBox />
       <Applications />
 

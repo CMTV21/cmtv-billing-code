@@ -216,7 +216,8 @@ def _server_for(product, group_names):
     """Ledger 'server' for a billing product (the spreadsheet's names)"""
     name = str((product or {}).get("name", "")).strip().lower()
     group = str(group_names.get((product or {}).get("group_id"), "")).lower()
-    for key, server in (("audiobook", "ABS"), ("cmtvpn", "CMTVpn"), ("cmtv+", "CMTV+"), ("stremio", "Stremio")):
+    # CMTV local change 2026-10-01: Nuvio (retail + reseller credits) was filed as CCTV
+    for key, server in (("audiobook", "ABS"), ("cmtvpn", "CMTVpn"), ("cmtv+", "CMTV+"), ("stremio", "Stremio"), ("nuvio", "Nuvio")):
         if key in name:
             return server
     if "imperium" in name or "imperium" in group or (product or {}).get("panel_type") == "aether":

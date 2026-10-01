@@ -1,0 +1,41 @@
+/* CMTV local addition 2026-10-01: Reseller tools > Nuvio (NuvioReseller.js). Inside the navy account frame (.cmtv-acct). */
+.nvr-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+.nvr-stats > div { background: rgba(255, 255, 255, .04); border: 1px solid var(--row-line, #202b4a); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; }
+.nvr-stats span { font-size: 13px; color: var(--muted, #9aa6c6); }
+.nvr-stats b { font-size: 26px; font-weight: 700; }
+.nvr-stats small { font-size: 12px; color: var(--muted, #9aa6c6); }
+.nvr-box { border: 1px solid var(--row-line, #202b4a); border-radius: 12px; padding: 14px 16px; margin: 16px 0; }
+.nvr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.nvr-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted, #9aa6c6); }
+.nvr-grid .nvr-wide { grid-column: 1 / -1; }
+.nvr input, .nvr select { background: #0a1020; color: var(--text, #e9edf8); border: 1px solid #27345a; border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 14px; }
+.nvr-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.nvr-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.nvr-check input { width: 16px; height: 16px; }
+.nvr-cost { font-size: 14px; color: var(--muted, #9aa6c6); margin-left: auto; }
+.nvr-cost b { color: var(--text, #e9edf8); }
+.nvr-cost em { color: #fbbf24; font-style: normal; }
+.nvr-table-wrap { overflow-x: auto; border: 1px solid var(--row-line, #202b4a); border-radius: 12px; }
+.nvr-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.nvr-table th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted, #9aa6c6); padding: 10px 12px; }
+.nvr-table td { padding: 10px 12px; border-top: 1px solid var(--row-line, #202b4a); vertical-align: top; }
+.nvr-table td small { display: block; color: var(--muted, #9aa6c6); font-size: 12px; }
+.nvr-right { text-align: right; }
+.nvr-dim td { color: var(--muted, #9aa6c6); }
+.nvr-name { background: none; border: 0; padding: 0; color: var(--text, #e9edf8); font: inherit; font-weight: 700; cursor: pointer; }
+.nvr-pill { margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: rgba(251, 191, 36, .15); color: #fbbf24; }
+.nvr-4k { background: rgba(34, 230, 242, .15); color: #22e6f2; margin-left: 0; }
+.nvr-soon { color: #fbbf24; }
+.nvr-end { color: #f87171; }
+.nvr-off { color: var(--muted, #9aa6c6); }
+.nvr-detail td { background: rgba(255, 255, 255, .03); }
+.nvr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 10px; font-size: 14px; }
+.nvr-actions code { font-size: 13px; }
+.nvr-del { display: inline-flex; gap: 6px; margin-left: auto; }
+.nvr-del input { width: 170px; }
+.nvr-danger { color: #f87171 !important; }
+.nvr-devs { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.nvr-devs li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--row-line, #202b4a); }
+.nvr-devs li button { margin-left: auto; }
+.nvr-search { width: 180px; }
+@media (max-width: 640px) { .nvr-del { margin-left: 0; } .nvr-cost { margin-left: 0; } }

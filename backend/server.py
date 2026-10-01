@@ -250,6 +250,12 @@ app.include_router(cmtv_nuvio.router)
 app.include_router(cmtv_nuvio.relay)
 app.include_router(cmtv_nuvio.short_relay)
 app.include_router(cmtv_nuvio.updates)   # CMTV 2026-09-29: in-app updates for our Nuvio build
+# CMTV local change 2026-10-01: Nuvio for resellers (cmtv_nuvio_reseller.py): Reseller tools > Nuvio, Nuvio credits
+import cmtv_nuvio_reseller
+cmtv_nuvio_reseller.D["get_current_user"] = get_current_user
+cmtv_nuvio_reseller.D["get_current_admin_user"] = get_current_admin_user
+cmtv_nuvio_reseller.init_routes()
+app.include_router(cmtv_nuvio_reseller.router)
 
 # CMTV local change 2026-09-30: customer updates (any product) -> App updates Telegram topic (cmtv_announce.py)
 import cmtv_announce
@@ -1005,6 +1011,7 @@ async def startup_event():
     cmtv_nuvio.init(db=db, users=users_collection, services=services_collection, products=products_collection,
                     get_email_service=get_configured_email_service)  # CMTV 2026-09-29: Nuvio server accounts
     await cmtv_nuvio.startup()   # sharing check (hourly)
+    cmtv_nuvio_reseller.init(db=db)   # CMTV 2026-10-01: Nuvio for resellers
     cmtv_announce.init(db=db)   # CMTV 2026-09-30: customer update posts
     cmtv_trusted_devices.init(db=db)   # CMTV 2026-10-01: 2FA remembered devices
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
@@ -3924,7 +3931,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if not product:
             raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}")
         # CMTV local change 2026-10-01: reseller credits only for existing / approved resellers (cmtv_reseller_credits.access)
-        if product.get("account_type") == "reseller" and not await cmtv_reseller_credits.may_buy(user_id):
+        if product.get("account_type") == "reseller" and not await cmtv_reseller_credits.may_buy(user_id, product):
             raise HTTPException(status_code=403, detail=cmtv_reseller_credits.NOT_ALLOWED)
         product_prices = product.get("prices", {}) or {}
         actual_price = float(list(product_prices.values())[0]) if product_prices else 0.0
@@ -5982,6 +5989,11 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 product = {**product, "reseller_credits": float(item["credits"])}
             # CMTV local change 2026-10-01: CMTV's own balance must cover reseller credits; if not, nothing goes to the
             # panel and the order is held as not provisioned (Critical alert says LOW CREDITS with both numbers)
+            # CMTV local change 2026-10-01: Nuvio reseller credits are kept in billing (cmtv_nuvio_reseller.provision_credits)
+            if product.get("cmtv_nuvio_credits"):
+                await run_item(item.get("product_name") or product.get("name"), item,
+                               cmtv_nuvio_reseller.provision_credits(order_id, order, user, item, product, email_service))
+                continue
             if product.get("account_type") == "reseller":
                 short = await cmtv_reseller_credits.balance_short(product)
                 if short:

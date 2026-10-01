@@ -9,6 +9,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import api from '../../api/api';
 import '../../components/cmtv/reseller-credits.css';
+import NuvioReseller from '../../components/cmtv/NuvioReseller'; // 2026-10-01
 
 const copy = (text, what) => navigator.clipboard.writeText(text).then(() => toast.success(`${what} copied`)).catch(() => toast.error('Copy failed'));
 const day = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -214,6 +215,8 @@ export default function ResellerToolsPage() {
           {data.notices.map((n) => <div key={n.id} className="rt-notice"><small>{day(n.created_at)}</small><p>{n.text}</p></div>)}
         </section>
       )}
+
+      <NuvioReseller />{/* 2026-10-01: Nuvio accounts for resellers switched on for it (shows nothing otherwise) */}
 
       <section className="ca-panel">
         <h2 className="ca-h2">1. Your brand</h2>

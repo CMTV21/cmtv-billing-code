@@ -27,12 +27,13 @@ log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/reseller", tags=["cmtv-reseller"])
 D = {}
 MIN_CREDITS, MAX_CREDITS = 50, 1000
-LABEL = {"cctv": "CCTV", "imperium": "Imperium"}
+LABEL = {"cctv": "CCTV", "imperium": "Imperium", "nuvio": "Nuvio"}   # nuvio: 2026-10-01
 SITE = "https://billing.cmtv.info"
 # price per credit from each amount up (the user's prices, 2026-09-28)
 DEFAULT_TIERS = {
     "cctv": [{"min": 50, "rate": 3.00}, {"min": 250, "rate": 2.75}, {"min": 500, "rate": 2.50}, {"min": 1000, "rate": 2.25}],
     "imperium": [{"min": 50, "rate": 4.00}, {"min": 250, "rate": 3.80}, {"min": 500, "rate": 3.70}, {"min": 1000, "rate": 3.50}],
+    "nuvio": [{"min": 50, "rate": 0.50}],   # 2026-10-01 (the owner): $0.50 flat; 1 credit = 1 Nuvio account-month
 }
 DEFAULT_ALERTS = {"reseller_low": 50, "own_imperium_low": 300, "own_cctv_low": 100}
 _imp = {"balance": None, "at": None}
@@ -48,6 +49,8 @@ def _oid(v):
 
 
 def server_of(product: dict):
+    if (product or {}).get("cmtv_nuvio_credits"):   # 2026-10-01: Nuvio reseller credits (cmtv_nuvio_reseller.py)
+        return "nuvio"
     pt = (product or {}).get("panel_type")
     if pt in ("aether", "nxtdash"):
         return "imperium"
@@ -140,7 +143,7 @@ async def balance_short(product: dict):
     else the reason, for the 'not provisioned' alert. Called before any reseller item goes to the panel."""
     server = server_of(product)
     need = float((product or {}).get("reseller_credits") or 0)
-    if not server or need <= 0:
+    if not server or server == "nuvio" or need <= 0:   # Nuvio credits are billing's own (no panel balance)
         return None
     bal = await (imperium_balance if server == "imperium" else cctv_balance)(max_age=0)
     if bal is None or need <= bal:
@@ -267,6 +270,11 @@ async def reseller_rows(live_imperium=True, include_demo=False):
         server = "imperium" if s.get("panel_type") in ("aether", "nxtdash") else "cctv"
         username = s.get("xtream_username") or s.get("username") or ""
         credits, as_of = None, None
+        if s.get("cockpit_module") == "nuvio_reseller":   # 2026-10-01: Nuvio credits are kept in billing
+            bal = await db.cmtv_nuvio_credits.find_one({"_id": str(s.get("user_id"))}) or {}
+            rows.append({"service": s, "server": "nuvio", "username": "Nuvio", "credits": float(bal.get("balance") or 0),
+                         "as_of": bal.get("updated_at")})
+            continue
         if s.get("cmtv_demo"):
             credits, as_of = float(s.get("cmtv_demo_credits") or 0), datetime.utcnow()
         elif server == "cctv":
@@ -298,7 +306,7 @@ async def low_balance_alerts(rows=None):
     sent = 0
     for r in rows:
         s, credits = r["service"], r["credits"]
-        if credits is None:
+        if credits is None or r["server"] == "nuvio":   # 2026-10-01: Nuvio balances are small numbers; no "low" alert
             continue
         if credits >= low:
             if s.get("cmtv_low_alerted_at"):
@@ -416,14 +424,19 @@ NOT_ALLOWED = ("Reseller credits are only for approved CMTV resellers. "
 
 async def access(uid: str) -> dict:
     db = D["db"]
-    u = await db.users.find_one({"_id": _oid(uid)}, {"role": 1, "cmtv_reseller_approved": 1}) or {}
+    u = await db.users.find_one({"_id": _oid(uid)}, {"role": 1, "cmtv_reseller_approved": 1, "cmtv_nuvio_reseller": 1}) or {}
     existing = bool(await db.services.find_one({"user_id": str(uid), "account_type": "reseller", "status": "active"}))
     approved = bool(u.get("cmtv_reseller_approved"))
-    return {"allowed": u.get("role") == "admin" or existing or approved, "existing": existing, "approved": approved}
+    nuvio = bool(u.get("cmtv_nuvio_reseller"))   # 2026-10-01: Nuvio reselling switched on (Admin > Resellers)
+    return {"allowed": u.get("role") == "admin" or existing or approved or nuvio, "existing": existing, "approved": approved,
+            "nuvio": nuvio, "admin": u.get("role") == "admin"}
 
 
-async def may_buy(uid: str) -> bool:
-    return (await access(uid))["allowed"]
+async def may_buy(uid: str, product: dict = None) -> bool:
+    a = await access(uid)
+    if server_of(product) == "nuvio":   # Nuvio credits: only resellers switched on for Nuvio
+        return a["admin"] or a["nuvio"]
+    return a["allowed"]
 
 
 def init_routes():
@@ -451,7 +464,8 @@ def init_routes():
             s = r["service"]
             out.append({"id": str(s["_id"]), "server": r["server"], "label": LABEL[r["server"]], "username": r["username"],
                         "password": s.get("xtream_password") or s.get("password") or "",
-                        "panel_url": s.get("panel_url") or pack_url.get(r["server"]) or "",
+                        "panel_url": ("/reseller?tab=nuvio" if r["server"] == "nuvio"   # 2026-10-01: managed in billing
+                                      else s.get("panel_url") or pack_url.get(r["server"]) or ""),
                         "credits": r["credits"], "as_of": _iso(r["as_of"]), "low_level": low,
                         "demo": bool(s.get("cmtv_demo"))})
         return {"panels": out}
@@ -560,7 +574,7 @@ def init_routes():
 @router.get("/pricing")
 async def pricing():
     out = {}
-    for server in ("cctv", "imperium"):
+    for server in ("cctv", "imperium", "nuvio"):   # nuvio: 2026-10-01 (the slider shows it to Nuvio resellers only)
         # the pack product a custom amount is ordered through: the smallest active pack of that server
         base = None
         async for p in D["db"].products.find({"account_type": "reseller", "active": {"$ne": False}}):

@@ -16,27 +16,29 @@ function copy(text, what) {
 function Panel({ p }) {
   const [show, setShow] = useState(false);
   const [topup, setTopup] = useState(false);
-  const low = p.credits !== null && p.credits < (p.low_level || 50);
+  const nuvio = p.server === 'nuvio';   // 2026-10-01: Nuvio accounts are run in Reseller tools, not on a panel
+  const low = !nuvio && p.credits !== null && p.credits < (p.low_level || 50);
   return (
     <div className="ca-panel rp-panel">
       <div className="rp-head">
         <div>
-          <h2 className="ca-h2">{p.label} reseller panel</h2>
-          {p.panel_url && <a className="rp-link" href={p.panel_url} target="_blank" rel="noopener noreferrer">{p.panel_url.replace(/^https?:\/\//, '')} &rarr;</a>}
+          <h2 className="ca-h2">{nuvio ? 'Nuvio reseller' : `${p.label} reseller panel`}</h2>
+          {nuvio ? <Link className="rp-link" to="/reseller?tab=nuvio">Your Nuvio accounts &rarr;</Link>
+            : p.panel_url && <a className="rp-link" href={p.panel_url} target="_blank" rel="noopener noreferrer">{p.panel_url.replace(/^https?:\/\//, '')} &rarr;</a>}
         </div>
         <div className={`rp-bal${low ? ' low' : ''}`}>
           <b>{p.credits === null ? '–' : p.credits.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b>
           <span>credits{p.server === 'cctv' ? ' (updated hourly)' : ''}</span>
         </div>
       </div>
-      <div className="rp-login">
+      {!nuvio && <div className="rp-login">
         <div><span>Username</span><code>{p.username}</code><button type="button" className="ca-icon" onClick={() => copy(p.username, 'Username')}>Copy</button></div>
         {p.password && (
           <div><span>Password</span><code>{show ? p.password : '••••••••'}</code>
             <button type="button" className="ca-icon" onClick={() => setShow((v) => !v)}>{show ? 'Hide' : 'Show'}</button>
             <button type="button" className="ca-icon" onClick={() => copy(p.password, 'Password')}>Copy</button></div>
         )}
-      </div>
+      </div>}
       {low && <p className="rp-warn">Running low. Top up so you can keep creating lines.</p>}
       {p.demo && <p className="rp-warn">Demo account: everything here is for show. Buying credits and other changes are switched off.</p>}
       {topup
@@ -44,7 +46,8 @@ function Panel({ p }) {
         : (
           <div className="rp-actions">
             <button type="button" className="ca-btn ca-glow" onClick={() => setTopup(true)}>Add credits</button>
-            <Link className="ca-btn ca-ghost" to="/reseller">Reseller tools</Link>
+            {nuvio ? <Link className="ca-btn ca-ghost" to="/reseller?tab=nuvio">Manage Nuvio accounts</Link>
+              : <Link className="ca-btn ca-ghost" to="/reseller">Reseller tools</Link>}
             <Link className="ca-btn ca-ghost" to="/knowledge-base/cmtv-reseller-guide">Reseller guide</Link>
           </div>
         )}

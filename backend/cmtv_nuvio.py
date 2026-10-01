@@ -159,11 +159,13 @@ CMTV_SLUG = "cmtv"   # 2026-09-30: billing's own built-in add-on ("CMTV" row: yo
 # all) and a quality (4k / hd / any), so the same app gets the matching AIOStreams setup (and Premiumize account) per
 # account. Accounts: reseller_id = owned by a reseller; uhd = 4K on (retail default on, reseller default off).
 def audience(acc: dict) -> str:
-    return "reseller" if acc.get("reseller_id") else "retail"
+    """Which add-on set (Premiumize account) the account uses. A reseller's accounts carry `pool`: "retail" while the
+    reseller is on CMTV's own Premiumize (the owner: until they buy credits themselves), then "reseller"."""
+    return acc.get("pool") or ("reseller" if acc.get("reseller_id") else "retail")
 
 
 def wants_4k(acc: dict) -> bool:
-    return bool(acc.get("uhd", audience(acc) == "retail"))
+    return bool(acc.get("uhd", not acc.get("reseller_id")))
 
 
 def addon_fits(a: dict, acc: dict) -> bool:
@@ -176,8 +178,8 @@ async def managed_for(acc: dict) -> list:
 
 
 def shows_cmtv_row(acc: dict) -> bool:
-    """Resellers' customers don't get CMTV's own "Your account / Renew / Support" row"""
-    return audience(acc) == "retail"
+    """Resellers' customers don't get CMTV's own "Your account / Renew / Support" row (whatever their pool)"""
+    return not acc.get("reseller_id")
 
 
 async def push_addons(acc: dict) -> int:
