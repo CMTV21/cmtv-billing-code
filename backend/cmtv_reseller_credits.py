@@ -173,7 +173,21 @@ async def held_email(email_service, user: dict, product: dict, order_id: str) ->
             f"email as soon as they're on your panel. There's nothing you need to do.\n\n"
             f"Questions? Telegram @Cmtv_support_bot or cmtv@pm.me\n{SITE}/dashboard")
     subject = f"Your {label} credits are on the way"
-    html_full = email_service._wrap_email(body, subject, to, "transactional")
+    html_full = None
+    # the CMTV-branded template (DB "reseller_credits_on_the_way", Admin > Email Templates), sent as a complete navy page;
+    # the plain wrapped version above is the fallback if it's missing or switched off
+    try:
+        tpl = await D["db"].email_templates.find_one({"template_type": "reseller_credits_on_the_way", "is_active": True})
+    except Exception:
+        tpl = None
+    if tpl and tpl.get("html_content"):
+        vals = {"first_name": first, "credits": str(n), "server": html.escape(label), "order_ref": ref,
+                "dashboard_link": f"{SITE}/dashboard"}
+        html_full, subject = tpl["html_content"], tpl.get("subject") or subject
+        for k, v in vals.items():
+            html_full, subject = html_full.replace("{{" + k + "}}", v), subject.replace("{{" + k + "}}", html.unescape(v))
+    if not html_full:
+        html_full = email_service._wrap_email(body, subject, to, "transactional")
     return await email_service.send_email(to_email=to, subject=subject, html_content=html_full, text_content=text,
                                           email_type="transactional", order_id=str(order_id),
                                           recipient_name=user.get("name") or "")
