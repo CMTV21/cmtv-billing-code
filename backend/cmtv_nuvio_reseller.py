@@ -32,6 +32,76 @@ MONTHS = (1, 3, 6, 12)
 
 def init(**deps):
     D.update(deps)
+    try:   # called from server.py's async startup: start the hourly Premiumize usage watch
+        import asyncio
+        asyncio.get_event_loop().create_task(_premiumize_loop())
+    except Exception as e:
+        log.warning(f"Premiumize watch not started: {e}")
+
+
+# ---------------------------------------------------------------- Premiumize usage watch (2026-10-01)
+# Instead of caps (the owner): billing reads each Premiumize account's fair-use use from Premiumize's official API
+# (GET https://www.premiumize.me/api/account/info?apikey=...: limit_used 0..1, premium_until) hourly and posts a silent
+# Ops note at 75% and 90% (once each per cycle; a cycle restarts when use drops back under 50%).
+# Keys: cmtv_config {_id: "premiumize"} {accounts: {retail|reseller: {key, label}}}; never sent back whole.
+PM_URL = "https://www.premiumize.me/api/account/info"
+PM_LEVELS = (0.75, 0.90)
+
+
+async def premiumize_info(key: str) -> dict:
+    import httpx
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(PM_URL, params={"apikey": key})
+    d = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+    if d.get("status") != "success":
+        raise ValueError(d.get("message") or f"Premiumize said {r.status_code}")
+    return {"limit_used": float(d.get("limit_used") or 0), "premium_until": d.get("premium_until"),
+            "space_used": d.get("space_used")}
+
+
+async def premiumize_check() -> dict:
+    cfg = await _db().cmtv_config.find_one({"_id": "premiumize"}) or {}
+    out = {}
+    for name, a in (cfg.get("accounts") or {}).items():
+        if not a.get("key"):
+            continue
+        try:
+            info = await premiumize_info(a["key"])
+        except Exception as e:
+            out[name] = {"error": str(e)[:120]}
+            await _db().cmtv_config.update_one({"_id": "premiumize"}, {"$set": {f"accounts.{name}.last_error": str(e)[:120],
+                                                                               f"accounts.{name}.checked_at": datetime.utcnow()}})
+            continue
+        used, alerted = info["limit_used"], list(a.get("alerted") or [])
+        if used < 0.5:
+            alerted = []   # a new fair-use period
+        for lvl in PM_LEVELS:
+            if used >= lvl and lvl not in alerted:
+                alerted.append(lvl)
+                try:
+                    import cmtv_notify
+                    await cmtv_notify.ops(f"📊 Premiumize ({a.get('label') or name}): <b>{used:.0%}</b> of the fair-use allowance used. "
+                                          + ("Consider buying bonus points soon." if lvl < 0.9 else "Buy bonus points now, or streams will slow down."),
+                                          "critical" if lvl >= 0.9 else "billing", silent=True)
+                except Exception as e:
+                    log.warning(f"Premiumize alert not sent: {e}")
+        await _db().cmtv_config.update_one({"_id": "premiumize"}, {"$set": {
+            f"accounts.{name}.limit_used": used, f"accounts.{name}.premium_until": info["premium_until"],
+            f"accounts.{name}.checked_at": datetime.utcnow(), f"accounts.{name}.alerted": alerted,
+            f"accounts.{name}.last_error": None}})
+        out[name] = {"limit_used": used}
+    return out
+
+
+async def _premiumize_loop():
+    import asyncio
+    await asyncio.sleep(180)
+    while True:
+        try:
+            await premiumize_check()
+        except Exception as e:
+            log.warning(f"Premiumize check failed: {e}")
+        await asyncio.sleep(3600)
 
 
 def _db():
@@ -432,6 +502,35 @@ def init_routes():
         if not delta or not reason:
             raise HTTPException(400, "Enter an amount and a reason")
         return {"balance": await change(uid, delta, "admin", reason, by=current_user.get("email", "admin"))}
+
+    @router.get("/admin/premiumize")
+    async def pm_get(current_user: dict = Depends(admin)):
+        cfg = await _db().cmtv_config.find_one({"_id": "premiumize"}) or {}
+        out = {}
+        for name in ("retail", "reseller"):
+            a = (cfg.get("accounts") or {}).get(name) or {}
+            out[name] = {"label": a.get("label") or ("Your customers" if name == "retail" else "Resellers' customers"),
+                         "key_end": (a.get("key") or "")[-4:], "set": bool(a.get("key")), "limit_used": a.get("limit_used"),
+                         "premium_until": a.get("premium_until"), "checked_at": a.get("checked_at"), "error": a.get("last_error")}
+        return {"accounts": out, "levels": list(PM_LEVELS)}
+
+    @router.post("/admin/premiumize")
+    async def pm_set(body: dict = Body(...), current_user: dict = Depends(admin)):
+        """{account: retail|reseller, key ('' removes it)}: checked with Premiumize before it's saved"""
+        name, key = body.get("account"), str(body.get("key") or "").strip()
+        if name not in ("retail", "reseller"):
+            raise HTTPException(400, "retail or reseller")
+        if key:
+            if not re.match(r"^[A-Za-z0-9]{8,64}$", key):
+                raise HTTPException(400, "That doesn't look like a Premiumize API key")
+            try:
+                await premiumize_info(key)
+            except Exception as e:
+                raise HTTPException(400, f"Premiumize didn't accept that key: {e}")
+        await _db().cmtv_config.update_one({"_id": "premiumize"}, {"$set": {f"accounts.{name}.key": key,
+                                                                           f"accounts.{name}.alerted": []}}, upsert=True)
+        await premiumize_check()
+        return await pm_get(current_user)
 
     @router.post("/admin/pool")
     async def admin_pool(body: dict = Body(...), current_user: dict = Depends(admin)):

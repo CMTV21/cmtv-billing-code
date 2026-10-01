@@ -294,6 +294,52 @@ function Row({ a, refresh }) {
   );
 }
 
+// 2026-10-01: Premiumize fair-use per account (hourly check, Ops alerts at 75% / 90%), instead of caps on resellers
+function PremiumizeUsage() {
+  const { data, refetch } = useQuery({ queryKey: ['premiumize'], queryFn: async () => (await api.get('/api/cmtv/nuvio-reseller/admin/premiumize')).data });
+  const [edit, setEdit] = useState('');
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async (account, k) => {
+    setBusy(true);
+    try { await api.post('/api/cmtv/nuvio-reseller/admin/premiumize', { account, key: k }); toast.success(k ? 'Key saved and checked' : 'Key removed'); setEdit(''); setKey(''); refetch(); }
+    catch (e) { toast.error(errText(e, 'Could not save')); }
+    setBusy(false);
+  };
+  if (!data) return null;
+  return (
+    <div className="grid sm:grid-cols-2 gap-3 mb-5">
+      {Object.entries(data.accounts).map(([name, a]) => {
+        const pct = a.limit_used == null ? null : Math.round(a.limit_used * 100);
+        const color = pct == null ? 'bg-gray-400' : pct >= 90 ? 'bg-red-500' : pct >= 75 ? 'bg-amber-500' : 'bg-emerald-500';
+        return (
+          <div key={name} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+            <div className="flex items-center justify-between">
+              <b className="text-sm text-gray-900 dark:text-white">Premiumize: {a.label}</b>
+              <button type="button" className="text-xs text-blue-600 dark:text-blue-300" onClick={() => { setEdit(edit === name ? '' : name); setKey(''); }}>{a.set ? `Key …${a.key_end}` : 'Add API key'}</button>
+            </div>
+            {a.set ? (
+              <>
+                <div className="mt-2 h-2 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden"><div className={`h-2 ${color}`} style={{ width: `${Math.min(100, pct || 0)}%` }} /></div>
+                <p className="text-xs text-gray-500 mt-1">{pct == null ? 'Not checked yet' : `${pct}% of the fair-use allowance used`}
+                  {a.premium_until ? ` · paid until ${new Date(a.premium_until * 1000).toLocaleDateString()}` : ''}{a.checked_at ? ` · checked ${ago(a.checked_at)}` : ''}</p>
+                {a.error && <p className="text-xs text-red-600 mt-1">{a.error}</p>}
+              </>
+            ) : <p className="text-xs text-gray-500 mt-1">Paste this account's API key (Premiumize &gt; Account) to get usage alerts at 75% and 90%.</p>}
+            {edit === name && (
+              <div className="flex gap-2 mt-2">
+                <input type="password" className={`${input} flex-1`} placeholder="Premiumize API key" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
+                <button type="button" disabled={busy || !key} className={`${btn} bg-blue-600 text-white`} onClick={() => save(name, key)}>Save</button>
+                {a.set && <button type="button" disabled={busy} className={`${btn} bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white`} onClick={() => save(name, '')}>Remove</button>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Accounts() {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
@@ -309,6 +355,7 @@ function Accounts() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['nuvio-accounts'] });
   return (
     <div>
+      <PremiumizeUsage />
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
