@@ -145,3 +145,5 @@
 .cmtv .trial-tile.t-imperium .t-opts-btn { color: var(--gold-hi); }
 .cmtv .trial-tile .t-opts { border-top: 1px solid var(--line); padding-top: 10px; }
 .cmtv .trial-tile .t-go { width: 100%; justify-content: center; margin-top: auto; padding: 10px 14px; }
+.cmtv .trial-tile .t-head .play-tile { margin: 0; border-radius: 10px; box-shadow: none; background: linear-gradient(135deg, #22e6f2 0%, #5b4bff 55%, #c026d3 100%); }
+.cmtv .trial-tile .t-head .play-tile::after { margin-left: 4px; border-width: 9px 0 9px 15px; }
