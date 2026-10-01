@@ -266,8 +266,10 @@ async def send_notice(text: str, by: str, dry_run: bool = True):
                 body = (f"<h2 style=\"margin:0 0 8px\">Notice for resellers</h2><p>{safe}</p>"
                         f"<p style=\"margin:22px 0\"><a href=\"{RC.SITE}/reseller\" style=\"background:#22e6f2;color:#07101a;"
                         "padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:700\">Reseller tools</a></p>")
-                ok = await es.send_email(to_email=mail, subject="CMTV reseller notice",
-                                         html_content=es._wrap_email(body, "Reseller notice", mail, "transactional"),
+                branded = await RC.render("cmtv_reseller_notice", {"notice": safe, "tools_link": f"{RC.SITE}/reseller"})
+                subject, page = branded or ("CMTV reseller notice", None)   # 2026-10-01: CMTV-branded template
+                ok = await es.send_email(to_email=mail, subject=subject,
+                                         html_content=page or es._wrap_email(body, "Reseller notice", mail, "transactional"),
                                          email_type="transactional", template_type="cmtv_reseller_notice", customer_id=uid)
                 emailed += 1 if ok else 0
             except Exception as ex:

@@ -150,6 +150,23 @@ async def balance_short(product: dict):
             f"re-run the order (/root/cmtv-scripts/reprovision_order.py <order id> --apply) or add the credits on the panel by hand.")
 
 
+async def render(template_type: str, vals: dict):
+    """2026-10-01: a CMTV-branded reseller email template (DB email_templates, made by reseller_templates.py, editable in
+    Admin > Email Templates) filled with vals (already HTML-safe) -> (subject, complete html page), or None if the
+    template is missing / switched off (callers then send their plain fallback)."""
+    try:
+        tpl = await D["db"].email_templates.find_one({"template_type": template_type, "is_active": True})
+    except Exception:
+        return None
+    if not tpl or not tpl.get("html_content"):
+        return None
+    page, subject = tpl["html_content"], tpl.get("subject") or ""
+    for k, v in vals.items():
+        page = page.replace("{{" + k + "}}", str(v))
+        subject = subject.replace("{{" + k + "}}", html.unescape(str(v)))
+    return subject, page
+
+
 async def held_email(email_service, user: dict, product: dict, order_id: str) -> bool:
     """2026-10-01 (the owner): a reseller order held by balance_short -> tell the customer their payment went through and
     the credits are on the way (never mentions CMTV's balance). The panel code's own email follows once it's provisioned."""
@@ -173,20 +190,12 @@ async def held_email(email_service, user: dict, product: dict, order_id: str) ->
             f"email as soon as they're on your panel. There's nothing you need to do.\n\n"
             f"Questions? Telegram @Cmtv_support_bot or cmtv@pm.me\n{SITE}/dashboard")
     subject = f"Your {label} credits are on the way"
-    html_full = None
-    # the CMTV-branded template (DB "reseller_credits_on_the_way", Admin > Email Templates), sent as a complete navy page;
-    # the plain wrapped version above is the fallback if it's missing or switched off
-    try:
-        tpl = await D["db"].email_templates.find_one({"template_type": "reseller_credits_on_the_way", "is_active": True})
-    except Exception:
-        tpl = None
-    if tpl and tpl.get("html_content"):
-        vals = {"first_name": first, "credits": str(n), "server": html.escape(label), "order_ref": ref,
-                "dashboard_link": f"{SITE}/dashboard"}
-        html_full, subject = tpl["html_content"], tpl.get("subject") or subject
-        for k, v in vals.items():
-            html_full, subject = html_full.replace("{{" + k + "}}", v), subject.replace("{{" + k + "}}", html.unescape(v))
-    if not html_full:
+    # the CMTV-branded template (Admin > Email Templates); the plain wrapped version above is the fallback
+    branded = await render("reseller_credits_on_the_way", {"first_name": first, "credits": str(n), "server": html.escape(label),
+                                                           "order_ref": ref, "dashboard_link": f"{SITE}/dashboard"})
+    if branded:
+        subject, html_full = branded
+    else:
         html_full = email_service._wrap_email(body, subject, to, "transactional")
     return await email_service.send_email(to_email=to, subject=subject, html_content=html_full, text_content=text,
                                           email_type="transactional", order_id=str(order_id),
@@ -310,9 +319,14 @@ async def low_balance_alerts(rows=None):
                     f"credits go straight onto your panel.</p>"
                     f"<p style=\"margin:22px 0\"><a href=\"{link}\" style=\"background:#22e6f2;color:#07101a;padding:12px 22px;"
                     f"border-radius:999px;text-decoration:none;font-weight:700\">Add credits</a></p>")
+            subject, page = f"Your {label} reseller panel: {amount} credits left", None
+            branded = await render("cmtv_reseller_low", {"first_name": first, "server": html.escape(label), "credits": amount,
+                                                         "username": html.escape(r["username"]), "dashboard_link": link})
+            if branded:   # 2026-10-01: CMTV-branded template
+                subject, page = branded
             try:
-                await es.send_email(to_email=u["email"], subject=f"Your {label} reseller panel: {amount} credits left",
-                                    html_content=es._wrap_email(body, "Low credits", u["email"], "transactional"),
+                await es.send_email(to_email=u["email"], subject=subject,
+                                    html_content=page or es._wrap_email(body, "Low credits", u["email"], "transactional"),
                                     email_type="transactional", template_type="cmtv_reseller_low", customer_id=str(u["_id"]))
             except Exception as e:
                 log.warning(f"low-credit email failed: {e}")

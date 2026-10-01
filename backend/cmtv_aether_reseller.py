@@ -103,6 +103,13 @@ async def provision(*, ae, order_id: str, order: dict, user: dict, item: dict, p
             item["renewal_service_id"] = str(existing["_id"])
             logger.info(f"Imperium reseller top-up: {credits:g} credits -> {existing['username']}")
             if email_service:
+                try:   # 2026-10-01: the same CMTV-branded "credits added" email as CCTV top-ups (DB template credits_added)
+                    if await email_service.send_credits_added(customer_email=user["email"], customer_name=user.get("name", ""),
+                                                              username=existing["username"], credits=f"{credits:g}",
+                                                              customer_id=order["user_id"]):
+                        return
+                except Exception as e:
+                    logger.warning(f"Imperium reseller top-up email (template) failed: {e}")
                 try:
                     body = (f"<h2>Credits added</h2><p>Hi {user.get('name', '')},</p>"
                             f"<p><strong>{credits:g} credits</strong> have been added to your Imperium reseller panel "
