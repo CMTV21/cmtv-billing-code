@@ -94,7 +94,8 @@ export default function CmtvHomePage() {
     queryKey: ['reseller-access', user?.id || user?.email || ''], enabled: !!user, staleTime: 60000,
     queryFn: async () => (await api.get('/api/cmtv/reseller/access')).data,
   });
-  const canResell = !!resellerAccess?.allowed;
+  // the store shows admins what customers see: the slider only for real resellers (existing panel or approved)
+  const canResell = !!(resellerAccess?.existing || resellerAccess?.approved);
 
   // Groups in the admin's order, each with its cards (one per sub-group, or one per product)
   const groups = useMemo(() => {
@@ -271,8 +272,16 @@ export default function CmtvHomePage() {
           ))}
           {/* 2026-10-01: reseller credits are for approved resellers only: everyone else gets the application link */}
           {!isLoading && !canResell && (tab === 'all' || tab === 'resellers') && (
-            <p style={{ margin: '28px 0 0', fontSize: 14, color: 'var(--muted)', textAlign: 'center' }}>Want to resell CMTV?{' '}
-              <a href="https://cmtv.info/partners/" style={{ color: 'var(--cyan)', fontWeight: 700 }}>Apply to become a reseller &rarr;</a></p>
+            <div id="group-resellers" style={{ scrollMarginTop: 80 }}>
+              <div className="family fam-resellers"><span>Resellers</span></div>
+              <div className="trial-tile" style={{ alignItems: 'center', textAlign: 'center', borderTopColor: 'var(--violet)', maxWidth: 560, margin: '0 auto' }}>
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14.5 }}>
+                  Run your own customers with CMTV: wholesale credits, your own reseller panel and branded setup guides.
+                  Reseller credits are for approved resellers.
+                </p>
+                <a className="btn btn-glow" href="https://cmtv.info/partners/" style={{ padding: '10px 22px' }}>Apply to be a reseller</a>
+              </div>
+            </div>
           )}
         </div>
       </section>

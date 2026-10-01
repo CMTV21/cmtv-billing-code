@@ -5980,6 +5980,14 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
             # with that many credits (every reseller path reads product["reseller_credits"])
             if item.get("credits") and product.get("account_type") == "reseller":
                 product = {**product, "reseller_credits": float(item["credits"])}
+            # CMTV local change 2026-10-01: CMTV's own balance must cover reseller credits; if not, nothing goes to the
+            # panel and the order is held as not provisioned (Critical alert says LOW CREDITS with both numbers)
+            if product.get("account_type") == "reseller":
+                short = await cmtv_reseller_credits.balance_short(product)
+                if short:
+                    units += 1
+                    failures.append(f"{item.get('product_name') or product.get('name')}: {short}")
+                    continue
             # CMTV local change 2026-09-29: Imperium line-up -> the matching package (renewals keep the line's line-up)
             product = await cmtv_lineups.apply(product, item)
 

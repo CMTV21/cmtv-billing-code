@@ -129,18 +129,25 @@ async def custom_price(product: dict, credits: int):
         raise ValueError("This pack can't be bought in a custom amount")
     if not (MIN_CREDITS <= int(credits) <= MAX_CREDITS):
         raise ValueError(f"Choose between {MIN_CREDITS} and {MAX_CREDITS} credits (message us for more)")
-    bal = await (imperium_balance if server == "imperium" else cctv_balance)(max_age=60)   # 2026-09-29: CCTV capped too
-    if bal is not None and int(credits) > bal:
-        # 2026-10-01: never tell customers CMTV's own balance (the owner: private); tell the owner instead
-        try:
-            await _ops(f"⚠️ A reseller tried to buy {int(credits)} {LABEL[server]} credits online, more than your "
-                       f"{LABEL[server]} balance ({bal:g}). Top up, or sell it by hand.", "billing")
-        except Exception:
-            pass
-        raise ValueError(f"That many {LABEL[server]} credits can't be bought online right now. "
-                         "Message us on Telegram or email cmtv@pm.me and we'll set it up.")
+    # 2026-10-01 (the owner): any amount can be bought, whatever CMTV's own balance; provision_order_services checks
+    # it with balance_short() and holds the order (not provisioned + Critical alert) when the balance can't cover it
     rate = rate_for(await tiers_for(server), int(credits))
     return round(int(credits) * rate, 2), f"{LABEL[server]} Reseller Credits - {int(credits)} credits"
+
+
+async def balance_short(product: dict):
+    """2026-10-01: None if CMTV's own balance on this pack's server covers its reseller_credits (or can't be read),
+    else the reason, for the 'not provisioned' alert. Called before any reseller item goes to the panel."""
+    server = server_of(product)
+    need = float((product or {}).get("reseller_credits") or 0)
+    if not server or need <= 0:
+        return None
+    bal = await (imperium_balance if server == "imperium" else cctv_balance)(max_age=0)
+    if bal is None or need <= bal:
+        return None
+    return (f"LOW CREDITS: your {LABEL[server]} balance is {bal:g}, this order needs {need:g}. Nothing was sent to the "
+            f"panel. Top up your {LABEL[server]} credits, then re-run the order "
+            f"(/root/cmtv-scripts/reprovision_order.py <order id> --apply) or add the credits on the panel by hand.")
 
 
 # ---------- balances ----------
