@@ -125,3 +125,23 @@
   .cmtv .hero .inner { padding-block: 44px 40px; }
 }
 @media (prefers-reduced-motion: reduce) { .cmtv * { transition: none !important; animation: none !important; } }
+
+/* 2026-10-01: free trials as compact tiles (CmtvHomePage PlanCard, family "trials") */
+.cmtv .trial-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; align-items: start; }
+.cmtv .trial-tile { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border: 1px solid var(--line);
+  border-top: 3px solid #f59e0b; border-radius: 14px; padding: 14px 16px 16px; min-width: 0; }
+.cmtv .trial-tile.t-cctv { border-top-color: var(--cyan); }
+.cmtv .trial-tile.t-imperium { border-top-color: var(--gold); }
+.cmtv .trial-tile .t-head { display: flex; align-items: center; gap: 12px; }
+.cmtv .trial-tile .t-head img, .cmtv .trial-tile .t-head .play-tile { width: 44px; height: 44px; border-radius: 10px; object-fit: contain; flex-shrink: 0; background: #0b1020; }
+.cmtv .trial-tile h4 { font: 700 17px/1.2 var(--display); margin: 0; color: var(--text); }
+.cmtv .trial-tile .t-meta { font-size: 13px; color: var(--muted); }
+.cmtv .trial-tile .t-free { margin-left: auto; font: 800 14px var(--display); color: #fbbf24; letter-spacing: .04em; }
+.cmtv .trial-tile.t-imperium .t-free { color: var(--gold-hi); }
+.cmtv .trial-tile .t-sum { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cmtv .trial-tile .t-opts-btn, .cmtv .trial-tile .t-link { align-self: flex-start; background: none; border: 0; padding: 0; cursor: pointer;
+  font: 600 13px var(--body); color: var(--cyan); display: inline-flex; align-items: center; gap: 5px; }
+.cmtv .trial-tile.t-imperium .t-opts-btn { color: var(--gold-hi); }
+.cmtv .trial-tile .t-opts { border-top: 1px solid var(--line); padding-top: 10px; }
+.cmtv .trial-tile .t-go { width: 100%; justify-content: center; margin-top: auto; padding: 10px 14px; }

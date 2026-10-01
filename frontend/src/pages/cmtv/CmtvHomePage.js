@@ -263,7 +263,7 @@ export default function CmtvHomePage() {
                     <a href="https://cmtv.info/partners/" style={{ color: 'var(--cyan)', fontWeight: 700 }}>See what's included and our partner services &rarr;</a></p>
                 </>
               ) : (
-                <div className="stack">
+                <div className={g.family === 'trials' ? 'trial-grid' : 'stack'}>{/* 2026-10-01: trials as tiles */}
                   {g.cards.map((c) => <PlanCard key={c.id} card={c} family={g.family} grouped={g.hasSubgroups} allProducts={products} focus={focusPlan} />)}
                 </div>
               )}
@@ -356,6 +356,65 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
     try { setChannels((await axios.get(`${API_URL}/api/products/${first.id}/channels`)).data.channels || []); }
     catch { setChannels([]); }
   };
+
+  // 2026-10-01: free trials as compact tiles (the owner found six full cards too bulky); same buy() and choices
+  if (family === 'trials' && products.length === 1) {
+    const paidOf = (allProducts || []).find((p) => p.id === first.cmtv_trial_of);
+    const service = impLine ? 'Imperium' : cctvLine ? 'CCTV' : (paidOf?.name || String(first.name).replace(/\s*\d+[- ]?(day|hour)s?\s*trial$/i, '').trim());
+    const tlogo = impLine ? BRAND.imperiumLogo : cctvLine ? BRAND.cctvLogo : lookup(BRAND.logos, service);
+    const summary = String(intro || first.description || '').split('\n')[0].replace(/^\*\*[^*]+\*\*:\s*/, '').replace(/\*\*/g, '');
+    const hasOptions = impLine || cctvLine;
+    return (
+      <div className={`trial-tile${impLine ? ' t-imperium' : cctvLine ? ' t-cctv' : ''}`} ref={cardRef}
+        style={focused ? { boxShadow: '0 0 0 2px var(--gold, #d8b35a)' } : undefined}>
+        <div className="t-head">
+          {tlogo ? <img src={tlogo} alt="" /> : <div className="play-tile" aria-hidden="true" />}
+          <div>
+            <h4>{service}</h4>
+            <div className="t-meta">{termLabel(first)}{first.panel_type !== 'manual' && ` · ${conns} connection${conns !== 1 ? 's' : ''}`}</div>
+          </div>
+          <span className="t-free">FREE</span>
+        </div>
+        {summary && <p className="t-sum">{summary.charAt(0).toUpperCase() + summary.slice(1)}</p>}
+        {hasOptions && (
+          <button type="button" className="t-opts-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            {open ? 'Hide options' : impLine ? 'Options: line-up & channels' : 'Options: pick your channels'}
+            {bouquets && !open ? ' · customised' : impLine && lineup !== 'full' && !open ? ' · changed' : ''}
+          </button>
+        )}
+        {hasOptions && open && (
+          <div className="t-opts">
+            {impLine && (
+              <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 8px', fontSize: 13, color: 'var(--muted)' }}>
+                <span style={{ fontWeight: 700, color: 'var(--text)' }}>Channel line-up</span>
+                <select value={lineup} onChange={(e) => setLineup(e.target.value)} aria-label="Channel line-up"
+                  style={{ background: 'var(--deep, #0a1020)', color: 'var(--text, #e9edf8)', border: '1px solid var(--gold, #d8b35a)', borderRadius: 10, padding: '7px 9px', fontSize: 14 }}>
+                  {LINEUPS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+                </select>
+                <small>{LINEUPS.find((l) => l.key === lineup)?.note}</small>
+              </label>
+            )}
+            {impLine && <ChannelPicker productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />}
+            {cctvLine && <ChannelPicker source="cctv" productId={first.id} value={bouquets} onChange={setBouquets} />}
+            {first.show_channels !== false && (
+              <button type="button" className="t-link" onClick={showChannels}><Info className="w-3.5 h-3.5" /> View channels</button>
+            )}
+          </div>
+        )}
+        <button type="button" className="btn btn-glow t-go" onClick={() => buy(first)}>Start free trial</button>
+        {channels !== null && (
+          <div className="modal-bg" onClick={() => setChannels(null)}>
+            <div className="modal" role="dialog" aria-label={`${service} channels`} onClick={(e) => e.stopPropagation()}>
+              <header><h3>{service} channels</h3><button type="button" aria-label="Close" onClick={() => setChannels(null)}><X className="w-5 h-5" /></button></header>
+              {channels === 'loading' ? <div className="spinner" /> : channels.length ? (
+                <div className="list">{channels.map((ch) => <div key={ch.id}>{ch.name}</div>)}</div>
+              ) : <p className="empty">Channel list not available.</p>}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`card card-${family}`} ref={cardRef} style={focused ? { boxShadow: '0 0 0 2px var(--gold, #d8b35a)' } : undefined}>
