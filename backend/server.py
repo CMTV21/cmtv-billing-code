@@ -5987,6 +5987,10 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 if short:
                     units += 1
                     failures.append(f"{item.get('product_name') or product.get('name')}: {short}")
+                    try:   # 2026-10-01: tell the customer the credits are on the way (no balance mentioned)
+                        await cmtv_reseller_credits.held_email(email_service, user, product, order_id)
+                    except Exception as e:
+                        logger.warning(f"Reseller 'credits on the way' email failed for order {order_id}: {e}")
                     continue
             # CMTV local change 2026-09-29: Imperium line-up -> the matching package (renewals keep the line's line-up)
             product = await cmtv_lineups.apply(product, item)

@@ -146,8 +146,37 @@ async def balance_short(product: dict):
     if bal is None or need <= bal:
         return None
     return (f"LOW CREDITS: your {LABEL[server]} balance is {bal:g}, this order needs {need:g}. Nothing was sent to the "
-            f"panel. Top up your {LABEL[server]} credits, then re-run the order "
-            f"(/root/cmtv-scripts/reprovision_order.py <order id> --apply) or add the credits on the panel by hand.")
+            f"panel. The customer was emailed that the credits are on the way. Top up your {LABEL[server]} credits, then "
+            f"re-run the order (/root/cmtv-scripts/reprovision_order.py <order id> --apply) or add the credits on the panel by hand.")
+
+
+async def held_email(email_service, user: dict, product: dict, order_id: str) -> bool:
+    """2026-10-01 (the owner): a reseller order held by balance_short -> tell the customer their payment went through and
+    the credits are on the way (never mentions CMTV's balance). The panel code's own email follows once it's provisioned."""
+    to = str((user or {}).get("email") or "")
+    if not email_service or not getattr(email_service, "enabled", False) or not to or to.lower().endswith("@panel.local"):
+        return False
+    label = LABEL.get(server_of(product), "")
+    n = int(float(product.get("reseller_credits") or 0))
+    first = html.escape(str(user.get("name") or "").split(" ")[0] or "there")
+    ref = html.escape(str(order_id)[:8])
+    body = (f"<h2 style=\"margin:0 0 12px\">Your {label} credits are on the way</h2>"
+            f"<p>Hi {first},</p>"
+            f"<p>Thanks, your payment for <b>{n} {label} reseller credits</b> (order #{ref}) came through.</p>"
+            f"<p>We're adding them to your reseller panel now. This can take a little while; you'll get another email as "
+            f"soon as they're on your panel. There's nothing you need to do.</p>"
+            f"<p>Questions? Message us on Telegram (<a href=\"https://t.me/Cmtv_support_bot\">@Cmtv_support_bot</a>) or "
+            f"email <a href=\"mailto:cmtv@pm.me\">cmtv@pm.me</a>.</p>"
+            f"<p style=\"margin-top:18px\"><a href=\"{SITE}/dashboard\">Go to your dashboard</a></p>")
+    text = (f"Hi {user.get('name') or 'there'},\n\nThanks, your payment for {n} {label} reseller credits (order #{str(order_id)[:8]}) "
+            f"came through. We're adding them to your reseller panel now. This can take a little while; you'll get another "
+            f"email as soon as they're on your panel. There's nothing you need to do.\n\n"
+            f"Questions? Telegram @Cmtv_support_bot or cmtv@pm.me\n{SITE}/dashboard")
+    subject = f"Your {label} credits are on the way"
+    html_full = email_service._wrap_email(body, subject, to, "transactional")
+    return await email_service.send_email(to_email=to, subject=subject, html_content=html_full, text_content=text,
+                                          email_type="transactional", order_id=str(order_id),
+                                          recipient_name=user.get("name") or "")
 
 
 # ---------- balances ----------
