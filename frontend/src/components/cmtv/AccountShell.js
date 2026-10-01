@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../api/api';
 import { useAuthStore } from '../../store/store';
 import { BRAND } from './brand';
+import { WEBPLAYER } from './webPlayer';
 import './cmtv-account.css';
 
 const TABS = [
@@ -47,6 +48,8 @@ export function AccountHeader() {
         <Link className="ca-brand" to="/" aria-label="CMTV home"><img src={BRAND.siteLogo} alt="" /><span>CMTV</span></Link>
         <nav className="ca-tabs" aria-label="Account">
           {tabs.map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard' || to === '/'}>{label}</NavLink>)}
+          {/* 2026-10-01: the CMTV Web Player (each TV line's card has a one-tap "Watch in browser" too) */}
+          {user && <a href={WEBPLAYER} target="_blank" rel="noopener noreferrer" title="Watch in your browser">Web Player</a>}
         </nav>
         {user ? (
           <div className="ca-who" ref={ref}>
@@ -59,6 +62,7 @@ export function AccountHeader() {
                 <p>{user.name || user.email}</p>
                 <Link to="/" role="menuitem">Shop plans</Link>
                 {isReseller && <Link to="/reseller" role="menuitem">Reseller tools</Link>}
+                <a href={WEBPLAYER} target="_blank" rel="noopener noreferrer" role="menuitem">Web Player</a>
                 <button type="button" role="menuitem" onClick={() => { logout(); navigate('/login'); }}>Log out</button>
               </div>
             )}

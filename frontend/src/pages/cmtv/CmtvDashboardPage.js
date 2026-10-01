@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import TelegramAlerts from '../../components/cmtv/TelegramAlerts'; // 2026-09-28: Telegram alerts panel
 import NuvioDevices from '../../components/cmtv/NuvioDevices'; // 2026-09-29: devices on a Nuvio service card
+import { webPlayerLink } from '../../components/cmtv/webPlayer'; // 2026-10-01: "Watch in browser"
 import ResellerPanels from '../../components/cmtv/ResellerPanels'; // 2026-09-28: reseller login, balance, top-up slider
 import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: latest CMTV Updates post
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
@@ -175,6 +176,11 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
           {!d.ended && (d.setup ? (
             <button type="button" className="ca-btn ca-ghost" onClick={() => setShowSetup(!showSetup)}>{showSetup ? 'Hide setup' : 'Set up'}</button>
           ) : <Link className="ca-btn ca-ghost" to="/knowledge-base">Setup guides</Link>)}
+          {/* 2026-10-01: one-tap sign-in to the CMTV Web Player (not Imperium yet: see webPlayer.js) */}
+          {!d.ended && webPlayerLink(s) && (
+            <a className="ca-btn ca-ghost" href={webPlayerLink(s)} target="_blank" rel="noopener noreferrer"
+              title="Opens the CMTV Web Player, signed in with this line">Watch in browser</a>
+          )}
           <AutoRenewSwitch d={d} enabled={autoRenewEnabled} />
         </div>
         {showSetup && d.setup && <div className="ca-setup"><FormattedText text={d.setup} /></div>}
