@@ -127,7 +127,7 @@
 @media (prefers-reduced-motion: reduce) { .cmtv * { transition: none !important; animation: none !important; } }
 
 /* 2026-10-01: free trials as compact tiles (CmtvHomePage PlanCard, family "trials") */
-.cmtv .trial-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; align-items: start; }
+.cmtv .trial-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; align-items: stretch; }
 .cmtv .trial-tile { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border: 1px solid var(--line);
   border-top: 3px solid #f59e0b; border-radius: 14px; padding: 14px 16px 16px; min-width: 0; }
 .cmtv .trial-tile.t-cctv { border-top-color: var(--cyan); }
