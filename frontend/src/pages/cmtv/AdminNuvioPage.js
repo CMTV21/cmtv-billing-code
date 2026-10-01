@@ -234,6 +234,10 @@ function Row({ a, refresh }) {
         <td className="px-3 py-3">
           <button type="button" className="font-semibold text-blue-700 dark:text-blue-300 hover:underline" onClick={() => setOpen(!open)}>{a.login || a.username}</button>
           {a.share_alert && <span title={`${a.share_alert.ips} internet connections at once (${ago(a.share_alert.at)})`} className="ml-2 inline-flex items-center text-amber-600"><AlertTriangle className="w-4 h-4" /></span>}
+          {/* 2026-10-01: 4K / reseller / trial */}
+          <span className="ml-2 text-xs font-semibold text-gray-500">{a.uhd ? '4K' : 'HD'}</span>
+          {a.trial && <span className="ml-2 px-1.5 rounded bg-amber-100 text-amber-800 text-xs">Trial</span>}
+          {a.reseller && <p className="text-xs text-violet-600 dark:text-violet-300">Reseller: {a.reseller}</p>}
           {a.notes && <p className="text-xs text-gray-500">{a.notes}</p>}
         </td>
         <td className="px-3 py-3 text-sm">
@@ -267,6 +271,7 @@ function Row({ a, refresh }) {
                 ? <button type="button" className={`${btn} bg-emerald-600 text-white`} onClick={() => call('enable', {}, 'Switched on')}><Power className="w-4 h-4" /> Switch on</button>
                 : <button type="button" className={`${btn} bg-gray-700 text-white`} onClick={() => call('disable', {}, 'Switched off: streams stop, history is kept')}><Power className="w-4 h-4" /> Switch off</button>}
               <button type="button" className={`${btn} bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white`} onClick={async () => { const r = await call('password', {}, 'New password set'); if (r) setPw(r.password); }}><KeyRound className="w-4 h-4" /> New password</button>
+              <button type="button" className={`${btn} bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white`} onClick={() => call('uhd', { on: !a.uhd }, a.uhd ? '4K off: HD add-ons sent' : '4K on: 4K add-ons sent')}>{a.uhd ? '4K off' : '4K on'}</button>
               <button type="button" className={`${btn} bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white`} onClick={() => call('push-addons', {}, 'Add-ons sent to the account')}><Send className="w-4 h-4" /> Re-send add-ons</button>
               <button type="button" title="Makes new personal add-on links; the old ones stop working (use if they were shared)" className={`${btn} bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white`} onClick={() => call('new-links', {}, 'New add-on links made')}><Link2 className="w-4 h-4" /> New links</button>
               <button type="button" className={`${btn} bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 ml-auto`} onClick={() => setModal('delete')}><Trash2 className="w-4 h-4" /> Delete</button>
@@ -372,6 +377,17 @@ function Addons() {
             <div className="flex items-center gap-2">
               <input type={show[i] ? 'text' : 'password'} className={`${input} flex-1 font-mono text-xs`} placeholder="https://…/manifest.json" value={a.url} onChange={(e) => set(i, { url: e.target.value })} />
               <button type="button" onClick={() => setShow({ ...show, [i]: !show[i] })} className="text-gray-500">{show[i] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+            </div>
+            {/* 2026-10-01: who gets this add-on, and for which 4K setting */}
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+              <label className="flex items-center gap-2">For
+                <select className={input} value={a.audience || 'all'} onChange={(e) => set(i, { audience: e.target.value })}>
+                  <option value="all">Everyone</option><option value="retail">Your customers</option><option value="reseller">Resellers' customers</option>
+                </select></label>
+              <label className="flex items-center gap-2">Quality
+                <select className={input} value={a.quality || 'any'} onChange={(e) => set(i, { quality: e.target.value })}>
+                  <option value="any">Any (4K on or off)</option><option value="4k">Accounts with 4K on</option><option value="hd">Accounts with 4K off</option>
+                </select></label>
             </div>
           </div>
         ))}

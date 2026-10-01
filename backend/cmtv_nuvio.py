@@ -155,11 +155,36 @@ def personal_url(token: str, slug: str) -> str:
 CMTV_SLUG = "cmtv"   # 2026-09-30: billing's own built-in add-on ("CMTV" row: your plan, renew, get help)
 
 
+# 2026-10-01 (the owner): each add-on is for an audience (retail = CMTV's own customers, reseller = resellers' customers,
+# all) and a quality (4k / hd / any), so the same app gets the matching AIOStreams setup (and Premiumize account) per
+# account. Accounts: reseller_id = owned by a reseller; uhd = 4K on (retail default on, reseller default off).
+def audience(acc: dict) -> str:
+    return "reseller" if acc.get("reseller_id") else "retail"
+
+
+def wants_4k(acc: dict) -> bool:
+    return bool(acc.get("uhd", audience(acc) == "retail"))
+
+
+def addon_fits(a: dict, acc: dict) -> bool:
+    aud, q = a.get("audience") or "all", a.get("quality") or "any"
+    return aud in ("all", audience(acc)) and (q == "any" or (q == "4k") == wants_4k(acc))
+
+
+async def managed_for(acc: dict) -> list:
+    return [a for a in await addon_config() if a.get("enabled", True) and addon_fits(a, acc)]
+
+
+def shows_cmtv_row(acc: dict) -> bool:
+    """Resellers' customers don't get CMTV's own "Your account / Renew / Support" row"""
+    return audience(acc) == "retail"
+
+
 async def push_addons(acc: dict) -> int:
     """Put the managed add-ons (personal links) on the account's main profile, keeping add-ons the customer added
     themselves. Other profiles share the main profile's add-ons (uses_primary_addons). The CMTV add-on goes last while
     the plan is live and first once it has ended (so "Renew" is the first thing they see)."""
-    managed = [a for a in await addon_config() if a.get("enabled", True)]
+    managed = await managed_for(acc)   # 2026-10-01: only the add-ons for this account's audience + 4K setting
     st, current = await nv("GET", f"/rest/v1/addons?select=url,name,enabled,sort_order&user_id=eq.{acc['nuvio_id']}"
                                   f"&profile_id=eq.1&order=sort_order")
     if st != 200:
@@ -168,7 +193,7 @@ async def push_addons(acc: dict) -> int:
     ours = [{"url": personal_url(acc["token"], a["slug"]), "name": a["name"]} for a in managed]
     cmtv = {"url": personal_url(acc["token"], CMTV_SLUG), "name": "CMTV"}
     # 2026-09-30: always first, so the CMTV row is the top row of the home screen (the owner: "buried at the bottom")
-    ordered = [cmtv] + ours + own
+    ordered = ([cmtv] if shows_cmtv_row(acc) else []) + ours + own
     rows = [{"url": a["url"], "name": a.get("name") or "", "enabled": a.get("enabled", True), "sort_order": i}
             for i, a in enumerate(ordered)]
     st, data = await nv("POST", "/rest/v1/rpc/sync_push_addons", {"p_profile_id": 1, "p_addons": rows}, as_user=acc["nuvio_id"])
@@ -264,6 +289,82 @@ async def _linked(username: str):
 async def _sync_services(username: str, **fields):
     for s in await _linked(username):
         await D["services"].update_one({"_id": s["_id"]}, {"$set": {**fields, "updated_at": datetime.utcnow()}})
+
+
+# ---------------------------------------------------------------- shared account actions (2026-10-01)
+# Used by the reseller Nuvio tab (cmtv_nuvio_reseller.py); Admin > Nuvio keeps its own route code.
+async def reseller_ended_text(acc: dict) -> str:
+    """The message a reseller's customer sees when their account has ended: the reseller's own name/contact
+    (Reseller tools > brand settings), never CMTV."""
+    b = await _db().cmtv_reseller_brands.find_one({"_id": str(acc.get("reseller_id") or "")}) or {}
+    who, contact = (b.get("name") or "").strip(), (b.get("contact") or "").strip()
+    text = "Your subscription has ended."
+    if who or contact:
+        text += f"\nTo renew, contact {who or 'your provider'}" + (f": {contact}" if contact else "") + "."
+    else:
+        text += "\nContact your provider to renew."
+    return text
+
+
+async def set_status(acc: dict, off: bool):
+    await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {
+        "status": "off" if off else "active", "updated_at": datetime.utcnow(),
+        **({"switched_off_at": datetime.utcnow()} if off else {})}})
+    _cache_drop(acc["_id"])
+    await _repush(acc["_id"])
+
+
+async def set_password(acc: dict, password: str):
+    st, data = await nv("PUT", f"/auth/v1/admin/users/{acc['nuvio_id']}", {"password": password})
+    if st != 200:
+        raise NuvioError(_err(data))
+    await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {"password": password, "updated_at": datetime.utcnow()}})
+    await _sync_services(acc["_id"], password=password, xtream_password=password)
+
+
+async def set_max_devices(acc: dict, n: int):
+    st, data = await nv("PUT", f"/auth/v1/admin/users/{acc['nuvio_id']}", {"app_metadata": {"cmtv_max_devices": n}})
+    if st != 200:
+        raise NuvioError(_err(data))
+    await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {"max_devices": n}})
+
+
+async def set_uhd(acc: dict, on: bool):
+    """4K on/off: re-sends the add-ons, so the account gets the 4K or the HD setup from the next app start"""
+    await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {"uhd": bool(on), "updated_at": datetime.utcnow()}})
+    _cache_drop(acc["_id"])
+    await push_addons({**acc, "uhd": bool(on)})
+
+
+async def list_devices(acc: dict) -> list:
+    st, data = await nv("POST", "/rest/v1/rpc/cmtv_devices", {"p_user": acc["nuvio_id"]})
+    keep = ("session_id", "signed_in_at", "last_used_at", "counts", "app", "platform", "device")
+    return [{k: d.get(k) for k in keep} for d in (data if st == 200 and isinstance(data, list) else [])]
+
+
+async def sign_out(acc: dict, session_id=None) -> int:
+    st, n = await nv("POST", "/rest/v1/rpc/cmtv_sign_out", {"p_user": acc["nuvio_id"], "p_session": session_id})
+    if st != 200:
+        raise NuvioError(_err(n))
+    return n
+
+
+async def delete_account(acc: dict, by: str):
+    """Wipe and remove on the Nuvio server; billing keeps a copy (same steps as Admin > Nuvio > Delete)"""
+    st, profiles = await nv("POST", "/rest/v1/rpc/sync_pull_profiles", {}, as_user=acc["nuvio_id"])
+    for p in (profiles if st == 200 and isinstance(profiles, list) else []):
+        await nv("POST", "/rest/v1/rpc/sync_delete_profile_data", {"p_profile_id": p.get("profile_index")}, as_user=acc["nuvio_id"])
+    await nv("POST", "/rest/v1/rpc/cmtv_sign_out", {"p_user": acc["nuvio_id"], "p_session": None})
+    st, data = await nv("DELETE", f"/auth/v1/admin/users/{acc['nuvio_id']}")
+    if st not in (200, 204, 404):
+        raise NuvioError(_err(data))
+    services = await _linked(acc["_id"])
+    await _db().cmtv_deleted_accounts.insert_one({"kind": "nuvio", "module": MODULE, "username": acc["_id"], "row": acc,
+                                                  "billing_services": services, "by": by, "at": datetime.utcnow()})
+    await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {
+        "deleted": True, "status": "off", "deleted_at": datetime.utcnow(), "token": "deleted-" + secrets.token_hex(8)}})
+    _cache_drop(acc["_id"])
+    await _sync_services(acc["_id"], status="terminated", cockpit_deleted_at=datetime.utcnow())
 
 
 # ---------------------------------------------------------------- relay (the add-on links customers get)
@@ -510,15 +611,19 @@ async def relay_get(token: str, slug: str, rest: str, request: Request):
     cors = {"Access-Control-Allow-Origin": "*"}
     acc = await _account_by_token(token)
     if slug == CMTV_SLUG:
-        if not acc:
+        if not acc or not shows_cmtv_row(acc):   # 2026-10-01: not on resellers' customers' accounts
             return JSONResponse({"error": "not found"}, status_code=404, headers=cors)
         return await _cmtv_addon(acc, token, rest)
     addon = await _addon(slug)
-    if not acc or not addon or not addon.get("enabled", True):
+    # 2026-10-01: an account only gets the add-ons for its audience + 4K setting (a copied link for another one is refused)
+    if not acc or not addon or not addon.get("enabled", True) or not addon_fits(addon, acc):
         return JSONResponse({"error": "not found"}, status_code=404, headers=cors)
     is_stream = rest.startswith("stream/")
     if is_stream:
         if not is_live(acc):
+            if not shows_cmtv_row(acc):   # 2026-10-01: a reseller's customer: point them at their provider
+                ended = {"streams": [{"name": "Subscription ended", "title": await reseller_ended_text(acc)}]}
+                return JSONResponse(ended, headers={**cors, "Cache-Control": "no-store"})
             info = await _cmtv_info(acc)   # 2026-09-30: their own renew link + where the Renew code is
             ended = {"streams": [{"name": "CMTV", "externalUrl": info["renew_url"], "title":
                      "Your CMTV subscription has ended.\nRenew: open the CMTV row on your home screen and scan the Renew code,\n"
@@ -598,19 +703,24 @@ async def repair_addons() -> list:
     """Hourly (CMTV 2026-09-29): the app lets customers remove add-ons, and ours look like any other there (the owner's
     own test removed them while tidying up). Put back any managed add-on missing from a live account's main profile;
     the customer's own add-ons are kept (push_addons)."""
-    managed = [a for a in await addon_config() if a.get("enabled", True)]
     fixed = []
     async for acc in _db().cmtv_nuvio_accounts.find({"deleted": {"$ne": True}}):
         live = is_live(acc)
         # 2026-09-30: ended accounts are checked too, so their CMTV row moves to the top when the end date passes
         if not live and acc.get("addons_pushed_live") is False:
             continue
-        want = {personal_url(acc["token"], a["slug"]) for a in managed} | {personal_url(acc["token"], CMTV_SLUG)}
+        # 2026-10-01: per account (audience + 4K setting); a link that no longer fits counts as wrong too
+        managed = await managed_for(acc)
+        want = {personal_url(acc["token"], a["slug"]) for a in managed}
+        if shows_cmtv_row(acc):
+            want.add(personal_url(acc["token"], CMTV_SLUG))
         st, rows = await nv("GET", f"/rest/v1/addons?select=url&user_id=eq.{acc['nuvio_id']}&profile_id=eq.1&order=sort_order")
         if st != 200:
             continue
-        cmtv_first = bool(rows) and rows[0].get("url") == personal_url(acc["token"], CMTV_SLUG)
-        if (want - {r.get("url") for r in rows or []}) or acc.get("addons_pushed_live") != live or not cmtv_first:
+        have = {r.get("url") for r in rows or []}
+        ours_now = {u for u in have if str(u or "").startswith(ADDON_BASE + "/")}
+        cmtv_ok = (not shows_cmtv_row(acc)) or (bool(rows) and rows[0].get("url") == personal_url(acc["token"], CMTV_SLUG))
+        if (want - have) or (ours_now - want) or acc.get("addons_pushed_live") != live or not cmtv_ok:
             await push_addons(acc)
             await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$inc": {"addons_repaired": 1},
                                                                             "$set": {"addons_repaired_at": datetime.utcnow()}})
@@ -861,7 +971,10 @@ def init_routes():
                 raise HTTPException(400, f"{name or 'An add-on'}: the link must start with https:// and contain /manifest.json")
             slug = a.get("slug") if a.get("slug") in old else _slug(name, set(old) | taken)
             taken.add(slug)
-            out.append({"slug": slug, "name": name, "url": url, "enabled": bool(a.get("enabled", True))})
+            aud = a.get("audience") if a.get("audience") in ("all", "retail", "reseller") else "all"   # 2026-10-01
+            q = a.get("quality") if a.get("quality") in ("any", "4k", "hd") else "any"
+            out.append({"slug": slug, "name": name, "url": url, "enabled": bool(a.get("enabled", True)),
+                        "audience": aud, "quality": q})
         await _db().cmtv_config.update_one({"_id": "nuvio_addons"}, {"$set": {
             "addons": out, "updated_at": datetime.utcnow(), "updated_by": current_user.get("email")}}, upsert=True)
         _addon_cache["at"] = 0
@@ -903,6 +1016,8 @@ def init_routes():
         async for u in D["users"].find({"_id": {"$in": ids}}, {"name": 1, "email": 1}):
             users[str(u["_id"])] = u
         shares = {x["_id"]: x async for x in _db().cmtv_nuvio_share.find({})}
+        rids = [_oid(a["reseller_id"]) for a in accs if a.get("reseller_id") and _oid(a["reseller_id"])]   # 2026-10-01
+        resellers = {str(u["_id"]): u.get("name") or u.get("email") async for u in D["users"].find({"_id": {"$in": rids}}, {"name": 1, "email": 1})}
         out = []
         for a in accs:
             svc = owners.get(a["_id"])
@@ -910,6 +1025,8 @@ def init_routes():
             sm = summary.get(a["nuvio_id"], {})
             sh = shares.get(a["_id"])
             out.append({"username": a["_id"], "login": shown_login(a), "expires": a.get("expires"), "status": a.get("status", "active"),
+                        "uhd": wants_4k(a), "reseller": resellers.get(str(a.get("reseller_id"))) if a.get("reseller_id") else None,
+                        "trial": bool(a.get("trial")),
                         "live": is_live(a), "max_devices": a.get("max_devices") or DEFAULT_MAX_DEVICES,
                         "devices": sm.get("devices", 0), "last_seen": sm.get("last_seen"), "profiles": sm.get("profiles", 0),
                         "watched": sm.get("watched", 0), "in_progress": sm.get("in_progress", 0),
@@ -1044,6 +1161,16 @@ def init_routes():
             raise HTTPException(502, f"Nuvio server: {_err(data)}")
         await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {"max_devices": n}})
         return {"max_devices": n}
+
+    @router.post("/accounts/{username}/uhd")
+    async def admin_uhd(username: str, body: dict, current_user: dict = Depends(admin)):
+        """2026-10-01: 4K on/off (the account gets the 4K or the HD add-on setup)"""
+        acc = await _must(username)
+        try:
+            await set_uhd(acc, bool(body.get("on")))
+        except NuvioError as e:
+            raise _http(e)
+        return {"uhd": bool(body.get("on"))}
 
     @router.post("/accounts/{username}/push-addons")
     async def push_one(username: str, current_user: dict = Depends(admin)):
