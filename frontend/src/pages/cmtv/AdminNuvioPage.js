@@ -429,7 +429,7 @@ function Addons() {
             <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
               <label className="flex items-center gap-2">For
                 <select className={input} value={a.audience || 'all'} onChange={(e) => set(i, { audience: e.target.value })}>
-                  <option value="all">Everyone</option><option value="retail">Your customers</option><option value="reseller">Resellers' customers</option>
+                  <option value="all">Everyone</option><option value="retail">Your customers</option><option value="reseller">Resellers' customers</option><option value="test">Test accounts only</option>
                 </select></label>
               <label className="flex items-center gap-2">Quality
                 <select className={input} value={a.quality || 'any'} onChange={(e) => set(i, { quality: e.target.value })}>

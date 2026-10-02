@@ -170,6 +170,8 @@ def wants_4k(acc: dict) -> bool:
 
 def addon_fits(a: dict, acc: dict) -> bool:
     aud, q = a.get("audience") or "all", a.get("quality") or "any"
+    if aud == "test":   # CMTV 2026-10-02: "Test accounts only" = accounts marked tester (the owner's cmtv / cmtvtest)
+        return bool(acc.get("tester")) and (q == "any" or (q == "4k") == wants_4k(acc))
     return aud in ("all", audience(acc)) and (q == "any" or (q == "4k") == wants_4k(acc))
 
 
@@ -986,7 +988,7 @@ def init_routes():
                 raise HTTPException(400, f"{name or 'An add-on'}: the link must start with https:// and contain /manifest.json")
             slug = a.get("slug") if a.get("slug") in old else _slug(name, set(old) | taken)
             taken.add(slug)
-            aud = a.get("audience") if a.get("audience") in ("all", "retail", "reseller") else "all"   # 2026-10-01
+            aud = a.get("audience") if a.get("audience") in ("all", "retail", "reseller", "test") else "all"   # 2026-10-01
             q = a.get("quality") if a.get("quality") in ("any", "4k", "hd") else "any"
             out.append({"slug": slug, "name": name, "url": url, "enabled": bool(a.get("enabled", True)),
                         "audience": aud, "quality": q})
