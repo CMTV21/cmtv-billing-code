@@ -22,7 +22,9 @@ function copy(text, what) {
 }
 
 function loginText(a) {
-  return `Your Nuvio login\nUsername: ${a.login}\nPassword: ${a.password}\n\nInstall the Nuvio app on your TV or device, then sign in with these details.`
+  // 2026-10-02: how to install, not just "install the app"
+  return `Your Nuvio login\nUsername: ${a.login}\nPassword: ${a.password}\n\nFirestick / Android TV: open the Downloader app, enter 5883394, install Nuvio.\n`
+    + `Android phone: download it from https://apk-downloader.cmtv.workers.dev/nuvio\nThen open Nuvio, choose Sign in and enter the details above.`
     + (a.expires ? `\nActive until ${day(a.expires)}.` : '');
 }
 

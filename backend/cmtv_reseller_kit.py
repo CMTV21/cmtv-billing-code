@@ -45,6 +45,21 @@ def _server(s):
     return "imperium" if s.get("panel_type") in ("aether", "nxtdash") else "cctv"
 
 
+# CMTV local change 2026-10-02: Nuvio resellers (service cockpit_module "nuvio_reseller") sell the Nuvio app, not TV
+# lines: no server addresses, and their guide/flyer explain Nuvio. A reseller can have both.
+NUVIO_CODE = "5883394"   # Downloader code of the app page (has Nuvio)
+NUVIO_APK = "https://apk-downloader.cmtv.workers.dev/nuvio"
+
+
+def _is_nuvio(s):
+    return s.get("cockpit_module") == "nuvio_reseller"
+
+
+def _kinds(svcs):
+    """-> (TV servers sold: sorted list of cctv/imperium, sells Nuvio: bool)"""
+    return sorted({_server(s) for s in svcs if not _is_nuvio(s)}), any(_is_nuvio(s) for s in svcs)
+
+
 async def _require_reseller(user):
     svcs = await _reseller_services(user["sub"])
     if not svcs:
@@ -53,13 +68,13 @@ async def _require_reseller(user):
 
 
 def _defaults(svcs, u):
-    servers = sorted({_server(s) for s in svcs})
+    servers, _nv = _kinds(svcs)   # 2026-10-02: TV servers only (a Nuvio-only reseller has none)
     return {"slug": None, "name": "", "contact": "", "color": "#2f80ed", "tv_app": "TiviMate", "downloader": "",
             "phone_app": "", "phone_link": "", "servers": [{"name": "", "url": DEFAULT_URL[x]} for x in servers],
             "facts": servers[0] if len(servers) == 1 else "none"}
 
 
-def _clean(body: dict) -> dict:
+def _clean(body: dict, need_servers: bool = True) -> dict:
     """Validates the brand form; raises HTTPException(400) with a readable reason."""
     def s(k, n):
         return str(body.get(k) or "").strip()[:n]
@@ -86,7 +101,7 @@ def _clean(body: dict) -> dict:
         if not URL_RE.match(url):
             raise HTTPException(400, f"Server address \"{url}\" should look like https://tv.example.com or http://tv.example.com:8080")
         servers.append({"name": name, "url": url})
-    if not servers:
+    if not servers and need_servers:   # 2026-10-02: not for Nuvio-only resellers
         raise HTTPException(400, "Add at least one server address.")
     out["servers"] = servers
     return out
@@ -178,7 +193,40 @@ def _signin(b, app, xtream_word="Xtream Codes"):
             "and enter it again.</p>")
 
 
+DOWNLOADER_STEPS = ("<h3>1. Install Downloader</h3><ol>"
+    "<li><b>Firestick:</b> search for <b>Downloader</b> (by AFTVnews) on the home screen and install it. It's free.</li>"
+    "<li>Then go to <b>Settings &gt; My Fire TV &gt; Developer Options &gt; Install unknown apps</b> and turn it on for "
+    "Downloader. No Developer Options? Go to <b>Settings &gt; My Fire TV &gt; About</b> and click the device name 7 times.</li>"
+    "<li><b>Android TV / Google TV (e.g. ONN 4K):</b> install <b>Downloader</b> from the Google Play Store. Allow it to "
+    "install apps the first time it asks.</li></ol>")
+
+
+def _nuvio_signin(b):
+    return (f"<h3>Sign in</h3><ol><li>Open <b>Nuvio</b> and choose <b>Sign in</b>.</li>"
+            f"<li>Enter the <b>username</b> and <b>password</b> from {e(b['name'])}.</li>"
+            "<li>That's it: your movies and series are on the home screen. Pick a title and press <b>Play</b>.</li></ol>"
+            f"<p class=\"tip\">Your plan covers a set number of devices. Signed in on too many? Ask {e(b['name'])} to sign one out.</p>")
+
+
+def _nuvio_devices(b, tab_label=None):
+    """Device sections for the Nuvio app (CMTV 2026-10-02)"""
+    tv = ("nv-tv", tab_label or "Firestick & Android TV",
+          "<h2>Movies &amp; series: Firestick, Android TV &amp; Google TV</h2>" + DOWNLOADER_STEPS +
+          f"<h3>2. Install Nuvio</h3><ol><li>Open <b>Downloader</b>, enter the code <b>{NUVIO_CODE}</b> and press <b>Go</b>.</li>"
+          "<li>Choose <b>Nuvio</b> and install it. Allow the install if you're asked.</li></ol>" + _nuvio_signin(b))
+    phone = ("nv-phone", "Android phone & tablet",
+             "<h2>Movies &amp; series: Android phone &amp; tablet</h2><h3>Install Nuvio</h3><ol>"
+             f"<li>On your phone, open <a href=\"{NUVIO_APK}\">{NUVIO_APK}</a> and download the app.</li>"
+             "<li>Your phone asks to allow installing apps from your browser: allow it, then install.</li></ol>" + _nuvio_signin(b))
+    ios = ("nv-ios", "iPhone & iPad", "<h2>iPhone &amp; iPad</h2><p>The Nuvio app isn't available for iPhone or iPad yet. "
+           f"Use a Firestick, an Android TV box or an Android phone or tablet. Questions? Ask {e(b['name'])}.</p>")
+    return [tv, phone, ios]
+
+
 def guide_html(b):
+    tv_kinds, sells_nuvio = b.get("_tv", ["cctv"]), b.get("_nuvio", False)   # 2026-10-02
+    if not tv_kinds and sells_nuvio:
+        return _guide_page(b, _nuvio_devices(b), "Set up your movies &amp; series app in a few minutes")
     name, app = b["name"], b.get("tv_app") or "TiviMate"
     code = b.get("downloader")
     get_app = (f"<li>Open <b>Downloader</b>, enter the code <b>{e(code)}</b> and press <b>Go</b>.</li>"
@@ -204,6 +252,13 @@ def guide_html(b):
                     "It's free.</li><li>Open it and tap <b>Add a new service</b>.</li></ol>"
                     + _signin(b, "MYTVONLINE+", "Xtream Codes API")
                     + f"<p>Tap <b>Connect</b>, name it \"{e(name)}\" and save.</p>"))
+    if sells_nuvio:   # 2026-10-02: TV + Nuvio reseller: one extra tab for the movies & series app
+        devices.append(_nuvio_devices(b, "Movies & series app")[0])
+    return _guide_page(b, devices, "Set up your TV" + (" and movies &amp; series" if sells_nuvio else " service") + " in a few minutes")
+
+
+def _guide_page(b, devices, subtitle):
+    name = b["name"]
     tabs = "".join(f"<button type=\"button\" data-t=\"{k}\"{' class=on' if i == 0 else ''}>{e(label)}</button>"
                    for i, (k, label, _) in enumerate(devices))
     secs = "".join(f"<section class=\"card dev\" id=\"d-{k}\"{'' if i == 0 else ' hidden'}>{body}</section>"
@@ -214,7 +269,7 @@ def guide_html(b):
           "document.querySelectorAll('.dev').forEach(function(s){s.hidden=s.id!=='d-'+t.dataset.t})}});"
           "document.querySelectorAll('[data-copy]').forEach(function(bt){bt.onclick=function(){"
           "navigator.clipboard.writeText(bt.dataset.copy).then(function(){bt.textContent='Copied'})}});</script>")
-    body = (f"<header><div class=\"in\">{_logo(b, 'logo')}<div><h1>{e(name)}</h1><p>Set up your TV service in a few minutes</p></div></div></header>"
+    body = (f"<header><div class=\"in\">{_logo(b, 'logo')}<div><h1>{e(name)}</h1><p>{subtitle}</p></div></div></header>"
             f"<main class=\"wrap\"><p>Pick your device:</p><div class=\"tabs\">{tabs}</div>{secs}"
             f"<div class=\"card help\">{contact}</div><button type=\"button\" class=\"print\" onclick=\"window.print()\">"
             f"Print these steps</button></main>{js}")
@@ -232,13 +287,22 @@ background:#1b2335;border-radius:12px;padding:14px}.nums b{display:block;font-si
 
 
 def flyer_html(b):
+    tv_kinds, sells_nuvio = b.get("_tv", ["cctv"]), b.get("_nuvio", False)   # 2026-10-02
+    if not tv_kinds and sells_nuvio:
+        contact = f"<div class=\"foot\">Get started: <b>{e(b['contact'])}</b></div>" if b.get("contact") else ""
+        body = (f"<div class=\"fly\"><div class=\"top\">{_logo(b, 'logo')}<h1>{e(b['name'])}</h1><p>Movies &amp; series on every screen</p></div>"
+                "<div class=\"mid\"><ul><li>Thousands of movies and series, new ones added all the time</li><li>HD, or 4K on the right "
+                "plan</li><li>Firestick, Android TV, Google TV, Android phones and tablets</li><li>Set up in minutes, with step-by-step "
+                f"help</li></ul></div>{contact}</div><button type=\"button\" class=\"print\" onclick=\"window.print()\">Print this flyer</button>")
+        return _page(b, b["name"], body, FLYER_CSS)
     f = FACTS.get(b.get("facts"))
     nums = (f"<div class=\"nums\"><div><b>{f[0]}+</b>live channels</div><div><b>{f[1]}+</b>movies</div>"
             f"<div><b>{f[2]}+</b>series</div></div>") if f else ""
     contact = f"<div class=\"foot\">Get started: <b>{e(b['contact'])}</b></div>" if b.get("contact") else ""
     body = (f"<div class=\"fly\"><div class=\"top\">{_logo(b, 'logo')}<h1>{e(b['name'])}</h1><p>Live TV, movies &amp; series on every screen</p></div>"
             f"<div class=\"mid\">{nums}<ul><li>Canadian &amp; US channels, sports and PPV</li><li>Firestick, Android TV, Google TV, "
-            "phones and tablets</li><li>Set up in minutes, with step-by-step help</li></ul></div>"
+            "phones and tablets</li>" + ("<li>Plus a movies &amp; series app</li>" if sells_nuvio else "") +
+            "<li>Set up in minutes, with step-by-step help</li></ul></div>"
             f"{contact}</div><button type=\"button\" class=\"print\" onclick=\"window.print()\">Print this flyer</button>")
     return _page(b, b["name"], body, FLYER_CSS)
 
@@ -304,16 +368,17 @@ def init_routes(router):
         u = await D["db"].users.find_one({"_id": RC._oid(current_user["sub"])}) or {}
         saved = await D["db"].cmtv_reseller_brands.find_one({"_id": current_user["sub"]}) or {}
         brand = {**_defaults(svcs, u), **{k: v for k, v in saved.items() if k not in ("_id", "updated_at")}}
-        return {"brand": brand, "saved": bool(saved), "servers": sorted({_server(s) for s in svcs}),
+        tv_kinds, sells_nuvio = _kinds(svcs)   # 2026-10-02
+        return {"brand": brand, "saved": bool(saved), "servers": tv_kinds, "nuvio": sells_nuvio,
                 "guide_url": f"{RC.SITE}/g/{brand['slug']}" if brand.get("slug") else None,
                 "flyer_url": f"{RC.SITE}/g/{brand['slug']}/flyer" if brand.get("slug") else None,
                 "facts": {k: list(v) for k, v in FACTS.items()}, "notices": await recent_notices()}
 
     @router.put("/brand")
     async def save_brand(body: dict = Body(...), current_user: dict = Depends(current)):
-        await _require_reseller(current_user)
+        svcs = await _require_reseller(current_user)
         uid = current_user["sub"]
-        data = _clean(body)
+        data = _clean(body, need_servers=bool(_kinds(svcs)[0]))   # 2026-10-02
         old = await D["db"].cmtv_reseller_brands.find_one({"_id": uid}) or {}
         slug = old.get("slug") or _slugify(data["name"])
         await D["db"].cmtv_reseller_brands.update_one(
@@ -390,8 +455,10 @@ def init_routes(router):
     async def _brand(slug):
         b = await D["db"].cmtv_reseller_brands.find_one({"slug": slug})
         # only while the reseller still has an active panel
-        if not b or not await _reseller_services(b["_id"]):
+        svcs = await _reseller_services(b["_id"]) if b else []
+        if not svcs:
             raise HTTPException(404, "Not found")
+        b["_tv"], b["_nuvio"] = _kinds(svcs)   # 2026-10-02: what the guide/flyer explain
         return b
 
     @router.get("/g/{slug}", response_class=HTMLResponse, include_in_schema=False)

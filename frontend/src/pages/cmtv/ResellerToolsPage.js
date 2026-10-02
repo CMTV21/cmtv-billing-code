@@ -14,6 +14,8 @@ import NuvioReseller from '../../components/cmtv/NuvioReseller'; // 2026-10-01
 const copy = (text, what) => navigator.clipboard.writeText(text).then(() => toast.success(`${what} copied`)).catch(() => toast.error('Copy failed'));
 const day = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const HEADLINES = ['Live TV, movies & series on every screen', 'Cut the cable bill, keep the channels', 'Sports, PPV & more. Set up in minutes'];
+// CMTV 2026-10-02: Nuvio-only resellers sell a movies & series app, not live TV
+const NUVIO_HEADLINES = ['Movies & series on every screen', 'Thousands of movies & series, in HD or 4K', 'Your movies & series app, set up in minutes'];
 const FORMATS = { square: [1080, 1080, 'Square post'], story: [1080, 1920, 'Story'] };
 
 function wrap(ctx, text, maxW) {
@@ -98,18 +100,18 @@ function draw(canvas, fmt, b, facts, headline, logo) {
   lines.forEach((l, i) => ctx.fillText(l, pad + 30, by + 66 + i * 56));
 }
 
-function SocialImage({ brand, facts }) {
+function SocialImage({ brand, facts, headlines = HEADLINES }) {
   const ref = useRef(null);
   const [fmt, setFmt] = useState('square');
   const [h, setH] = useState(0);
   const logo = useLogoImage(brand.logo);
   useEffect(() => {
     let live = true;
-    const go = () => { if (live && ref.current) draw(ref.current, fmt, brand, facts, HEADLINES[h], logo); };
+    const go = () => { if (live && ref.current) draw(ref.current, fmt, brand, facts, headlines[h], logo); };
     go();
     if (document.fonts?.ready) document.fonts.ready.then(go);
     return () => { live = false; };
-  }, [fmt, h, brand, facts, logo]);
+  }, [fmt, h, brand, facts, logo, headlines]);
   const download = () => {
     const a = document.createElement('a');
     a.download = `${(brand.name || 'post').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${fmt}.png`;
@@ -124,7 +126,7 @@ function SocialImage({ brand, facts }) {
         <div className="rt-seg">{Object.entries(FORMATS).map(([k, v]) => (
           <button type="button" key={k} className={fmt === k ? 'on' : ''} onClick={() => setFmt(k)}>{v[2]}</button>))}</div>
         <b>Headline</b>
-        <div className="rt-seg col">{HEADLINES.map((t, i) => (
+        <div className="rt-seg col">{headlines.map((t, i) => (
           <button type="button" key={t} className={h === i ? 'on' : ''} onClick={() => setH(i)}>{t}</button>))}</div>
         <button type="button" className="ca-btn ca-glow" onClick={download}>Download image</button>
       </div>
@@ -132,8 +134,15 @@ function SocialImage({ brand, facts }) {
   );
 }
 
-function captions(b, facts) {
+function captions(b, facts, nuvioOnly) {
   const who = b.contact ? `Message ${b.contact}` : 'Message me';
+  if (nuvioOnly) {
+    return [
+      `🎬 Movies & series on every screen with ${b.name}. Thousands of titles, new ones all the time, in HD or 4K. Works on Firestick, Android TV and Android phones. ${who} to get started.`,
+      `Tired of juggling streaming subscriptions? ${b.name} puts movies and series in one app. Set up in minutes. ${who}.`,
+      `Free trial available. ${who} and start watching tonight.`,
+    ];
+  }
   const nums = facts ? `${facts[0]}+ live channels, ${facts[1]}+ movies and ${facts[2]}+ series. ` : '';
   return [
     `📺 Live TV, movies & series on every screen with ${b.name}. ${nums}Works on Firestick, Android TV, phones & tablets. ${who} to get started.`,
@@ -193,6 +202,8 @@ export default function ResellerToolsPage() {
   const setSrv = (i, k, v) => setB({ ...b, servers: b.servers.map((s, j) => (j === i ? { ...s, [k]: v } : s)) });
   const facts = data.facts?.[b.facts] || null;
   const showsCmtv = b.servers.some((s) => /cmtv/i.test(s.url || ''));
+  const tv = (data.servers || []).length > 0;   // 2026-10-02: sells TV lines (CCTV/Imperium); Nuvio-only resellers don't
+  const nuvioOnly = !tv && data.nuvio;
 
   const save = async () => {
     setSaving(true);
@@ -225,12 +236,14 @@ export default function ResellerToolsPage() {
           <label>Business name<input value={b.name} maxLength={40} onChange={set('name')} placeholder="e.g. Northern Streams" /></label>
           <label>How customers reach you<input value={b.contact} maxLength={120} onChange={set('contact')} placeholder="e.g. Telegram @northernstreams or text 555-123-4567" /></label>
           <label>Colour<span className="rt-color"><input type="color" value={b.color} onChange={set('color')} /><code>{b.color}</code></span></label>
-          <label>Figures to show<select value={b.facts} onChange={set('facts')}>
+          {tv && <label>Figures to show<select value={b.facts} onChange={set('facts')}>
             <option value="cctv">CCTV (11,000+ live, 20,000+ movies, 6,000+ series)</option>
             <option value="imperium">Imperium (40,000+ live, 30,000+ movies, 8,000+ series)</option>
             <option value="none">No figures</option>
-          </select></label>
+          </select></label>}
         </div>
+        {nuvioOnly && <p className="rt-note">Your guide shows your customers how to install the Nuvio app and sign in with the login you give them.</p>}
+        {tv && <>
         <h3 className="rt-h3">Server addresses your customers enter</h3>
         {b.servers.map((s, i) => (
           <div key={i} className="rt-srv">
@@ -248,6 +261,7 @@ export default function ResellerToolsPage() {
           <label>Android phone app (optional)<input value={b.phone_app} maxLength={30} onChange={set('phone_app')} placeholder="App name" /></label>
           <label>Phone app download link<input value={b.phone_link} maxLength={300} onChange={set('phone_link')} placeholder="https://..." /></label>
         </div>
+        </>}
         <p className="rt-note">Want your own branded apps, a website or your own DNS? Ask us about partner services.</p>
         <button type="button" className="ca-btn ca-glow" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
       </section>
@@ -274,9 +288,9 @@ export default function ResellerToolsPage() {
       <section className="ca-panel">
         <h2 className="ca-h2">3. Marketing kit</h2>
         <p className="rt-note">Images for Facebook, Instagram, Marketplace or WhatsApp status, made with your brand{data.saved ? '' : ' (save your brand first so your name shows)'}.</p>
-        <SocialImage brand={b} facts={facts} />
+        <SocialImage brand={b} facts={tv ? facts : null} headlines={nuvioOnly ? NUVIO_HEADLINES : HEADLINES} />
         <h3 className="rt-h3">Ready-to-post text</h3>
-        {captions({ ...b, name: b.name || 'us' }, facts).map((t) => (
+        {captions({ ...b, name: b.name || 'us' }, tv ? facts : null, nuvioOnly).map((t) => (
           <div key={t} className="rt-caption"><p>{t}</p><button type="button" className="ca-icon" onClick={() => copy(t, 'Text')}>Copy</button></div>
         ))}
       </section>
