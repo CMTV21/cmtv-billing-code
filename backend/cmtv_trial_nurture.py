@@ -164,9 +164,17 @@ async def _send(u, svc, stage, fam):
     return emailed, bool(tg)
 
 
+async def enabled() -> bool:
+    """cmtv_config {_id: "trial_nurture", enabled}: off until the owner has seen the emails (2026-10-02)"""
+    doc = await D["db"].cmtv_config.find_one({"_id": "trial_nurture"}) or {}
+    return bool(doc.get("enabled"))
+
+
 async def run_once(now=None, dry_run=False):
     db = D["db"]
     now = now or datetime.utcnow()
+    if not dry_run and not await enabled():
+        return []
     local = now.replace(tzinfo=ZoneInfo("UTC")).astimezone(TZ)
     if local.hour not in SEND_HOURS and not dry_run:
         return []
