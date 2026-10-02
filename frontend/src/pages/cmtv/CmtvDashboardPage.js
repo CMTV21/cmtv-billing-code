@@ -159,6 +159,10 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
             {d.s.ghostapk_code && <div className="ca-field ca-ghost"><label>CMTVGhost code</label><div className="val"><code>{d.s.ghostapk_code}</code>
               <button type="button" className="ca-icon" onClick={() => copy(d.s.ghostapk_code, 'CMTVGhost code')}>Copy</button></div>
               <small style={{ display: 'block', color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>Open CMTVGhost and enter this code instead of your username and password.</small></div>}
+            {/* 2026-10-02: activation code for CMTV's own TiviMate app (codes from its panel export, service.cmtv_tivimate) */}
+            {d.s.cmtv_tivimate?.code && <div className="ca-field ca-ghost"><label>CMTV TiviMate code</label><div className="val"><code>{d.s.cmtv_tivimate.code}</code>
+              <button type="button" className="ca-icon" onClick={() => copy(d.s.cmtv_tivimate.code, 'CMTV TiviMate code')}>Copy</button></div>
+              <small style={{ display: 'block', color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>Enter this code when the CMTV TiviMate app asks for an activation code.</small></div>}
             {s.cockpit_module === 'nuviocloud' && d.username && <NuvioDevices username={d.username} />}
           </div>
         )}
