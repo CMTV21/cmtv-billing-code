@@ -82,6 +82,46 @@ async def public_issues(now=None):
     return sorted(out, key=lambda x: x["since"])
 
 
+# ---------- public status page (2026-10-02): every customer service, 30-day uptime, recent incidents ----------
+PAGE_ORDER = ["CCTV", "Imperium", "Extreme", "Amethyst", "Audiobooks"]
+
+
+async def status_page(now=None):
+    """Only monitors mapped to a public name; an outage counts once it lasted PUBLIC_AFTER_MIN minutes (like the banner).
+    Outages that started for 4+ services within 2 minutes are left out: that's Kuma's own connection (kuma_blind)."""
+    db = D["db"]
+    now = now or datetime.utcnow()
+    names = await monitor_map()
+    start = now - timedelta(days=30)
+    intervals = []   # (monitor, down_at, up_at or None)
+    for mon in names:
+        before = await db.cmtv_status_events.find_one({"monitor": mon, "at": {"$lt": start}}, sort=[("at", -1)])
+        down_at = start if before and before.get("status") == "down" else None
+        async for e in db.cmtv_status_events.find({"monitor": mon, "at": {"$gte": start}}).sort("at", 1):
+            if e["status"] == "down" and down_at is None:
+                down_at = e["at"]
+            elif e["status"] == "up" and down_at is not None:
+                intervals.append((mon, down_at, e["at"]))
+                down_at = None
+        if down_at is not None:
+            intervals.append((mon, down_at, None))
+    starts = sorted(i[1] for i in intervals)
+    def blind(t):
+        return sum(1 for s in starts if abs((s - t).total_seconds()) <= 120) >= 4
+    real = [i for i in intervals if not blind(i[1]) and ((i[2] or now) - i[1]) >= timedelta(minutes=PUBLIC_AFTER_MIN)]
+    current = {x["service"] for x in await public_issues(now)}
+    services = []
+    order = {n: k for k, n in enumerate(PAGE_ORDER)}
+    for mon, public in sorted(names.items(), key=lambda kv: order.get(kv[1], 99)):
+        down = sum((((u or now) - d).total_seconds() for m, d, u in real if m == mon), 0.0)
+        services.append({"name": public, "status": "down" if public in current else "ok",
+                         "uptime_30d": round(max(0.0, 100 - down / (30 * 86400) * 100), 2)})
+    recent = sorted((i for i in real if i[1] >= now - timedelta(days=14)), key=lambda i: i[1], reverse=True)[:20]
+    incidents = [{"service": names[m], "start": _iso(d), "end": _iso(u), "minutes": int(((u or now) - d).total_seconds() // 60)}
+                 for m, d, u in recent]
+    return {"services": services, "incidents": incidents, "updated_at": _iso(now)}
+
+
 # ---------- silent Telegram posts (2026-09-29, the user's choice: no notification sound, Kuma's own alert replaced) ----------
 # Once a monitor has been down PUBLIC_AFTER_MIN minutes: Ops group Critical topic (every monitor, with Kuma's message) and,
 # for customer services, the customer group's Status/Outages topic + the CMTV Updates channel (via the support bot, which
@@ -233,6 +273,10 @@ def init_routes():
     @router.get("")
     async def public_status():
         return {"issues": await public_issues()}
+
+    @router.get("/page")
+    async def public_page():   # 2026-10-02: the public /status page
+        return await status_page()
 
     @router.get("/admin")
     async def admin_status(current_user: dict = Depends(admin)):

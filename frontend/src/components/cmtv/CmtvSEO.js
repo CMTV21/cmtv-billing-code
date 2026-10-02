@@ -15,6 +15,7 @@ const PAGES = {
   '/login': ['Sign in | CMTV', 'Sign in to your CMTV account to manage your services, renew and get help.'],
   '/terms': ['Terms and Conditions | CMTV', 'The terms for using CMTV services: plans, renewals, trials, refunds and referrals.'],
   '/privacy': ['Privacy Policy | CMTV', 'What personal information CMTV collects, how it is used and shared, and your privacy choices.'],
+  '/status': ['Service status | CMTV', 'Live status of every CMTV service, uptime for the last 30 days and recent incidents.'],   // 2026-10-02
   '/knowledge-base': ['Setup Guides & Help | CMTV', 'Step-by-step setup guides for Firestick, Android TV, Google TV, iPhone, iPad and PC, plus fixes for buffering and common problems.'],
 };
 const PRIVATE_TITLES = [

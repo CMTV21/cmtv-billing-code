@@ -341,6 +341,8 @@ export default function CmtvDashboardPage() {
                 <a className="ca-btn ca-ghost" href="https://t.me/Cmtv_support_bot" target="_blank" rel="noopener noreferrer">Chat with our support bot</a>
                 <Link className="ca-btn ca-ghost" to="/tickets">Open a ticket</Link>
               </div>
+              {/* 2026-10-02 */}
+              <p style={{ marginTop: 10 }}><Link to="/knowledge-base/cmtv-buffering">Buffering? Quick fixes</Link> · <Link to="/status">Service status</Link></p>
             </div>
           </aside>
         </div>

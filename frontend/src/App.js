@@ -22,6 +22,7 @@ import RegisterPage from './pages/RegisterPage'; // eslint-disable-line no-unuse
 import CmtvLoginPage from './pages/cmtv/CmtvLoginPage'; // CMTV local change 2026-09-26: CMTV sign in page
 import CmtvRegisterPage from './pages/cmtv/CmtvRegisterPage'; // CMTV local change 2026-09-26: CMTV sign up page
 import TermsPage from './pages/cmtv/TermsPage'; // CMTV local change 2026-09-27: public terms page
+import StatusPage from './pages/cmtv/StatusPage'; // CMTV local change 2026-10-02: public service status page
 import PrivacyPage from './pages/cmtv/PrivacyPage'; // CMTV local change 2026-09-27: public privacy policy
 import ReviewPage from './pages/cmtv/ReviewPage'; // CMTV local change 2026-09-28: customer review form (/review?t=)
 import AdminReviewsPage from './pages/cmtv/AdminReviewsPage'; // CMTV local change 2026-09-28: Admin > Reviews
@@ -229,6 +230,7 @@ function App() {
             <Route path="/" element={<CmtvHomePage />} />
             <Route path="/classic" element={<HomePage />} />
             <Route path="/terms" element={<CmtvAccountFrame><TermsPage /></CmtvAccountFrame>} />
+            <Route path="/status" element={<CmtvAccountFrame><StatusPage /></CmtvAccountFrame>} />
             <Route path="/privacy" element={<CmtvAccountFrame><PrivacyPage /></CmtvAccountFrame>} />
             <Route path="/review" element={<CmtvAccountFrame><ReviewPage /></CmtvAccountFrame>} />
             <Route path="/survey" element={<CmtvAccountFrame><SurveyPage /></CmtvAccountFrame>} />

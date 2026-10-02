@@ -13,7 +13,8 @@ router = APIRouter(prefix="/api/cmtv/seo", tags=["cmtv-seo"])
 D = {}
 SITE = "https://billing.cmtv.info"
 PAGES = [("/", "daily", "1.0"), ("/knowledge-base", "weekly", "0.8"), ("/register", "monthly", "0.6"),
-         ("/login", "monthly", "0.4"), ("/terms", "monthly", "0.3"), ("/privacy", "monthly", "0.3")]
+         ("/login", "monthly", "0.4"), ("/terms", "monthly", "0.3"), ("/privacy", "monthly", "0.3"),
+         ("/status", "hourly", "0.4")]   # 2026-10-02
 
 
 def init(**deps):

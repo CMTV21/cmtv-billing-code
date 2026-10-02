@@ -56,6 +56,15 @@ function Post({ item, open }) {
   );
 }
 
+// 2026-10-02: quick links before writing in (status page + the buffering guide)
+function QuickLinks() {
+  return (
+    <p className="cu-lede">
+      <a href="/status">See the status of every service</a> · <a href="/knowledge-base/cmtv-buffering">Buffering? Try these quick fixes</a>
+    </p>
+  );
+}
+
 function StatusBanner({ issues }) {
   const since = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   return (
@@ -91,13 +100,14 @@ export default function CmtvUpdates({ variant = 'dashboard' }) {
     );
   }
   if (variant === 'modal') {
-    if (!recent.length && !issues.length) return null;
+    if (!recent.length && !issues.length) return <section className="cu cu-modal" aria-label="Before you write"><QuickLinks /></section>;
     return (
       <section className="cu cu-modal" aria-label="Known issues right now">
         <h3>Known issues right now</h3>
         <p className="cu-lede">If your problem is one of these, there's no need to open a ticket. We're already on it and post here when it's fixed.</p>
         {banner}
         {recent.slice(0, 2).map((x) => <Post key={x.id} item={x} open={false} />)}
+        <QuickLinks />
       </section>
     );
   }
@@ -105,6 +115,7 @@ export default function CmtvUpdates({ variant = 'dashboard' }) {
     <section className="cu cu-tickets" aria-label="Latest from CMTV">
       <h2>Latest from CMTV</h2>
       {banner}
+      <QuickLinks />
       {items.length ? (
         <>
           <p className="cu-lede">Check here first: if something's down, we've usually posted about it already.</p>
