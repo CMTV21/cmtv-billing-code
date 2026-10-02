@@ -70,6 +70,20 @@ function titleCase(name) {
   return s === s.toUpperCase() ? s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bCctv\b/g, 'CCTV') : s;
 }
 
+// 2026-10-02 (the owner): overall rating from the customer survey (GET /api/cmtv/survey/score, average stars of completed
+// answers; hidden until 5+). Worded as a survey result, without the number of answers.
+function SurveyScore() {
+  const [stars, setStars] = React.useState(null);
+  React.useEffect(() => { api.get('/api/cmtv/survey/score').then((r) => setStars(r.data.stars)).catch(() => {}); }, []);
+  if (!stars) return null;
+  return (
+    <div style={{ margin: '-8px auto 20px', fontSize: 15, color: 'var(--muted)' }} aria-label={`Rated ${stars} out of 5 based on our customer survey`}>
+      <span style={{ color: '#facc15', letterSpacing: 2 }} aria-hidden="true">★★★★★</span>{' '}
+      <b style={{ color: 'var(--text, #e9edf8)' }}>{stars.toFixed(1)} out of 5</b> based on our customer survey
+    </div>
+  );
+}
+
 export default function CmtvHomePage() {
   const { user } = useAuthStore();
   const { items, addItem } = useCartStore();
@@ -233,6 +247,7 @@ export default function CmtvHomePage() {
           <div className="eyebrow">Canadian streaming, set up in minutes</div>
           <h1>{titleTail ? <>{lead}. <em>{titleTail}</em></> : lead}</h1>
           <p>{branding.hero_description || 'Thousands of channels, movies, and series on every device.'}</p>
+          <SurveyScore />{/* 2026-10-02 */}
           <a className="btn btn-glow" href="#plans" style={{ padding: '12px 26px', fontSize: 15 }}>View plans</a>
         </div>
       </div>

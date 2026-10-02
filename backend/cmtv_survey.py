@@ -263,6 +263,14 @@ def init_routes():
             raise HTTPException(404, "This survey link isn't valid. Please use the link from your email.")
         return inv
 
+    @router.get("/score")
+    async def public_score():   # 2026-10-02: storefront "4.6 out of 5, based on our customer survey" (no count shown)
+        stars = [r["answers"]["stars"] async for r in D["db"].cmtv_survey_responses.find(
+            {"completed_at": {"$exists": True}, "answers.stars": {"$gte": 1}}, {"answers.stars": 1})]
+        if len(stars) < 5:
+            return {"stars": None}
+        return {"stars": round(sum(stars) / len(stars), 1)}
+
     @router.get("/q/{token}")
     async def get_survey(token: str):
         inv = await _invite(token)
