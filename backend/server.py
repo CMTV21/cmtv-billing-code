@@ -222,6 +222,11 @@ app.include_router(cmtv_reviews.router)
 import cmtv_survey
 cmtv_survey.D["get_current_admin_user"] = get_current_admin_user
 cmtv_survey.init_routes()
+# CMTV local change 2026-10-02: free-trial check-in + keep-watching messages (cmtv_trial_nurture.py)
+import cmtv_trial_nurture
+cmtv_trial_nurture.D["get_current_admin_user"] = get_current_admin_user
+cmtv_trial_nurture.init_routes()
+app.include_router(cmtv_trial_nurture.router)
 app.include_router(cmtv_survey.router)
 
 # CMTV local change 2026-09-28: reseller credits in any amount 50-1000, priced per credit (cmtv_reseller_credits.py)
@@ -1001,6 +1006,8 @@ async def startup_event():
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
     cmtv_survey.init(db=db, get_email_service=get_configured_email_service, credit_service=credit_service)  # CMTV 2026-09-29: survey
+    cmtv_trial_nurture.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-02
+    cmtv_trial_nurture.start()
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
                                get_email_service=get_configured_email_service)  # CMTV 2026-09-28: reseller credits + alerts
     await cmtv_reseller_credits.startup()   # hourly CCTV reseller balance refresh
