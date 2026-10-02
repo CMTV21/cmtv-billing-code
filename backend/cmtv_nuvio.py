@@ -418,7 +418,20 @@ def _upstream_base(addon_url: str):
     return base, query
 
 
+# CMTV local change 2026-10-02: the self-hosted add-ons (/opt/cmtv-addons) are fetched inside the server: their public
+# names sit behind a password (owner's settings pages) and Cloudflare, so the relay goes straight to the containers.
+LOCAL_ADDONS = {"https://aio.cmtv.info/": "http://127.0.0.1:3100/", "https://meta.cmtv.info/": "http://127.0.0.1:3232/"}
+
+
+def local_url(url: str) -> str:
+    for pub, loc in LOCAL_ADDONS.items():
+        if url.startswith(pub):
+            return loc + url[len(pub):]
+    return url
+
+
 async def _relay_get(url: str):
+    url = local_url(url)
     if not D.get("relay_http"):
         D["relay_http"] = httpx.AsyncClient(timeout=45, follow_redirects=True, headers={"User-Agent": "CMTV-relay"},
                                             limits=httpx.Limits(max_connections=100, max_keepalive_connections=20))
