@@ -24,6 +24,7 @@ import time
 from datetime import date, datetime, timedelta
 
 import httpx
+import urllib.parse
 import jwt
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -676,8 +677,15 @@ async def relay_get(token: str, slug: str, rest: str, request: Request):
         except ValueError:
             pass
     content = r.content
-    if not is_stream and b"json" in ctype.encode() and base.encode() in content:
-        content = content.replace(base.encode(), f"{ADDON_BASE}/{token}/{slug}/".encode())
+    if not is_stream and b"json" in ctype.encode():
+        mine = f"{ADDON_BASE}/{token}/{slug}/"
+        if base.encode() in content:
+            content = content.replace(base.encode(), mine.encode())
+        # CMTV local change 2026-10-02: also the URL-encoded form (genre links "stremio:///discover/<encoded manifest>/...")
+        enc = urllib.parse.quote(base, safe="")
+        for e in (enc, enc.replace("%2F", "%2f")):
+            if e.encode() in content:
+                content = content.replace(e.encode(), urllib.parse.quote(mine, safe="").encode())
     return Response(content=content, status_code=r.status_code, media_type=ctype.split(";")[0], headers=headers)
 
 
