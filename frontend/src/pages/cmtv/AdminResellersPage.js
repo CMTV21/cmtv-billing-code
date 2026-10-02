@@ -130,9 +130,11 @@ function NuvioResellersBox() {
     <div className="rs-notice">
       <b>Nuvio resellers</b>
       <div style={{ fontSize: 13, opacity: 0.8, margin: '4px 0 8px' }}>
-        They make and run Nuvio accounts in Reseller tools &gt; Nuvio. $1.00 a credit; 1 credit = 1 account-month with 2 devices,
-        +1 for 3-4 devices, +2 for 4K. Free 48 h trials (10 a week).
-        {data && !data.reseller_addons_ready && ' No reseller add-ons yet (Admin > Nuvio > Add-ons, For: Resellers\' customers), so everyone uses your own add-ons for now.'}
+        Resellers create and manage their own customers' Nuvio accounts in Reseller tools &gt; Nuvio.
+        <br />Price: $1.00 a credit. An HD account with 2 devices costs 1 credit a month, 4K costs 3 credits a month,
+        and 3-4 devices add 1 credit a month. Resellers can also give free 48-hour trials (up to 10 a week).
+        {data && !data.reseller_addons_ready && <><br />Resellers' customers use your own add-ons for now. To give them separate ones, add them in
+        Admin &gt; Nuvio &gt; Add-ons with "For" set to "Resellers' customers".</>}
       </div>
       <div className="row">
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Customer's email" aria-label="Customer's email" style={{ flex: 1, minWidth: 200 }} />
