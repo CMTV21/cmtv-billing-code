@@ -13119,6 +13119,14 @@ async def resync_services_expiry(panel_type: Optional[str] = None, current_user:
     return {"success": True, **result}
 
 
+# CMTV local change 2026-10-02: Imperium sub-resellers are copied into imported_users (cmtv_reseller_credits.
+# refresh_imperium_resellers) only so Admin > Imported Users lists them. The line actions below talk to the Aether panel by
+# line username/id and must never run on those rows.
+def _cmtv_block_aether_reseller_row(user):
+    if user and user.get("account_type") == "reseller" and user.get("panel_type") == "aether":
+        raise HTTPException(status_code=400, detail="Imperium resellers are managed on the Imperium panel and in Admin > Resellers.")
+
+
 @app.get("/api/admin/imported-users")
 async def get_imported_users(panel_index: Optional[int] = None, current_user: dict = Depends(get_current_admin_user)):
     """Get all imported XtreamUI users"""
@@ -13138,6 +13146,7 @@ async def get_imported_users(panel_index: Optional[int] = None, current_user: di
 async def suspend_imported_user(user_id: str, current_user: dict = Depends(get_current_admin_user)):
     """Suspend an imported user on XtreamUI or XuiOne panel"""
     user = await imported_users_collection.find_one({"_id": str_to_objectid(user_id)})
+    _cmtv_block_aether_reseller_row(user)   # CMTV 2026-10-02
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -13294,6 +13303,7 @@ async def suspend_imported_user(user_id: str, current_user: dict = Depends(get_c
 async def activate_imported_user(user_id: str, current_user: dict = Depends(get_current_admin_user)):
     """Activate/enable an imported user on XtreamUI or XuiOne panel"""
     user = await imported_users_collection.find_one({"_id": str_to_objectid(user_id)})
+    _cmtv_block_aether_reseller_row(user)   # CMTV 2026-10-02
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -13453,6 +13463,7 @@ class AddCreditsRequest(BaseModel):
 async def add_credits_to_imported_user(user_id: str, data: AddCreditsRequest, current_user: dict = Depends(get_current_admin_user)):
     """Add credits to a reseller on the panel"""
     user = await imported_users_collection.find_one({"_id": str_to_objectid(user_id)})
+    _cmtv_block_aether_reseller_row(user)   # CMTV 2026-10-02
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.get("account_type") != "reseller":
@@ -13792,6 +13803,7 @@ async def download_backup(backup_name: str, current_user: dict = Depends(get_cur
 async def delete_imported_user(user_id: str, current_user: dict = Depends(get_current_admin_user)):
     """Delete an imported user from the billing panel only (does NOT delete from XtreamUI)"""
     user = await imported_users_collection.find_one({"_id": str_to_objectid(user_id)})
+    _cmtv_block_aether_reseller_row(user)   # CMTV 2026-10-02
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -13825,6 +13837,9 @@ async def bulk_action_imported_users(data: dict, current_user: dict = Depends(ge
                 continue
 
             panel_type = user.get("panel_type", "")
+            if user.get("account_type") == "reseller" and panel_type == "aether":   # CMTV 2026-10-02
+                failed += 1
+                continue
 
             if action == "delete":
                 await imported_users_collection.delete_one({"_id": str_to_objectid(uid)})
@@ -13939,6 +13954,7 @@ async def extend_imported_user(user_id: str, data: ExtendImportedUserRequest, cu
     """Extend an imported user's subscription on both billing system and panel"""
     
     user = await imported_users_collection.find_one({"_id": str_to_objectid(user_id)})
+    _cmtv_block_aether_reseller_row(user)   # CMTV 2026-10-02
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

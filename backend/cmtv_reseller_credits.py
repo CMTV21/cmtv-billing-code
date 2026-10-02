@@ -256,6 +256,54 @@ async def refresh_cctv_balances() -> int:
     return n
 
 
+async def refresh_imperium_resellers() -> int:
+    """CMTV 2026-10-02: Imperium (Aether) sub-resellers -> imported_users (account_type reseller), so Admin > Imported Users
+    lists them like the CCTV ones (the developer's Aether sync only imports subscriber lines). Upsert by
+    aether_subreseller_id; never deletes (gone from the panel -> status "removed"). No xtream_user_id/password: the page's
+    line actions (suspend/activate/extend/...) refuse these rows (server.py _cmtv_block_aether_reseller_row). user_id = the
+    billing owner of the reseller service, else a marker, so the developer's "create accounts for unlinked users" skips it."""
+    ae = await _aether()
+    if not ae:
+        return 0
+    db = D["db"]
+    panels = ((await D["get_settings"]()).get("aether") or {}).get("panels") or []
+    panel_name = (panels[0].get("name") if panels else None) or "Imperium"
+    items, page = [], 1
+    while True:
+        data = await ae._request("GET", "/api/v1/reseller/subresellers", params={"page": page, "per_page": 50})
+        got = data.get("items") or []
+        items += got
+        if not got or page * 50 >= int(data.get("total") or 0):
+            break
+        page += 1
+    now, seen, n = datetime.utcnow(), [], 0
+    for it in items:
+        sid, name = str(it.get("id") or ""), it.get("username")
+        if not sid or not name:
+            continue
+        seen.append(sid)
+        svc = await db.services.find_one({"panel_type": "aether", "account_type": "reseller", "$or": [
+            {"panel_user_id": {"$in": [it.get("id"), sid]}}, {"username": name}, {"xtream_username": name}]})
+        created = None
+        try:
+            created = datetime.fromisoformat(str(it.get("created_at")).replace("Z", "+00:00")).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            pass
+        await db.imported_users.update_one(
+            {"panel_type": "aether", "account_type": "reseller", "aether_subreseller_id": sid},
+            {"$set": {"username": name, "panel_name": panel_name, "panel_index": 0, "credits": float(it.get("credits_balance") or 0),
+                      "status": "active" if it.get("enabled", True) else "disabled", "member_group": "Sub-reseller",
+                      "owner": "CMTV", "line_active": it.get("line_active"), "line_total": it.get("line_total"),
+                      "user_id": str(svc["user_id"]) if svc and svc.get("user_id") else "cmtv:no-billing-account",
+                      "expiry_unlimited": True, "last_synced": now, "cmtv_source": "aether_subresellers"},
+             "$setOnInsert": {"created_at": created or now}}, upsert=True)
+        n += 1
+    if items:
+        await db.imported_users.update_many({"panel_type": "aether", "account_type": "reseller",
+                                             "aether_subreseller_id": {"$nin": seen}}, {"$set": {"status": "removed"}})
+    return n
+
+
 async def reseller_rows(live_imperium=True, include_demo=False):
     """Every active reseller service with its balance: [{service, server, username, credits, as_of}]
     2026-09-28: the demo reseller account's service (cmtv_demo: true, fake panel login, balance in cmtv_demo_credits) only
@@ -395,6 +443,10 @@ async def _balance_loop():
         try:
             n = await refresh_cctv_balances()
             log.info(f"reseller balances refreshed: {n}")
+            try:   # 2026-10-02: Imperium sub-resellers on Admin > Imported Users
+                log.info(f"Imperium sub-resellers synced: {await refresh_imperium_resellers()}")
+            except Exception as e:
+                log.warning(f"Imperium sub-reseller sync failed: {e}")
             await low_balance_alerts()
             await own_imperium_alert()
             await own_cctv_alert()
