@@ -1013,6 +1013,7 @@ async def startup_event():
     await cmtv_nuvio.startup()   # sharing check (hourly)
     cmtv_nuvio_reseller.init(db=db)   # CMTV 2026-10-01: Nuvio for resellers
     cmtv_announce.init(db=db)   # CMTV 2026-09-30: customer update posts
+    cmtv_announce.start()   # CMTV 2026-10-02: the daily 7 pm changelog
     cmtv_trusted_devices.init(db=db)   # CMTV 2026-10-01: 2FA remembered devices
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,

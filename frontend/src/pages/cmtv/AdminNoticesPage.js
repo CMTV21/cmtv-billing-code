@@ -62,6 +62,66 @@ function CustomerNotice() {
   );
 }
 
+// 2026-10-02 (the owner): one changelog a day. Changes are queued here (or by Claude) and billing posts them together in the
+// App updates topic at 7:00 pm Toronto time; nothing queued = no post (cmtv_announce.py, /api/cmtv/announce/queue).
+function DailyChangelog() {
+  const { data: products } = useQuery({ queryKey: ['cmtv-announce-products'], queryFn: async () => (await api.get('/api/cmtv/announce/products')).data });
+  const { data, refetch } = useQuery({ queryKey: ['cmtv-changelog-queue'], queryFn: async () => (await api.get('/api/cmtv/announce/queue')).data });
+  const [product, setProduct] = useState('general');
+  const [line, setLine] = useState('');
+  const [busy, setBusy] = useState(false);
+  const field = { background: '#0a1020', color: '#e9edf8', border: '1px solid #26314d', borderRadius: 10, padding: '8px 10px' };
+  const items = data?.items || [];
+  const add = async () => {
+    setBusy(true);
+    try { await api.post('/api/cmtv/announce/queue', { product, line }); setLine(''); refetch(); }
+    catch (e) { toast.error(e.response?.data?.detail || 'Could not add'); }
+    setBusy(false);
+  };
+  const remove = async (id) => {
+    try { await api.post(`/api/cmtv/announce/queue/${id}/remove`); refetch(); }
+    catch (e) { toast.error(e.response?.data?.detail || 'Could not remove'); }
+  };
+  const postNow = async () => {
+    if (!window.confirm('Post tonight\'s changelog in the App updates topic now instead of at 7 pm?')) return;
+    setBusy(true);
+    try { await api.post('/api/cmtv/announce/queue/post-now'); toast.success('Posted to Telegram'); refetch(); }
+    catch (e) { toast.error(e.response?.data?.detail || 'Could not post'); }
+    setBusy(false);
+  };
+  const at = data?.next_post_at ? new Date(data.next_post_at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '7 pm';
+  return (
+    <div className="rs-notice">
+      <b>Tonight's changelog (posts by itself at 7 pm ET)</b>
+      <p className="rs-sub" style={{ margin: '4px 0 8px' }}>
+        Everything below is posted as one "What's new at CMTV" message in the App updates topic, next on {at}. Nothing queued = no post.
+      </p>
+      {items.length ? (
+        <ul>{items.map((i) => (
+          <li key={i.id}>{i.label}: {i.line} <button type="button" className="rv-btn" onClick={() => remove(i.id)}>Remove</button></li>
+        ))}</ul>
+      ) : <p className="rs-sub">Nothing queued yet.</p>}
+      {data?.last_error && <p style={{ color: '#f87171', fontSize: 13 }}>Last try failed: {data.last_error}</p>}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '8px 0' }}>
+        <select style={field} value={product} onChange={(e) => setProduct(e.target.value)} aria-label="Product">
+          {(products || []).map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+        </select>
+        <input style={{ ...field, flex: 1, minWidth: 240 }} value={line} maxLength={300} onChange={(e) => setLine(e.target.value)}
+          placeholder="One change, e.g. Faster loading in CMTVGhost" aria-label="Change" onKeyDown={(e) => { if (e.key === 'Enter' && line.trim()) add(); }} />
+        <button type="button" className="rv-btn" disabled={busy || !line.trim()} onClick={add}>Add</button>
+      </div>
+      {data?.preview && (
+        <details><summary>Preview</summary>
+          <pre style={{ whiteSpace: 'pre-wrap', ...field, padding: 12, fontSize: 14, marginTop: 8, fontFamily: 'inherit' }}>
+            {data.preview.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')}
+          </pre>
+          <button type="button" className="rv-btn glow" disabled={busy} onClick={postNow}>Post now instead</button>
+        </details>
+      )}
+    </div>
+  );
+}
+
 // 2026-09-30: customer-relevant updates about any product -> the App updates topic in the CMTV User Support group
 // (cmtv_announce.py). The owner wants customers told about every new feature or good change.
 function CustomerUpdate() {
@@ -89,9 +149,9 @@ function CustomerUpdate() {
   const edit = (fn) => (e) => { fn(e.target.value); setPreview(null); };
   return (
     <div className="rs-notice">
-      <b>Post a customer update (Telegram: App updates topic)</b>
+      <b>Post a separate update right away (Telegram: App updates topic)</b>
       <p className="rs-sub" style={{ margin: '4px 0 8px' }}>
-        New features and good changes customers would notice, for any product. One post in the CMTV User Support group's App updates topic.
+        For something that can't wait for tonight's changelog. Normally add changes to the changelog above instead.
       </p>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
         <select style={field} value={product} onChange={edit(setProduct)} aria-label="Product">
@@ -125,6 +185,7 @@ export default function AdminNoticesPage() {
         customer group, every customer's dashboard and cmtv.info. Use these boxes for targeted messages.
       </p>
       <ServiceStatus />
+      <DailyChangelog />
       <CustomerUpdate />
       <CustomerNotice />
       <NoticeBox />
