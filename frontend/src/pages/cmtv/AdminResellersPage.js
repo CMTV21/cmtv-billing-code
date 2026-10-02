@@ -130,8 +130,8 @@ function NuvioResellersBox() {
     <div className="rs-notice">
       <b>Nuvio resellers</b>
       <div style={{ fontSize: 13, opacity: 0.8, margin: '4px 0 8px' }}>
-        They make and run Nuvio accounts in Reseller tools &gt; Nuvio. $0.50 a credit; 1 credit = 1 account-month with 2 devices,
-        +1 for 3-4 devices, +1 for 4K. Free 48 h trials (10 a week).
+        They make and run Nuvio accounts in Reseller tools &gt; Nuvio. $1.00 a credit; 1 credit = 1 account-month with 2 devices,
+        +1 for 3-4 devices, +2 for 4K. Free 48 h trials (10 a week).
         {data && !data.reseller_addons_ready && ' No reseller add-ons yet (Admin > Nuvio > Add-ons, For: Resellers\' customers), so everyone uses your own add-ons for now.'}
       </div>
       <div className="row">

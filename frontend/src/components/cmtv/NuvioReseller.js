@@ -10,7 +10,8 @@ import ResellerCredits from './ResellerCredits';
 import './nuvio-reseller.css';
 
 const MONTHS = [1, 3, 6, 12];
-const perMonth = (devices, uhd) => 1 + (devices > 2 ? 1 : 0) + (uhd ? 1 : 0);
+const UHD_EXTRA = 2; // CMTV 2026-10-02: 4K = 3 credits a month in total
+const perMonth = (devices, uhd) => 1 + (devices > 2 ? 1 : 0) + (uhd ? UHD_EXTRA : 0);
 const err = (e, d) => e?.response?.data?.detail || d;
 const day = (s) => (s ? new Date(`${s}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '–');
 const daysLeft = (s) => (s ? Math.ceil((new Date(`${s}T23:59:59`) - new Date()) / 86400000) : 0);
@@ -52,7 +53,7 @@ function NewAccount({ balance, onDone }) {
         <label className="nvr-wide">Note for you (optional)<input value={f.notes} maxLength={120} onChange={set('notes')} placeholder="e.g. customer's name" /></label>
       </div>
       <div className="nvr-row">
-        <label className="nvr-check"><input type="checkbox" checked={f.uhd} onChange={set('uhd')} /> 4K streams (+1 credit a month)</label>
+        <label className="nvr-check"><input type="checkbox" checked={f.uhd} onChange={set('uhd')} /> 4K streams (+2 credits a month)</label>
         <span className="nvr-cost">Costs <b>{cost} credit{cost > 1 ? 's' : ''}</b>{cost > balance && <em> · you have {balance}</em>}</span>
         <button type="button" className="ca-btn ca-glow" disabled={busy || cost > balance} onClick={make}>{busy ? 'Creating…' : 'Create account'}</button>
       </div>
@@ -116,7 +117,7 @@ function AccountRow({ a, balance, refresh }) {
               <b>4K</b>
               {a.uhd ? <button type="button" className="ca-icon" onClick={() => window.confirm('Turn 4K off? Credits already used are not refunded.') && call('uhd', { on: false }, () => '4K off')}>Turn off</button>
                 : <button type="button" className="ca-icon" disabled={left > balance}
-                  onClick={() => window.confirm(`Turn 4K on? It costs ${left || 0} credit${left === 1 ? '' : 's'} (1 for each month left).`) && call('uhd', { on: true }, (r) => `4K on (${r.cost} credits)`)}>Turn on · {left} credit{left === 1 ? '' : 's'}</button>}
+                  onClick={() => window.confirm(`Turn 4K on? It costs ${(left || 0) * UHD_EXTRA} credits (2 for each month left).`) && call('uhd', { on: true }, (r) => `4K on (${r.cost} credits)`)}>Turn on · {(left || 0) * UHD_EXTRA} credits</button>}
               <b>Devices</b>
               <select value={a.max_devices} onChange={(e) => {
                 const n = Number(e.target.value); const cost = n > 2 && a.max_devices <= 2 ? left : 0;
@@ -178,11 +179,11 @@ export default function NuvioReseller() {
     <section className="ca-panel nvr" ref={ref} aria-label="Nuvio">
       <h2 className="ca-h2">Nuvio</h2>
       <p className="rt-note">Movies and series accounts for your customers. 1 credit = one account for one month with 2 devices;
-        3-4 devices or 4K add 1 credit a month each. When an account ends, your customer is told to contact you (your brand settings below).</p>
+        3-4 devices add 1 credit a month, 4K adds 2. When an account ends, your customer is told to contact you (your brand settings below).</p>
       {isLoading || !data ? <p>Loading…</p> : (
         <>
           <div className="nvr-stats">
-            <div><span>Nuvio credits</span><b>{data.balance}</b><small>$0.50 each</small></div>
+            <div><span>Nuvio credits</span><b>{data.balance}</b><small>$1.00 each</small></div>
             <div><span>Accounts</span><b>{running}</b><small>{data.accounts.length - running} ended or off</small></div>
             <div><span>Free trials left</span><b>{data.trials_left}</b><small>this week · {data.trial_days * 24} h, HD</small></div>
           </div>

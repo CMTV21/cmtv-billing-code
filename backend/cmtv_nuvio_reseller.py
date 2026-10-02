@@ -3,7 +3,7 @@
 Approved resellers (users.cmtv_nuvio_reseller, switched on in Admin > Resellers) make and run Nuvio accounts on CMTV's own
 Nuvio server from Reseller tools > Nuvio, paid with Nuvio credits held in billing:
   1 credit = one account for one month with 2 devices; +1 credit a month for 3-4 devices; +1 credit a month for 4K.
-  Credits: $0.50 each (cmtv_reseller_credits tiers "nuvio"), bought through the normal credit slider/checkout
+  Credits: $1.00 each (cmtv_reseller_credits tiers "nuvio"), bought through the normal credit slider/checkout
   (product with cmtv_nuvio_credits: true); provision_order_services calls provision_credits().
   Free trials: 48 h, HD, 2 devices, at most 10 per 7 days. Resellers may delete their accounts. No caps.
 Accounts carry reseller_id (owner), pool ("retail" = CMTV's current Premiumize add-ons, "reseller" = the reseller
@@ -117,8 +117,11 @@ async def settings() -> dict:
     return {**DEFAULTS, **{k: v for k, v in doc.items() if k in DEFAULTS}}
 
 
+UHD_EXTRA = 2   # CMTV local change 2026-10-02: 4K = 3 credits a month in total (was +1), the owner's price
+
+
 def per_month(devices: int, uhd: bool) -> int:
-    return 1 + (1 if devices > 2 else 0) + (1 if uhd else 0)
+    return 1 + (1 if devices > 2 else 0) + (UHD_EXTRA if uhd else 0)
 
 
 def months_left(expires: str) -> int:
@@ -295,7 +298,7 @@ def init_routes():
                 summary = {}
         return {"balance": await balance(uid), "trials_left": max(0, st["trials_per_week"] - await trials_this_week(uid)),
                 "trial_days": st["trial_days"], "accounts": [_row(a, summary) for a in accs],
-                "rules": {"base": 1, "extra_devices": 1, "uhd": 1, "months": list(MONTHS)}}
+                "rules": {"base": 1, "extra_devices": 1, "uhd": UHD_EXTRA, "months": list(MONTHS)}}
 
     @router.get("/log")
     async def history(uid: str = Depends(me)):
@@ -378,7 +381,7 @@ def init_routes():
             return {"uhd": on, "cost": 0, "balance": await balance(uid)}
         if acc.get("trial") and on:
             raise HTTPException(400, "Trials are HD. Extend the account first, then turn 4K on.")
-        cost = months_left(acc.get("expires")) if on else 0   # 1 credit per remaining month; turning off refunds nothing
+        cost = months_left(acc.get("expires")) * UHD_EXTRA if on else 0   # UHD_EXTRA credits per remaining month; turning off refunds nothing
         if cost:
             await change(uid, -cost, "uhd", f"4K on for {acc['_id']} ({cost} month{'s' if cost > 1 else ''} left)", by=uid, account=acc["_id"])
         try:

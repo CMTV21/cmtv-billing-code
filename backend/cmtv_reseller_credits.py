@@ -33,7 +33,7 @@ SITE = "https://billing.cmtv.info"
 DEFAULT_TIERS = {
     "cctv": [{"min": 50, "rate": 3.00}, {"min": 250, "rate": 2.75}, {"min": 500, "rate": 2.50}, {"min": 1000, "rate": 2.25}],
     "imperium": [{"min": 50, "rate": 4.00}, {"min": 250, "rate": 3.80}, {"min": 500, "rate": 3.70}, {"min": 1000, "rate": 3.50}],
-    "nuvio": [{"min": 50, "rate": 0.50}],   # 2026-10-01 (the owner): $0.50 flat; 1 credit = 1 Nuvio account-month
+    "nuvio": [{"min": 50, "rate": 1.00}],   # 2026-10-02 (the owner): $1.00 flat (was $0.50); 1 credit = 1 Nuvio account-month
 }
 DEFAULT_ALERTS = {"reseller_low": 50, "own_imperium_low": 300, "own_cctv_low": 100}
 _imp = {"balance": None, "at": None}
