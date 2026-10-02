@@ -80,7 +80,7 @@ async def premiumize_check() -> dict:
                 alerted.append(lvl)
                 try:
                     import cmtv_notify
-                    await cmtv_notify.ops(f"📊 Premiumize ({a.get('label') or name}): <b>{used:.0%}</b> of the fair-use allowance used. "
+                    await cmtv_notify.ops(f"📊 <b>Premiumize · {a.get('label') or name}</b>\n{used:.0%} of the fair-use allowance used. "
                                           + ("Consider buying bonus points soon." if lvl < 0.9 else "Buy bonus points now, or streams will slow down."),
                                           "critical" if lvl >= 0.9 else "billing", silent=True)
                 except Exception as e:
@@ -220,9 +220,10 @@ async def provision_credits(order_id: str, order: dict, user: dict, item: dict, 
         else:
             try:
                 import cmtv_notify
-                await cmtv_notify.ops(f"🎬 Nuvio reseller <b>{user.get('name') or user.get('email')}</b> bought {credits} credits. "
-                                      "Their accounts still use your own Premiumize add-ons: add the reseller add-ons "
-                                      "(Admin > Nuvio > Add-ons, For: Resellers' customers), then switch them in Admin > Resellers.",
+                from html import escape   # 2026-10-02: shorter, readable alert
+                await cmtv_notify.ops(f"🎬 <b>Nuvio reseller credits</b>\n{escape(user.get('name') or user.get('email') or '?')} bought "
+                                      f"{credits} credits.\n\nTheir customers still use your Premiumize. To move them to their own, "
+                                      "add reseller add-ons (Admin › Nuvio › Add-ons) and switch them in Admin › Resellers.",
                                       "billing", silent=True)
             except Exception as e:
                 log.warning(f"Nuvio reseller ops note failed: {e}")

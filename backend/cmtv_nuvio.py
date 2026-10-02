@@ -708,12 +708,13 @@ async def share_check():
         svc = (await _linked(username) or [None])[0]
         if svc:
             u = await D["users"].find_one({"_id": _oid(svc.get("user_id"))}, {"name": 1, "email": 1})
-            who = f" ({(u or {}).get('name') or ''} {(u or {}).get('email') or ''})".rstrip(" ()")
+            who = " · ".join(x for x in ((u or {}).get("name"), (u or {}).get("email")) if x)   # 2026-10-02
         try:
             import cmtv_notify
-            await cmtv_notify.ops(f"👀 Nuvio: <b>{username}</b>{who} asked for streams from {len(ips)} different internet "
-                                  f"connections in the last {int(SHARE_WINDOW.total_seconds() // 3600)} h. Possibly shared. "
-                                  f"Admin > Nuvio shows the account.", "billing", silent=True)
+            from html import escape   # 2026-10-02: shorter, readable alert
+            await cmtv_notify.ops(f"👀 <b>Possible Nuvio sharing</b>\n{escape(username)}" + (f" ({escape(who)})" if who else "")
+                                  + f"\nStreamed from {len(ips)} internet connections in "
+                                  f"{int(SHARE_WINDOW.total_seconds() // 3600)} h. Check it in Admin › Nuvio.", "billing", silent=True)
         except Exception as e:
             logger.warning(f"Nuvio share alert not sent: {e}")
     return found

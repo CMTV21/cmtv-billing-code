@@ -8,6 +8,7 @@ Ops group topics Billing (routine) and Critical (problems). Topic numbers: setti
 import logging
 
 import httpx
+import re
 
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)   # request URLs contain the bot token
@@ -37,6 +38,11 @@ async def ops(text: str, kind: str = "critical", settings: dict = None, silent: 
         return False
     topic = ((settings or {}).get("cmtv_telegram_topics") or {}).get(kind) or TOPICS.get(kind)
     msg = {"chat_id": chat, "text": text[:4000], "disable_web_page_preview": True}
+    # CMTV local change 2026-10-02: alerts written with <b>/<i>/<a> were shown as raw tags (no parse_mode was sent).
+    # Send them as HTML; if Telegram can't read it (e.g. a stray "<" in a name), send the same text without the tags.
+    html = bool(re.search(r"</?(b|i|u|a|code|pre)\b", text))
+    if html:
+        msg["parse_mode"] = "HTML"
     if silent:
         msg["disable_notification"] = True
     if topic:
@@ -44,6 +50,10 @@ async def ops(text: str, kind: str = "critical", settings: dict = None, silent: 
     try:
         async with httpx.AsyncClient(timeout=15) as c:
             r = await c.post(f"https://api.telegram.org/bot{token}/sendMessage", json=msg)
+            if html and r.status_code == 400 and "parse" in (r.text or "").lower():
+                msg.pop("parse_mode", None)
+                msg["text"] = re.sub(r"<[^>]+>", "", text)[:4000].replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+                r = await c.post(f"https://api.telegram.org/bot{token}/sendMessage", json=msg)
         if r.status_code != 200 or not r.json().get("ok"):
             logger.warning(f"CMTV alert: Telegram said {r.status_code} {r.json().get('description', '') if r.content else ''}")
             return False
