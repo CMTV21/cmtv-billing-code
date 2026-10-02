@@ -175,7 +175,7 @@ export default function CmtvLoginPage() {
       </form>
 
       {/* CMTV 2026-09-28: customers set up by hand can sign in with their TV login, then finish their account */}
-      <p className="ab-alt">Already a customer but never used this website? Sign in with your TV app's <b>username</b> and <b>password</b>.</p>
+      <p className="ab-alt">Already a customer but never used this website? Sign in with your TV app's <b>username</b> and <b>password</b>, add your email and get <b>$5 credit</b>.</p>
       <p className="ab-alt">New to CMTV? <Link to="/register">Create an account</Link></p>
       <RecaptchaLegal enabled={recaptchaConfig?.enabled} />
     </AuthShell>

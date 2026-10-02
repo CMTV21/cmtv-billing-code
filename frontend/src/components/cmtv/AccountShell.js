@@ -77,7 +77,7 @@ export function AccountHeader() {
       {/* 2026-09-28: signed in with a TV line login and no email yet */}
       {user?.needs_email_link && user.role !== 'admin' && (
         <div style={{ background: 'rgba(34,230,242,.1)', borderTop: '1px solid rgba(34,230,242,.3)', padding: '8px 16px', textAlign: 'center', fontSize: 14 }}>
-          Add your email so you get renewal reminders and can reset your password.{' '}
+          Add your email for renewal reminders and get $5 credit on your account.{' '}
           <Link to="/link-email" style={{ color: 'var(--cyan, #22e6f2)', fontWeight: 700 }}>Finish setting up &rarr;</Link>
         </div>
       )}

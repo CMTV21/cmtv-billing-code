@@ -8,7 +8,12 @@ current line password works even if it changed since the account was made). This
       placeholder is JOINED into it (every reference to the placeholder in every collection moves over; the placeholder
       is retired as role "merged", never deleted; a copy is kept in cmtv_account_merges) and a sign-in for it is returned.
 Ops Billing gets a note either way. Wrong existing passwords: 5 per placeholder per hour.
+2026-10-02 (the owner): REWARD of $5 account credit, once per TV line (placeholder), for lines finished from REWARD_SINCE
+on: a new email gets it once it's confirmed (reward_loop checks every 10 min: cmtv_claim_reward_pending + email_verified),
+joining an existing account gets it right away. Log cmtv_claim_rewards {_id: placeholder id, user_id, amount, at}.
+Switch: cmtv_config {_id: "claim_reward", enabled (default true), amount}.
 """
+import asyncio
 import hmac
 import logging
 import re
@@ -22,6 +27,8 @@ log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/claim", tags=["cmtv-claim"])
 D = {}
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+REWARD_SINCE = datetime(2026, 10, 2)
+REWARD_DEFAULT = 5.0
 
 
 def init(**deps):
@@ -102,8 +109,54 @@ async def _send_verification(user: dict, email: str):
         log.warning(f"claim: verification email failed: {e}")
 
 
+async def reward_config():
+    doc = await D["db"].cmtv_config.find_one({"_id": "claim_reward"}) or {}
+    return bool(doc.get("enabled", True)), float(doc.get("amount") or REWARD_DEFAULT)
+
+
+async def give_reward(placeholder_id: str, to_user_id: str) -> bool:
+    """$5 once per TV line; True if credited now."""
+    db = D["db"]
+    on, amount = await reward_config()
+    if not on or await db.cmtv_claim_rewards.find_one({"_id": placeholder_id}):
+        return False
+    await db.cmtv_claim_rewards.insert_one({"_id": placeholder_id, "user_id": to_user_id, "amount": amount, "at": datetime.utcnow()})
+    try:
+        await D["credit_service"].add_credits(user_id=to_user_id, amount=amount, transaction_type="claim_reward",
+                                              description="Thanks for finishing your CMTV account", created_by="claim",
+                                              bypass_enabled_check=True)
+    except Exception as e:
+        await db.cmtv_claim_rewards.delete_one({"_id": placeholder_id})   # try again next time
+        log.error(f"claim reward for {to_user_id} failed: {e}")
+        return False
+    await db.users.update_one({"_id": _oid(to_user_id)}, {"$unset": {"cmtv_claim_reward_pending": ""}})
+    return True
+
+
+async def reward_loop():
+    await asyncio.sleep(120)
+    while True:
+        try:
+            async for u in D["db"].users.find({"cmtv_claim_reward_pending": True, "email_verified": True}, {"_id": 1, "email": 1}):
+                if await give_reward(str(u["_id"]), str(u["_id"])):
+                    await _ops(f"💵 $5 claim credit added: {u.get('email')} confirmed their email.")
+        except Exception as e:
+            log.warning(f"claim reward loop: {e}")
+        await asyncio.sleep(600)
+
+
+def start():
+    if not D.get("task"):
+        D["task"] = asyncio.get_event_loop().create_task(reward_loop())
+
+
 def init_routes():
     current = D["get_current_user"]
+
+    @router.get("/offer")
+    async def offer():   # 2026-10-02: public: is the claim credit on, and how much (the sign-in / finish pages show it)
+        on, amount = await reward_config()
+        return {"enabled": on, "amount": amount}
 
     @router.post("/link")
     async def link(body: dict = Body(...), current_user: dict = Depends(current)):
@@ -141,10 +194,11 @@ def init_routes():
             if me.get("panel_username") and not other.get("panel_username"):
                 await db.users.update_one({"_id": other["_id"]}, {"$set": {"panel_username": me["panel_username"]}})
             other = await db.users.find_one({"_id": other["_id"]})
-            await _ops(f"🔗 Customer joined their accounts: TV line {me.get('panel_username')} is now on {other.get('email')} "
+            rewarded = await give_reward(me_id, keep_id)   # 2026-10-02
+            await _ops(("💵 " if rewarded else "") + f"🔗 Customer joined their accounts: TV line {me.get('panel_username')} is now on {other.get('email')} "
                        f"({other.get('name') or ''}).")
             token = D["create_access_token"]({"sub": keep_id, "email": other["email"], "role": "user"})
-            return {"joined": True, "access_token": token, "user": user_payload(other)}
+            return {"joined": True, "rewarded": rewarded, "access_token": token, "user": user_payload(other)}
 
         new_pw = str(body.get("new_password") or "")
         if len(new_pw) < 6:
@@ -152,6 +206,8 @@ def init_routes():
         name = str(body.get("name") or "").strip()[:80]
         upd = {"email": email, "email_verified": False, "password": D["hash_password"](new_pw),
                "cmtv_claimed_at": datetime.utcnow(), "cmtv_placeholder_email": me.get("email")}
+        if (await reward_config())[0] and not await db.cmtv_claim_rewards.find_one({"_id": str(me["_id"])}):
+            upd["cmtv_claim_reward_pending"] = True   # 2026-10-02: $5 once the email is confirmed
         if name:
             upd["name"] = name
         await db.users.update_one({"_id": me["_id"]}, {"$set": upd})

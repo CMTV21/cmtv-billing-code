@@ -1024,8 +1024,9 @@ async def startup_event():
     cmtv_trusted_devices.init(db=db)   # CMTV 2026-10-01: 2FA remembered devices
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
-                    create_access_token=create_access_token,
+                    create_access_token=create_access_token, credit_service=credit_service,
                     site_url=os.getenv('SITE_URL', os.getenv('BACKEND_PUBLIC_URL', '')))   # CMTV 2026-09-28: account claiming
+    cmtv_claim.start()   # CMTV 2026-10-02: $5 claim credit once the email is confirmed
 
     # Validate license on startup (check env var first, then settings)
     current_domain = license_manager.get_current_domain()

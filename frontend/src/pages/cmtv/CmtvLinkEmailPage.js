@@ -2,7 +2,7 @@
 // They add their email + a website password; if the email already has a CMTV account, they confirm that account's
 // password and the two are joined. Backend: POST /api/cmtv/claim/link (cmtv_claim.py). Replaces the developer's
 // LinkEmailPage (still in the code, unused).
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import api from '../../api/api';
@@ -18,6 +18,9 @@ export default function CmtvLinkEmailPage() {
   const [done, setDone] = useState(null); // 'linked' | 'joined'
   const [busy, setBusy] = useState(false);
   const next = new URLSearchParams(window.location.search).get('redirect') || '/dashboard';
+  const [reward, setReward] = useState(0);   // 2026-10-02: $5 credit for finishing the account
+  useEffect(() => { api.get('/api/cmtv/claim/offer').then((r) => setReward(r.data.enabled ? r.data.amount : 0)).catch(() => {}); }, []);
+  const money = reward ? `$${Number(reward) % 1 ? Number(reward).toFixed(2) : Number(reward)}` : '';
   const set = (k) => (e) => { setForm({ ...form, [k]: e.target.value }); setError(''); };
 
   if (!user) {
@@ -70,8 +73,8 @@ export default function CmtvLinkEmailPage() {
         <h2>{done === 'joined' ? 'Accounts joined' : 'Your account is ready'}</h2>
         <Note kind="ok"><CheckCircle2 size={18} /><span>
           {done === 'joined'
-            ? 'Your TV line is now on your existing account. From now on, sign in with that email and its password.'
-            : `We've sent a link to ${form.email} to confirm it's yours. From now on, sign in with your email and the password you just chose.`}
+            ? `Your TV line is now on your existing account. From now on, sign in with that email and its password.${money ? ` We've added ${money} credit to your account.` : ''}`
+            : `We've sent a link to ${form.email} to confirm it's yours.${money ? ` Click it and we'll add ${money} credit to your account.` : ''} From now on, sign in with your email and the password you just chose.`}
         </span></Note>
         <button type="button" className="ab-btn" onClick={() => navigate(next)}>Continue</button>
       </AuthShell>
@@ -84,6 +87,7 @@ export default function CmtvLinkEmailPage() {
       <p className="sub">
         Welcome{user.panel_username ? `, ${user.panel_username}` : ''}! Add your email so you get renewal reminders and can reset your
         password, and choose a password for this website. Your TV app login doesn't change.
+        {money && <><br /><b>Get {money} credit</b> on your account once you confirm your email.</>}
       </p>
       {error && <Note kind="err"><AlertCircle size={18} /><span>{error}</span></Note>}
       <form onSubmit={submit}>
