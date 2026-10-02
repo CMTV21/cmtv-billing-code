@@ -90,7 +90,7 @@ def changelog_text(items, day=None) -> str:
     for key, label in PRODUCTS.items():
         lines = [i["line"] for i in items if i.get("product") == key]
         if lines:
-            out.append(f"\n<b>{label}</b>\n" + "\n".join("• " + escape(x) for x in lines))
+            out.append(f"\n<b>{label}</b>\n" + "\n".join("• " + escape(x, quote=False) for x in lines))
     return "\n".join(out)
 
 
