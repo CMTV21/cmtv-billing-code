@@ -144,6 +144,19 @@ def _err(data) -> str:
 
 
 # ---------------------------------------------------------------- add-ons
+# CMTV local change 2026-10-02 (the owner): the Nuvio server gives every new account its defaults "Nuvio Catalog Addon" +
+# "OpenSubtitles v3"; with our own AIOMetadata + managed OpenSubtitles they only duplicate rows and subtitles. Pushing
+# add-ons drops these (and Cinemeta) from tester accounts, and from everyone once nuvio_addons.drop_defaults is true.
+DEFAULT_DROP = ("https://catalog.nuvio.tv", "https://opensubtitles-v3.strem.io", "https://v3-cinemeta.strem.io")
+
+
+async def drops_defaults(acc: dict) -> bool:
+    if acc.get("tester"):
+        return True
+    doc = await _db().cmtv_config.find_one({"_id": "nuvio_addons"}, {"drop_defaults": 1}) or {}
+    return bool(doc.get("drop_defaults"))
+
+
 async def addon_config() -> list:
     doc = await _db().cmtv_config.find_one({"_id": "nuvio_addons"}) or {}
     return doc.get("addons") or []
@@ -195,6 +208,8 @@ async def push_addons(acc: dict) -> int:
     if st != 200:
         raise NuvioError(f"reading add-ons failed ({st}: {_err(current)})")
     own = [a for a in (current or []) if not str(a.get("url", "")).startswith(ADDON_BASE + "/")]
+    if await drops_defaults(acc):   # 2026-10-02
+        own = [a for a in own if not str(a.get("url", "")).startswith(DEFAULT_DROP)]
     ours = [{"url": personal_url(acc["token"], a["slug"]), "name": a["name"]} for a in managed]
     cmtv = {"url": personal_url(acc["token"], CMTV_SLUG), "name": "CMTV"}
     # 2026-09-30: always first, so the CMTV row is the top row of the home screen (the owner: "buried at the bottom")
@@ -746,7 +761,8 @@ async def repair_addons() -> list:
         have = {r.get("url") for r in rows or []}
         ours_now = {u for u in have if str(u or "").startswith(ADDON_BASE + "/")}
         cmtv_ok = (not shows_cmtv_row(acc)) or (bool(rows) and rows[0].get("url") == personal_url(acc["token"], CMTV_SLUG))
-        if (want - have) or (ours_now - want) or acc.get("addons_pushed_live") != live or not cmtv_ok:
+        stale = any(str(u or "").startswith(DEFAULT_DROP) for u in have) and await drops_defaults(acc)   # 2026-10-02
+        if (want - have) or (ours_now - want) or acc.get("addons_pushed_live") != live or not cmtv_ok or stale:
             await push_addons(acc)
             await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$inc": {"addons_repaired": 1},
                                                                             "$set": {"addons_repaired_at": datetime.utcnow()}})
