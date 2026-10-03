@@ -3957,6 +3957,19 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if abs(float(item.price or 0) - actual_price) > 0.009:
             logger.warning(f"Order item {item.product_name}: client price ${item.price} replaced by product price ${actual_price}")
         item.price = actual_price
+        # CMTV local change 2026-10-03: "extend" only works on a line on the SAME server, and never for a trial. An Imperium
+        # trial ordered as "extend" of a CCTV trial line made billing renew the CCTV line on the Imperium panel ("not found")
+        # and the customer got nothing (order 6ac0517c). Anything else becomes a new line.
+        if getattr(item, "renewal_service_id", None) and getattr(item, "action_type", None) in ("renew", "extend"):
+            _svc = await services_collection.find_one({"_id": str_to_objectid(item.renewal_service_id), "user_id": user_id})
+            _trial = bool(product.get("trial_duration")) or "trial" in str(product.get("name") or "").lower()
+            _same = bool(_svc) and _svc.get("panel_type") == product.get("panel_type") and (
+                product.get("panel_type") != "manual" or _svc.get("cockpit_module") == product.get("cockpit_module"))
+            if _trial or not _same:
+                logger.warning(f"Order item {item.product_name}: 'extend' of service {item.renewal_service_id} "
+                               f"({(_svc or {}).get('panel_type')}) not allowed for this product, made a new line instead")
+                item.action_type = "create_new"
+                item.renewal_service_id = None
         # CMTV local change 2026-09-29: a line-up choice only means something on an Imperium (Aether) subscriber plan
         if getattr(item, "lineup", None) and (item.lineup not in cmtv_lineups.LINEUPS or product.get("panel_type") != "aether"
                                              or product.get("account_type", "subscriber") != "subscriber"):

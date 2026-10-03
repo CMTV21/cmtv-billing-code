@@ -120,7 +120,9 @@ export default function CheckoutPage() {
   
   // Check if cart has subscriber products (for extend/create option)
   // CMTV local change 2026-09-25: add-ons (account_type "manual") can extend too (e.g. Stremio after its trial)
-  const canExtend = (item) => item.account_type === 'subscriber' || addonIds.has(item.product_id);
+  // CMTV 2026-10-03: a free trial is always a new line (never "extend" another service)
+  const canExtend = (item) => (item.account_type === 'subscriber' || addonIds.has(item.product_id))
+    && !(Number(item.price) === 0 && /trial/i.test(item.product_name || ''));
   const hasSubscriberProduct = items.some(canExtend);
 
   // Fetch user's existing services to show extend option
