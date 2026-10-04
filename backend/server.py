@@ -128,6 +128,12 @@ from fastapi import Body
 # CMTV local change 2026-09-26: website tickets <-> Telegram support bot (cmtv_tickets_bridge.py)
 import cmtv_tickets_bridge
 app.include_router(cmtv_tickets_bridge.router)
+# CMTV local change 2026-10-04: Admin > Support inbox: website + Telegram tickets together (cmtv_support_inbox.py)
+import cmtv_support_inbox
+cmtv_support_inbox.D["get_current_admin_user"] = get_current_admin_user
+cmtv_support_inbox.init_routes()
+app.include_router(cmtv_support_inbox.router)
+app.include_router(cmtv_support_inbox.bridge)
 
 # CMTV local change 2026-09-25: Admin > Audiobooks (cmtv_audiobooks.py, through abadmin on the Asus server)
 import cmtv_audiobooks
@@ -970,6 +976,7 @@ async def startup_event():
     await cmtv_referral.startup()
 
     # CMTV local change 2026-09-26: website tickets <-> Telegram
+    cmtv_support_inbox.init(db=db)   # CMTV 2026-10-04: Support inbox
     cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
                              get_email_service=get_configured_email_service)
 

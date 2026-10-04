@@ -59,6 +59,7 @@ import AdminProducts from './pages/AdminProducts';
 import AdminSettings from './pages/AdminSettings';
 import StaffManagement from './pages/StaffManagement';
 import AdminTickets from './pages/AdminTickets';
+import AdminSupportInbox from './pages/cmtv/AdminSupportInbox'; // CMTV local change 2026-10-04: Support inbox
 import AdminMassEmail from './pages/AdminMassEmail';
 import AdminEmailTemplates from './pages/AdminEmailTemplates';
 import AdminCoupons from './pages/AdminCoupons';
@@ -390,6 +391,16 @@ function App() {
             />
             <Route
               path="/admin/tickets"
+              element={
+                <ProtectedRoute>
+                  <AdminRoute>
+                    <CmtvAdminFrame><AdminSupportInbox /></CmtvAdminFrame>
+                  </AdminRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/tickets-classic"
               element={
                 <ProtectedRoute>
                   <AdminRoute>

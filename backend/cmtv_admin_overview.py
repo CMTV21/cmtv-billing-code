@@ -191,6 +191,17 @@ def init_routes():
                 at = msgs[-1].get("created_at")
                 waiting.append({"id": str(t["_id"]), "subject": t.get("subject"),
                                 "hours": int((now_utc - at).total_seconds() // 3600) if isinstance(at, datetime) else None})
+        # 2026-10-04: Telegram support-bot tickets waiting on us count too (Support inbox, cmtv_support_inbox.py)
+        try:
+            import cmtv_support_inbox
+            for r in cmtv_support_inbox._tg_rows():
+                if r["state"] == "needs":
+                    at = cmtv_support_inbox._dt(r["updated_at"])
+                    waiting.append({"id": "tg:" + r["id"], "subject": f"{r['number']} {r['subject']} (Telegram)",
+                                    "hours": int((now_utc - at).total_seconds() // 3600) if at else None})
+            waiting.sort(key=lambda w: -(w["hours"] if w["hours"] is not None else -1))
+        except Exception:
+            pass
 
         # emails that failed to send in the last 7 days (2026-09-26: the log only records sent/failed from today)
         email_failed = []
