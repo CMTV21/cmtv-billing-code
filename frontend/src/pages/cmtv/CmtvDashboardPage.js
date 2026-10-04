@@ -10,6 +10,7 @@ import NuvioDevices from '../../components/cmtv/NuvioDevices'; // 2026-09-29: de
 import { webPlayerLink } from '../../components/cmtv/webPlayer'; // 2026-10-01: "Watch in browser"
 import ResellerPanels from '../../components/cmtv/ResellerPanels'; // 2026-09-28: reseller login, balance, top-up slider
 import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: latest CMTV Updates post
+import SpellOut from '../../components/cmtv/SpellOut'; // 2026-10-04: I / l look-alikes spelled out
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -149,10 +150,10 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
         {!d.ended && (d.username || d.server) && (
           <div className="ca-login">
             {d.username && <div className="ca-field"><label>Username</label><div className="val"><code>{d.username}</code>
-              <button type="button" className="ca-icon" onClick={() => copy(d.username, 'Username')}>Copy</button></div></div>}
+              <button type="button" className="ca-icon" onClick={() => copy(d.username, 'Username')}>Copy</button></div><SpellOut value={d.username} label="username" /></div>}
             {d.password && <div className="ca-field"><label>Password</label><div className="val"><code>{showPass ? d.password : '••••••••'}</code>
               <button type="button" className="ca-icon" onClick={() => setShowPass(!showPass)}>{showPass ? 'Hide' : 'Show'}</button>
-              <button type="button" className="ca-icon" onClick={() => copy(d.password, 'Password')}>Copy</button></div></div>}
+              <button type="button" className="ca-icon" onClick={() => copy(d.password, 'Password')}>Copy</button></div>{showPass && <SpellOut value={d.password} />}</div>}
             {d.server && <div className="ca-field"><label>Server</label><div className="val"><code>{d.server}</code>
               <button type="button" className="ca-icon" onClick={() => copy(d.server, 'Server')}>Copy</button></div></div>}
             {/* 2026-09-29: the CMTVGhost app's login code (GhostAPK pin from the CCTV panel; cmtv_ghostapk.py fills older lines) */}

@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
 import api from '../../api/api';
+import SpellOut from './SpellOut'; // 2026-10-04: I / l look-alikes spelled out
 
 export const TV_GUIDES = new Set(['cmtv-firestick-android-tv', 'cmtv-onn-4k-google-tv', 'cmtv-cmtvghost', 'cmtv-iphone-ipad',
   'cmtv-web-player', 'cmtv-find-your-login', 'cmtv-login-problems', 'cmtv-channels-guide-movies', 'cmtv-getting-started']);
@@ -107,12 +108,13 @@ export default function GuideLogin({ articleId, user }) {
       <dl>
         {srv && !URL_FIRST.has(articleId) && (<><dt>Server</dt><dd><strong>{srv.name}</strong><small>pick this in the app</small></dd></>)}
         {srv && (<><dt>{URL_FIRST.has(articleId) ? 'Server URL' : 'Server address'}</dt><dd><code>{srv.url}</code><Copy text={srv.url} label="server address" /></dd></>)}
-        <dt>Username</dt><dd><code>{u}</code><Copy text={u} label="username" /></dd>
+        <dt>Username</dt><dd><code>{u}</code><Copy text={u} label="username" /><SpellOut value={u} label="username" /></dd>
         <dt>Password</dt>
         <dd>
           <code>{show ? p : '•'.repeat(Math.min(Math.max(p.length, 8), 14))}</code>
           <button type="button" className="kb-copy" onClick={() => setShow((v) => !v)}>{show ? 'Hide' : 'Show'}</button>
           <Copy text={p} label="password" />
+          {show && <SpellOut value={p} />}
         </dd>
         {!addon && s.max_connections ? (<><dt>Devices at once</dt><dd>{s.max_connections}</dd></>) : null}
         {s.expiry_date && (<><dt>{s.status === 'active' ? 'Ends' : 'Ended'}</dt><dd>{day(s.expiry_date)}{s.status !== 'active' && <em> · {s.status}</em>}</dd></>)}

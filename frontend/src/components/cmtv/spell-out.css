@@ -1,0 +1,16 @@
+/* CMTV local addition 2026-10-04: SpellOut (components/cmtv/SpellOut.js) + a clearer font for logins. Atkinson
+   Hyperlegible Mono (Google Fonts, linked in public/index.html) is designed so I, l, 1, O and 0 all look different. */
+.spell-out { margin-top: 6px; }
+.spell-out-head { display: block; font-size: 12px; color: #9aa6c6; margin-bottom: 4px; }
+.spell-out-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.spell-out-ch { display: inline-flex; flex-direction: column; align-items: center; min-width: 30px; padding: 4px 3px 3px;
+  background: #0a1020; border: 1px solid #27345a; border-radius: 8px; }
+.spell-out-ch b { font: 700 18px "Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace; color: #e9edf8; line-height: 1.2; }
+.spell-out-ch small { font-size: 9.5px; line-height: 1.1; color: #8391b5; min-height: 10px; white-space: nowrap; text-transform: none; }
+.spell-out-ch.risky { border-color: rgba(251, 191, 36, .65); background: rgba(251, 191, 36, .08); }
+.spell-out-ch.risky small { color: #fcd34d; font-weight: 700; }
+.ca-field code, .cmtv-kb .kb-mine code, .ca-codebox code { font-family: "Atkinson Hyperlegible Mono", ui-monospace, Menlo, monospace !important; }
+.cmtv-kb .kb-mine dd { flex-wrap: wrap; }
+.cmtv-kb .kb-mine dd .spell-out, .ca-field .spell-out { flex-basis: 100%; }
+.cmtv-kb .kb-mine dd { flex-wrap: wrap; }
+.cmtv-kb .kb-mine dd .spell-out, .ca-field .spell-out { flex-basis: 100%; }
