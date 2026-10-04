@@ -29,3 +29,4 @@
 .dv .dv-warn { background: rgba(251, 146, 60, .1); border: 1px solid rgba(251, 146, 60, .5); border-radius: 14px; padding: 12px 14px; margin: 10px 0 14px; }
 .dv .dv-warn b { color: #fdba74; font-size: 15px; }
 .dv .dv-warn p { margin: 6px 0 0; font-size: 14px; color: #fed7aa; }
+.dv .dv-linkbtn { font: inherit; font-weight: 700; color: #22e6f2; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }

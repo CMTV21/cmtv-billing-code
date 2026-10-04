@@ -38,7 +38,7 @@ const DEVICES = [
     note: 'Formuler boxes also come with MYTVOnline built in, which works great with CMTV.' },
   { key: 'fire', label: 'Amazon Firestick / Fire TV', sub: 'Fire TV Stick, Fire TV Cube', apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'smarttube', 'cmtvpn', 'fast', 'ookla'],
     guide: 'cmtv-firestick-android-tv',
-    note: 'Already have a Firestick? Most current ones still run these apps. Buying a new device? We don\'t recommend a Firestick, especially the newest models (see "Our picks" below).' },
+    note: 'Already have a Firestick? Most current ones still run these apps. Buying a new device? We don\'t recommend a Firestick, especially the newest models.' },
   { key: 'apple', label: 'iPhone, iPad or Apple TV', sub: 'iOS / tvOS', apps: ['mytv', 'cmtvpn', 'ookla'], guide: 'cmtv-iphone-ipad',
     note: 'Nuvio isn\'t on iPhone yet; use the Web Player in Safari for movies and series in the meantime.' },
   { key: 'phone', label: 'Android phone or tablet', sub: 'Samsung, Pixel and others', apps: ['ghost', 'cmtvpn', 'fast', 'ookla'], guide: 'cmtv-cmtvghost' },
@@ -60,6 +60,9 @@ export default function DevicesPage() {
   usePageMeta({ title: 'Devices & apps | CMTV', description: 'Which app to use on your TV, phone or computer, and the streaming devices we recommend for CMTV.' });
   const [pick, setPick] = useState('androidtv');
   const d = DEVICES.find((x) => x.key === pick);
+  // 2026-10-04: /devices#picks (dashboard link) and the Fire TV note jump to the picks
+  const toPicks = () => document.getElementById('picks')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  React.useEffect(() => { if (window.location.hash === '#picks') setTimeout(toPicks, 300); }, []);
   return (
     <div className="cmtv-kb dv">
       <article className="kb-article" style={{ marginTop: 12 }}>
@@ -73,7 +76,7 @@ export default function DevicesPage() {
           ))}
         </div>
         <div className="dv-panel">
-          {d.note && <p className="dv-note">{d.note}</p>}
+          {d.note && <p className="dv-note">{d.note}{d.key === 'fire' && <>{' '}<button type="button" className="dv-linkbtn" onClick={toPicks}>See our recommended devices →</button></>}</p>}
           {d.web && (
             <div className="dv-app">
               <div className="dv-app-head"><b>CMTV Web Player</b><span className="dv-tag">Watch in your browser</span></div>
