@@ -274,6 +274,13 @@ cmtv_trusted_devices.init(get_current_admin_user=get_current_admin_user)   # db 
 cmtv_trusted_devices.init_routes()
 app.include_router(cmtv_trusted_devices.router)
 
+# CMTV local change 2026-10-04: duplicate-account protection (cmtv_dupes.py): throwaway inboxes, Gmail dot/+ copies,
+# one free trial per home/device, no referral reward from the referrer's own home, Admin > Possible duplicates
+import cmtv_dupes
+cmtv_dupes.D["get_current_admin_user"] = get_current_admin_user
+cmtv_dupes.init_routes()
+app.include_router(cmtv_dupes.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -1023,6 +1030,8 @@ async def startup_event():
     cmtv_announce.init(db=db)   # CMTV 2026-09-30: customer update posts
     cmtv_announce.start()   # CMTV 2026-10-02: the daily 7 pm changelog
     cmtv_trusted_devices.init(db=db)   # CMTV 2026-10-01: 2FA remembered devices
+    cmtv_dupes.init(db=db)   # CMTV 2026-10-04: duplicate-account protection
+    await cmtv_dupes.startup()
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
                     create_access_token=create_access_token, credit_service=credit_service,
@@ -1620,7 +1629,7 @@ async def health_check():
 # ===== AUTH ROUTES =====
 
 @app.post("/api/auth/register")
-async def register(user_data: UserCreate):
+async def register(user_data: UserCreate, request: Request):
     """Register new user with email verification"""
     # Verify reCAPTCHA if enabled
     settings = await get_settings()
@@ -1637,6 +1646,7 @@ async def register(user_data: UserCreate):
     existing_user = await email_in_use(user_data.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
+    await cmtv_dupes.check_email(user_data.email)   # CMTV 2026-10-04: throwaway inbox / same Gmail inbox
     
     # Generate verification token
     verification_token = secrets.token_urlsafe(32)
@@ -1660,6 +1670,15 @@ async def register(user_data: UserCreate):
     
     # Generate referral code
     new_user_code = await referral_service.create_referral_code_for_user(user_id)
+
+    # CMTV local change 2026-10-04: remember where the account was made; hold the referral reward when the new account
+    # shares the referrer's internet connection or device (the "friend" is probably the referrer)
+    await cmtv_dupes.record(user_id, "signup", request)
+    if user_data.referral_code:
+        _held = await cmtv_dupes.referral_same_home(user_id)
+        if _held:
+            await users_collection.update_one({"_id": result.inserted_id}, {"$set": {"cmtv_referral_held": _held}})
+            await cmtv_dupes.hold_referral(user_id, _held, "sign-up")
     
     # Track referral
     if user_data.referral_code:
@@ -1743,7 +1762,7 @@ async def verify_email_api(token: str, redirect: bool = False):
         )
     
     # Award signup bonus if referred
-    if user.get("referred_by") and credit_service:
+    if user.get("referred_by") and credit_service and not user.get("cmtv_referral_held"):   # CMTV 2026-10-04: held = same home as the referrer
         settings = await get_settings()
         referred_reward = settings.get("referral", {}).get("referred_reward", 5.0)
         
@@ -2024,7 +2043,7 @@ async def reset_password(data: ResetPasswordRequest):
     return {"message": "Your password has been reset. You can now sign in with your new password."}
 
 @app.post("/api/auth/login")
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, request: Request):
     """Login user - requires email verification and optional reCAPTCHA"""
     # Step 1: Verify reCAPTCHA if enabled
     settings = await get_settings()
@@ -2101,6 +2120,8 @@ async def login(credentials: UserLogin):
         if credentials.remember_device:   # CMTV 2026-10-01
             new_device_token = await cmtv_trusted_devices.issue(db, user, credentials.device_label or "")
     
+    if user.get("role") == "user":
+        await cmtv_dupes.record(user["_id"], "login", request)   # CMTV 2026-10-04: duplicate-account protection
     # Step 5: Create access token
     access_token = create_access_token(data={
         "sub": str(user["_id"]),
@@ -2138,6 +2159,7 @@ async def link_email_to_account(data: dict, current_user: dict = Depends(get_cur
     existing = await email_in_use(email, exclude_user_id=current_user["sub"])
     if existing:
         raise HTTPException(status_code=400, detail="Email already in use by another account")
+    await cmtv_dupes.check_email(email, exclude_user_id=current_user["sub"])   # CMTV 2026-10-04
 
     # Generate verification token
     import secrets
@@ -3862,7 +3884,7 @@ async def check_reseller_username(username: str, current_user: dict = Depends(ge
     }
 
 @app.post("/api/orders")
-async def create_order(order_data: OrderCreate, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+async def create_order(order_data: OrderCreate, background_tasks: BackgroundTasks, request: Request, current_user: dict = Depends(get_current_user)):
     """Create new order with coupon and credit support"""
     user_id = current_user["sub"]
     
@@ -3889,6 +3911,8 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             if item.product_id in _cmtv_trials_seen:
                 raise HTTPException(status_code=400, detail="This trial is in your cart twice. Remove one and try again.")
             _cmtv_trials_seen.add(item.product_id)
+            if current_user.get("role") == "user":
+                await cmtv_dupes.check_trial(user_id, product, request)   # CMTV 2026-10-04: one trial per home/device
             panel_type = product.get("panel_type", "xtream")
             panel_index = product.get("panel_index", 0)
             if panel_type == "manual":
@@ -4082,6 +4106,11 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
     
     result = await orders_collection.insert_one(order_dict)
     order_id = str(result.inserted_id)
+    # CMTV local change 2026-10-04: remember where each free trial was taken (one per home/device per 90 days)
+    for _it in order_data.items:
+        _p = await products_collection.find_one({"_id": str_to_objectid(_it.product_id)})
+        if _p and _p.get("is_trial"):
+            await cmtv_dupes.mark_trial(user_id, _p, request, order_id)
     
     # Record coupon usage
     if order_data.coupon_code and discount_amount > 0:
@@ -5972,13 +6001,21 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
         # === Referral completion check (covers ALL payment paths) ===
         if user.get("referred_by") and referral_service:
             try:
+                # CMTV local change 2026-10-04: no reward when the "friend" uses the referrer's home or device
+                _held = ""
+                if await referrals_collection.find_one({"referred_email": user.get("email"), "status": "pending"}, {"_id": 1}):
+                    _held = user.get("cmtv_referral_held") or await cmtv_dupes.referral_same_home(order["user_id"])
+                    if _held:
+                        await cmtv_dupes.hold_referral(order["user_id"], _held, "first order")
                 # CMTV local change 2026-09-24: enforce the referral minimum purchase (was ignored, so $0 trials paid out).
                 # Any paid order worth at least the minimum completes a still-pending referral; complete_referral only
                 # acts on pending referrals, so the reward is paid once.
                 ref_settings = await referral_service.get_referral_settings()
                 minimum = float(ref_settings.get("minimum_purchase") or 0)
                 order_value = float(order.get("total") or 0) + float(order.get("credits_used") or 0)
-                if order_value > 0 and order_value >= minimum:
+                if _held:
+                    logger.info(f"Referral reward held for user {order['user_id']}: {_held}")
+                elif order_value > 0 and order_value >= minimum:
                     await referral_service.complete_referral(order["user_id"], order_id)
                     logger.info(f"Referral completed for user {order['user_id']}")
                     await cmtv_referral.on_order_referral(order["user_id"])  # CMTV local change 2026-09-25: tier check

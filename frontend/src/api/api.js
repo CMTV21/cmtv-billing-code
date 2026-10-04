@@ -9,8 +9,24 @@ const api = axios.create({
   },
 });
 
+// CMTV local change 2026-10-04: a random id for this browser, sent with every request (duplicate-account protection:
+// one free trial per home/device; see backend cmtv_dupes.py). Nothing personal in it.
+export function cmtvDeviceId() {
+  try {
+    let d = localStorage.getItem('cmtv_did');
+    if (!d || !/^[A-Za-z0-9_-]{16,64}$/.test(d)) {
+      d = ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
+      localStorage.setItem('cmtv_did', d);
+    }
+    return d;
+  } catch (e) { return ''; }
+}
+if (cmtvDeviceId()) axios.defaults.headers.common['X-CMTV-Device'] = cmtvDeviceId();
+
 // Add auth token to requests
 api.interceptors.request.use((config) => {
+  const did = cmtvDeviceId();
+  if (did) config.headers['X-CMTV-Device'] = did;
   const authData = localStorage.getItem('auth-storage');
   if (authData) {
     try {

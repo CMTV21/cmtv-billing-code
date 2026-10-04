@@ -26,6 +26,7 @@ import StatusPage from './pages/cmtv/StatusPage'; // CMTV local change 2026-10-0
 import PrivacyPage from './pages/cmtv/PrivacyPage'; // CMTV local change 2026-09-27: public privacy policy
 import ReviewPage from './pages/cmtv/ReviewPage'; // CMTV local change 2026-09-28: customer review form (/review?t=)
 import AdminReviewsPage from './pages/cmtv/AdminReviewsPage'; // CMTV local change 2026-09-28: Admin > Reviews
+import AdminDuplicatesPage from './pages/cmtv/AdminDuplicatesPage'; // CMTV local change 2026-10-04: Possible duplicates
 import AdminResellersPage from './pages/cmtv/AdminResellersPage'; // CMTV local change 2026-09-28: Admin > Resellers
 import ResellerToolsPage from './pages/cmtv/ResellerToolsPage'; // CMTV local change 2026-09-28: /reseller tools for resellers
 import AdminNoticesPage from './pages/cmtv/AdminNoticesPage'; // CMTV local change 2026-09-28: Admin > Notices
@@ -490,6 +491,10 @@ function App() {
             <Route
               path="/admin/reviews"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminReviewsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/duplicates"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminDuplicatesPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/referrals"

@@ -168,6 +168,9 @@ def init_routes():
         if not EMAIL_RE.match(email) or email.endswith("@panel.local"):
             raise HTTPException(400, "Enter a valid email address.")
         other = await D["find_user_by_email"](email)
+        if not other:   # 2026-10-04: no throwaway inboxes / second spellings of a Gmail inbox
+            import cmtv_dupes
+            await cmtv_dupes.check_email(email, exclude_user_id=me["_id"])
         if other and str(other["_id"]) != str(me["_id"]):
             if other.get("role") != "user":
                 raise HTTPException(400, "That email can't be used for a customer account. Please message us.")
