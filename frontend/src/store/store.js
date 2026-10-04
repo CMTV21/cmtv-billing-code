@@ -29,6 +29,11 @@ export const useCartStore = create(
           }
           return { items: [...state.items, { ...item, quantity: item.quantity || 1, term_months: 0 }] };
         }
+        // CMTV local change 2026-10-03: a free trial could be added twice (two identical trial lines in the cart)
+        const isTrial = (i) => Number(i.price) === 0 && /trial/i.test(i.product_name || '') || !!i.term_label;
+        if (isTrial(item)) {
+          return { items: [...state.items.filter((i) => !(i.product_id === item.product_id && isTrial(i))), item] };
+        }
         return { items: [...state.items, item] };
       }),
       updateQuantity: (product_id, quantity) => set((state) => ({

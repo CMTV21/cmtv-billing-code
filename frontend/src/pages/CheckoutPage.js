@@ -19,6 +19,15 @@ import CurrencySwitcher from '../components/CurrencySwitcher';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
+// CMTV local change 2026-10-03: free trials showed "1 Month" (the price key). Show the trial length instead.
+function cmtvTrialLabel(item) {
+  if (item.term_label) return item.term_label;
+  if (!(Number(item.price) === 0 && /trial/i.test(item.product_name || ''))) return null;
+  const m = String(item.product_name).match(/(\d+)[\s-]*(hour|hr|day)/i);
+  if (!m) return 'Free trial';
+  return `${m[1]} ${/day/i.test(m[2]) ? 'days' : 'hours'} · free trial`;
+}
+
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -690,7 +699,7 @@ export default function CheckoutPage() {
                         ) : (
                           <>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                              {item.term_months} {item.term_months === 1 ? 'Month' : 'Months'}
+                              {cmtvTrialLabel(item) || `${item.term_months} ${item.term_months === 1 ? 'Month' : 'Months'}`}
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-300">
                               {item.account_type === 'subscriber' ? 'Subscriber' : item.account_type === 'reseller' ? 'Reseller' : 'Add-on' /* CMTV 2026-09-30: manual products are add-ons */}

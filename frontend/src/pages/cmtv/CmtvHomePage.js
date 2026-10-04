@@ -173,7 +173,7 @@ export default function CmtvHomePage() {
         }
       }
       const { term, price } = firstPrice(p);
-      addItem({ product_id: p.id, product_name: extra?.product_name || p.name, term_months: term, price, account_type: p.account_type,
+      addItem({ product_id: p.id, product_name: extra?.product_name || p.name, term_months: term, price, account_type: p.account_type, ...(p.is_trial ? { term_label: `${termLabel(p)} · free trial` } : {}),
                 ...(extra?.lineup ? { lineup: extra.lineup } : {}), ...(extra?.bouquets ? { bouquets: extra.bouquets } : {}) });
       window.location.href = '/checkout';
     })();
@@ -387,7 +387,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
     const choices = withLineup ? { lineup, ...(bouquets ? { bouquets } : {}) } : withGroups && bouquets ? { bouquets } : {};
     // 2026-09-28: remember the plan through sign-in (it used to be forgotten); 2026-09-30: with its line-up/channel choices
     if (!user) { rememberPlan(p.id, null, { ...choices, product_name: name }); window.location.href = '/login?redirect=/'; return; }
-    addItem({ product_id: p.id, product_name: name, term_months: term, price, account_type: p.account_type, ...choices });
+    addItem({ product_id: p.id, product_name: name, term_months: term, price, account_type: p.account_type, ...(p.is_trial ? { term_label: `${termLabel(p)} · free trial` } : {}), ...choices });
     window.location.href = '/checkout';
   };
   const showChannels = async () => {

@@ -3881,9 +3881,13 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             return {"order_id": existing_id, "id": existing_id, "message": "Order already exists", "total": recent_duplicate.get("total", 0)}
     
     # Check trial eligibility - 1 trial per customer per panel
+    _cmtv_trials_seen = set()   # CMTV local change 2026-10-03: the same trial twice in ONE order got past the checks below
     for item in order_data.items:
         product = await products_collection.find_one({"_id": str_to_objectid(item.product_id)})
         if product and product.get("is_trial"):
+            if item.product_id in _cmtv_trials_seen:
+                raise HTTPException(status_code=400, detail="This trial is in your cart twice. Remove one and try again.")
+            _cmtv_trials_seen.add(item.product_id)
             panel_type = product.get("panel_type", "xtream")
             panel_index = product.get("panel_index", 0)
             if panel_type == "manual":
