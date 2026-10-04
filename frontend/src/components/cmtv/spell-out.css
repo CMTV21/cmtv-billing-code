@@ -1,7 +1,7 @@
 /* CMTV local addition 2026-10-04: SpellOut (components/cmtv/SpellOut.js) + a clearer font for logins. Atkinson
    Hyperlegible Mono (Google Fonts, linked in public/index.html) is designed so I, l, 1, O and 0 all look different. */
 .spell-out { margin-top: 6px; }
-.spell-out-head { display: block; font-size: 12px; color: #9aa6c6; margin-bottom: 4px; }
+
 .spell-out-row { display: flex; flex-wrap: wrap; gap: 4px; }
 .spell-out-ch { display: inline-flex; flex-direction: column; align-items: center; min-width: 30px; padding: 4px 3px 3px;
   background: #0a1020; border: 1px solid #27345a; border-radius: 8px; }
@@ -14,3 +14,8 @@
 .cmtv-kb .kb-mine dd .spell-out, .ca-field .spell-out { flex-basis: 100%; }
 .cmtv-kb .kb-mine dd { flex-wrap: wrap; }
 .cmtv-kb .kb-mine dd .spell-out, .ca-field .spell-out { flex-basis: 100%; }
+/* 2026-10-04 (the owner's phone screenshot): folded behind a link; logins stack on phones and are never cut off */
+.spell-out-toggle { font: inherit; font-size: 12.5px; color: #22e6f2; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-align: left; }
+.spell-out-row { margin-top: 6px; }
+.ca-field code { white-space: normal !important; overflow-wrap: anywhere; text-overflow: clip !important; }
+@media (max-width: 640px) { .ca-login { grid-template-columns: minmax(0, 1fr) !important; } }
