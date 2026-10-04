@@ -881,6 +881,12 @@ async def sync_services_expiry_from_imported_users(panel_type: Optional[str] = N
         revived = await cmtv_revive.revive(db, find_imported_for_service)
     except Exception as e:
         logger.warning(f"CMTV revive failed: {e}")
+    # CMTV local change 2026-10-04: lines with more devices than their plan renew at the right size (cmtv_upgrades.py)
+    try:
+        import cmtv_upgrades
+        await cmtv_upgrades.reconcile_all()
+    except Exception as e:
+        logger.warning(f"CMTV plan/device check failed: {e}")
     return {"checked": checked, "updated": updated + len(revived), "revived": len(revived)}
 
 
@@ -3996,6 +4002,14 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         product = await products_collection.find_one({"_id": str_to_objectid(item.product_id)})
         if not product:
             raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}")
+        # CMTV local change 2026-10-04: a renewal is charged and renewed at the line's real device count (cmtv_upgrades.py)
+        if getattr(item, "action_type", None) in ("renew", "extend") and getattr(item, "renewal_service_id", None):
+            _bigger = await cmtv_upgrades.renewal_plan(user_id, item.renewal_service_id, product)
+            if _bigger:
+                logger.info(f"Renewal of {item.renewal_service_id}: {product.get('name')} -> {_bigger.get('name')} (line has more devices)")
+                product = _bigger
+                item.product_id = str(_bigger["_id"])
+                item.product_name = _bigger.get("name") or item.product_name
         # CMTV local change 2026-10-01: reseller credits only for existing / approved resellers (cmtv_reseller_credits.access)
         if product.get("account_type") == "reseller" and not await cmtv_reseller_credits.may_buy(user_id, product):
             raise HTTPException(status_code=403, detail=cmtv_reseller_credits.NOT_ALLOWED)

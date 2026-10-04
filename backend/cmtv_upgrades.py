@@ -398,6 +398,64 @@ async def _email(user, login, server, n, new_end, bonus, order_id):
                         text_content=text, email_type="transactional", order_id=str(order_id), recipient_name=user.get("name") or "")
 
 
+# ---------------------------------------------------------------- renewals at the line's real size (2026-10-04)
+# The owner: "when a customer renews ensure it renews at the new lines". Upgrades through billing move the service to the
+# bigger plan at once (provision). This covers lines changed on the panel by hand: the hourly panel sync copies the panel's
+# max_connections onto the service; a line with MORE devices than its plan is moved to the same-length store plan with
+# that many devices (or the next size up when the store doesn't sell that count). Never moved down.
+async def bigger_plan(panel, line, plan_product):
+    """The store plan a line with `line` devices should renew at, if `plan_product` (a priced store plan) is too small."""
+    if not plan_product or not plan_product.get("prices") or plan_product.get("panel_type") not in NAMES:
+        return None
+    if plan_product.get("is_trial") or plan_product.get("account_type") != "subscriber":
+        return None
+    if line <= int(plan_product.get("max_connections") or 0):
+        return None
+    try:
+        term = int(next(iter(plan_product["prices"])))
+    except (TypeError, ValueError):
+        return None
+    _, by_term = await store_table(panel)
+    sizes = sorted(n for (n, t) in by_term if t == term and n >= line)
+    return by_term[(sizes[0], term)] if sizes else None
+
+
+async def renewal_plan(user_id, service_id, product):
+    """create_order: the plan to charge for renewing this line (None = the one in the cart is right)."""
+    svc = await D["db"].services.find_one({"_id": _oid(service_id), "user_id": str(user_id)})
+    if not svc or svc.get("panel_type") != (product or {}).get("panel_type"):
+        return None
+    return await bigger_plan(svc["panel_type"], int(svc.get("max_connections") or 0), product)
+
+
+async def reconcile_all():
+    """Hourly (after the panel sync): move lines with more devices than their plan to the right plan."""
+    db = D["db"]
+    changed = []
+    async for s in db.services.find({"status": "active", "panel_type": {"$in": list(NAMES)}, "account_type": "subscriber",
+                                     "is_trial": {"$ne": True}}, {"product_id": 1, "max_connections": 1, "panel_type": 1,
+                                                                  "username": 1, "xtream_username": 1}):
+        p = await db.products.find_one({"_id": _oid(s.get("product_id"))}) if _oid(s.get("product_id")) else None
+        new = await bigger_plan(s["panel_type"], int(s.get("max_connections") or 0), p)
+        if not new:
+            continue
+        await db.services.update_one({"_id": s["_id"]}, {"$set": {"product_id": str(new["_id"]), "product_name": new.get("name"),
+                                                                   "updated_at": datetime.utcnow()},
+                                                          "$push": {"cmtv_plan_changes": {"from": str(p["_id"]), "to": str(new["_id"]),
+                                                                                          "devices": s.get("max_connections"),
+                                                                                          "why": "more devices on the panel", "at": datetime.utcnow()}}})
+        changed.append(f"{svc_login(s)}: {p.get('name')} -> {new.get('name')}")
+    if changed:
+        log.info(f"Renewal plans matched to the panel's device count: {changed}")
+        try:
+            import cmtv_notify
+            await cmtv_notify.ops("📶 <b>Plans updated to match devices on the panel</b> (they'll renew at this size):\n"
+                                  + "\n".join(html.escape(c) for c in changed[:20]), kind="billing", silent=True)
+        except Exception:
+            pass
+    return changed
+
+
 # ---------------------------------------------------------------- routes
 def init_routes():
     current = D["get_current_user"]
