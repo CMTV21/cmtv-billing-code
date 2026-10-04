@@ -1,0 +1,28 @@
+/* CMTV local addition 2026-10-04: /devices "Devices & apps" (pages/cmtv/DevicesPage.js), on top of cmtv-kb.css. */
+.dv .dv-devs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0 12px; }
+.dv .dv-devs button { text-align: left; font: inherit; color: #e9edf8; background: #141d33; border: 1px solid #27345a; border-radius: 12px;
+  padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.dv .dv-devs button small { color: #8391b5; font-size: 12px; }
+.dv .dv-devs button.on { border-color: #22e6f2; box-shadow: 0 0 0 2px rgba(34, 230, 242, .15); background: #18233d; }
+.dv .dv-panel { display: flex; flex-direction: column; gap: 10px; margin-bottom: 26px; }
+.dv .dv-note { background: rgba(34, 230, 242, .08); border: 1px solid rgba(34, 230, 242, .3); border-radius: 12px; padding: 10px 12px; margin: 0; font-size: 14px; }
+.dv .dv-app { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 12px 14px; }
+.dv .dv-app-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dv .dv-app-head b { font-size: 16px; }
+.dv .dv-tag { font-size: 11px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: #7dd3fc; background: rgba(56, 189, 248, .14);
+  border-radius: 6px; padding: 2px 7px; }
+.dv .dv-app p { margin: 6px 0 4px; font-size: 14.5px; color: #c7d2ee; }
+.dv .dv-how { display: block; color: #8391b5; font-size: 12.5px; margin-bottom: 8px; }
+.dv .dv-links { display: flex; gap: 8px; flex-wrap: wrap; }
+.dv .dv-links .kb-btn { font-size: 13.5px; padding: 7px 12px; }
+.dv .dv-more { font-size: 14px; color: #9aa6c6; }
+.dv .dv-picks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0 18px; }
+.dv .dv-pick { background: #141d33; border: 1px solid #27345a; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+.dv .dv-pick b { font-size: 16px; }
+.dv .dv-pick p { margin: 0 0 6px; font-size: 14px; color: #c7d2ee; flex: 1; }
+.dv .dv-badge { align-self: flex-start; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: #07101f;
+  background: linear-gradient(135deg, #22e6f2, #8b5cf6); border-radius: 6px; padding: 2px 8px; }
+@media (max-width: 760px) {
+  .dv .dv-devs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dv .dv-picks { grid-template-columns: minmax(0, 1fr); }
+}

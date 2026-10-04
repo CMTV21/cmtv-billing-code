@@ -14,6 +14,7 @@ const PLANS = [
 ];
 const supportItems = (signedIn) => [
   ...(signedIn ? [['My support tickets', '/tickets']] : []),
+  ['Devices & apps', '/devices'],   // 2026-10-04
   ['Service status', '/status'],   // 2026-10-02
   ['Buffering? Quick fixes', '/knowledge-base/cmtv-buffering'],
   ['Telegram support', 'https://t.me/Cmtv_support_bot', true],
