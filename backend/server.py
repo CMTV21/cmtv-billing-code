@@ -1647,6 +1647,15 @@ async def register(user_data: UserCreate, request: Request):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     await cmtv_dupes.check_email(user_data.email)   # CMTV 2026-10-04: throwaway inbox / same Gmail inbox
+    # CMTV local change 2026-10-04: a referral code that doesn't exist used to be ignored silently (people typed coupon
+    # codes like NFL15 there and never knew). Now they're told, before the account is made.
+    if user_data.referral_code and user_data.referral_code.strip():
+        user_data.referral_code = user_data.referral_code.strip()
+        if not await users_collection.find_one({"referral_code": {"$regex": f"^{re.escape(user_data.referral_code)}$", "$options": "i"}}, {"_id": 1}):
+            raise HTTPException(status_code=400, detail="That referral code wasn't found. Check it with the friend who gave it to you, "
+                                                        "or leave the box empty. (Discount codes go in at checkout, not here.)")
+    else:
+        user_data.referral_code = None
     
     # Generate verification token
     verification_token = secrets.token_urlsafe(32)
