@@ -10,7 +10,7 @@ import { useCartStore } from '../../store/store';
 import { LINEUPS, CCTV_LINEUPS, lineupName } from './lineups';
 import ChannelPicker, { customName } from './ChannelPicker';
 
-const isExtend = (i) => ['extend', 'renew'].includes(i.action_type) && i.renewal_service_id;
+const isExtend = (i) => ['extend', 'renew', 'upgrade'].includes(i.action_type) && i.renewal_service_id;   // 2026-10-04: + upgrades
 const baseName = (i, p) => i.base_name || (p && p.name) || String(i.product_name || '')
   .replace(/ · custom channels \(\d+ groups\)$/, '').replace(/ \((no adult|North America)\)$/, '');
 

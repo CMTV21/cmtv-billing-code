@@ -257,6 +257,8 @@ async def sync_billing_orders():
             months = int(it.get("term_months") or 1)
             if (p or {}).get("account_type") == "reseller":
                 c = float(it.get("credits") or (p or {}).get("reseller_credits") or 0)   # 2026-09-28: chosen amount
+            elif it.get("action_type") == "upgrade":   # 2026-10-04: device upgrade = the credits the panel actually charged
+                c = float(it["panel_credits"]) if it.get("panel_credits") is not None else None
             else:
                 c = credits_for(cfg, _server_for(p, groups), (p or {}).get("max_connections"), months)
             if c is None and cost_per_credit(cfg, _server_for(p, groups), o.get("paid_at") or datetime.utcnow()) == 0:

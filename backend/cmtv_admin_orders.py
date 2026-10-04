@@ -51,7 +51,7 @@ def init_routes():
             for i in o.get("items") or []:
                 ext = i.get("action_type") in ("extend", "renew") and i.get("renewal_service_id")
                 items.append({"name": i.get("product_name") or "", "price": i.get("price"), "term_months": i.get("term_months"),
-                              "kind": "extend" if ext else ("addon" if i.get("account_type") not in ("subscriber", "reseller") else
+                              "kind": "upgrade" if i.get("action_type") == "upgrade" else "extend" if ext else ("addon" if i.get("account_type") not in ("subscriber", "reseller") else
                                                             "reseller" if i.get("account_type") == "reseller" else "new"),
                               "extends": renewed.get(i.get("renewal_service_id")) if ext else None,
                               "lineup": i.get("lineup"), "groups": len(i.get("bouquets") or []) or None,

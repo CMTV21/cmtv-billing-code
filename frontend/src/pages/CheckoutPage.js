@@ -136,7 +136,8 @@ export default function CheckoutPage() {
   // CMTV local change 2026-09-25: add-ons (account_type "manual") can extend too (e.g. Stremio after its trial)
   // CMTV 2026-10-03: a free trial is always a new line (never "extend" another service)
   const canExtend = (item) => (item.account_type === 'subscriber' || addonIds.has(item.product_id))
-    && !(Number(item.price) === 0 && /trial/i.test(item.product_name || ''));
+    && !(Number(item.price) === 0 && /trial/i.test(item.product_name || ''))
+    && item.action_type !== 'upgrade';   // CMTV 2026-10-04: a device upgrade is always for its own line
   const hasSubscriberProduct = items.some(canExtend);
 
   // Fetch user's existing services to show extend option

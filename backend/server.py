@@ -158,6 +158,11 @@ import cmtv_admin_orders
 cmtv_admin_orders.D["get_current_admin_user"] = get_current_admin_user
 cmtv_admin_orders.init_routes()
 app.include_router(cmtv_admin_orders.router)
+# CMTV local change 2026-10-04: add devices to a running CCTV / Imperium line, prorated (cmtv_upgrades.py)
+import cmtv_upgrades
+cmtv_upgrades.D["get_current_user"] = get_current_user
+cmtv_upgrades.init_routes()
+app.include_router(cmtv_upgrades.router)
 
 # CMTV local change 2026-09-27: new Admin > Analytics (cmtv_analytics.py)
 import cmtv_analytics
@@ -983,6 +988,7 @@ async def startup_event():
     # CMTV local change 2026-09-26: website tickets <-> Telegram
     cmtv_support_inbox.init(db=db)   # CMTV 2026-10-04: Support inbox
     cmtv_admin_orders.init(db=db)   # CMTV 2026-10-04: Admin > Orders
+    cmtv_upgrades.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)   # CMTV 2026-10-04
     cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
                              get_email_service=get_configured_email_service)
 
@@ -4008,6 +4014,11 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if abs(float(item.price or 0) - actual_price) > 0.009:
             logger.warning(f"Order item {item.product_name}: client price ${item.price} replaced by product price ${actual_price}")
         item.price = actual_price
+        # CMTV local change 2026-10-04: "add devices" to a running line, prorated (cmtv_upgrades.price_for_order)
+        if getattr(item, "action_type", None) == "upgrade":
+            _up = await cmtv_upgrades.price_for_order(user_id, product, item)
+            item.price = _up["price"]
+            item.product_name = _up["name"]
         # CMTV local change 2026-10-03: "extend" only works on a line on the SAME server, and never for a trial. An Imperium
         # trial ordered as "extend" of a CCTV trial line made billing renew the CCTV line on the Imperium panel ("not found")
         # and the customer got nothing (order 6ac0517c). Anything else becomes a new line.
@@ -6059,6 +6070,9 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
         
         for item in order["items"]:
             if item.get("item_type") == "physical":
+                continue
+            if item.get("action_type") == "upgrade":   # CMTV local change 2026-10-04: add devices (cmtv_upgrades.py)
+                await run_item(item.get("product_name") or "Add devices", item, cmtv_upgrades.provision(order_id, order, user, item))
                 continue
             # Get product details to determine which panel to use
             product = await products_collection.find_one({"_id": str_to_objectid(item["product_id"])})

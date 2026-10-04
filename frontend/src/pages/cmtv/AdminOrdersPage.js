@@ -160,7 +160,7 @@ function OrderCard({ o, open, onToggle, onChanged }) {
               <div key={k} className="ord-item">
                 <span>{i.name}</span>
                 <small>
-                  {{ new: 'New line', extend: `Extends ${i.extends || 'a line'}`, addon: 'Add-on', reseller: 'Reseller' }[i.kind]}
+                  {{ new: 'New line', extend: `Extends ${i.extends || 'a line'}`, addon: 'Add-on', reseller: 'Reseller', upgrade: 'Adds devices' }[i.kind]}
                   {i.term_months ? ` · ${i.term_months} mo` : ''}{i.lineup && i.lineup !== 'full' ? ` · ${LINEUP[i.lineup] || i.lineup}` : ''}
                   {i.groups ? ` · ${i.groups} channel groups` : ''}{i.credits ? ` · ${i.credits} credits` : ''} · {money(i.price)}
                 </small>

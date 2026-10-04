@@ -11,6 +11,7 @@ import { webPlayerLink } from '../../components/cmtv/webPlayer'; // 2026-10-01: 
 import ResellerPanels from '../../components/cmtv/ResellerPanels'; // 2026-09-28: reseller login, balance, top-up slider
 import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: latest CMTV Updates post
 import SpellOut from '../../components/cmtv/SpellOut'; // 2026-10-04: I / l look-alikes spelled out
+import UpgradeDevices from '../../components/cmtv/UpgradeDevices'; // 2026-10-04: add devices, prorated
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -187,6 +188,8 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
               title="Opens the CMTV Web Player, signed in with this line">Watch in browser</a>
           )}
           <AutoRenewSwitch d={d} enabled={autoRenewEnabled} />
+          {!d.ended && !d.isTrial && ['xtream', 'aether'].includes(s.panel_type) && s.account_type !== 'reseller' && s.status === 'active'
+            && <UpgradeDevices service={s} />}
         </div>
         {showSetup && d.setup && <div className="ca-setup"><FormattedText text={d.setup} /></div>}
       </div>
