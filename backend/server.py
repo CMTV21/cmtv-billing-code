@@ -4016,7 +4016,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
                 item.action_type = "create_new"
                 item.renewal_service_id = None
         # CMTV local change 2026-09-29: a line-up choice only means something on an Imperium (Aether) subscriber plan
-        if getattr(item, "lineup", None) and (item.lineup not in cmtv_lineups.LINEUPS or product.get("panel_type") != "aether"
+        if getattr(item, "lineup", None) and (item.lineup not in cmtv_lineups.LINEUPS or product.get("panel_type") not in ("aether", "xtream")   # 2026-10-04: CCTV packages
                                              or product.get("account_type", "subscriber") != "subscriber"):
             item.lineup = None
         # CMTV local change 2026-09-30: picked channel groups only on a NEW Imperium or CCTV subscriber line (not trials or renewals)

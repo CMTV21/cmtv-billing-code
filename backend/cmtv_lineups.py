@@ -14,8 +14,11 @@ and differ only in which are on by default. An order item may carry `bouquets` (
 with exactly those groups (they must be allowed by the line-up's package; anything else is dropped). Renewals keep the
 line's groups (the panel's renew call doesn't touch them). The line remembers its groups in service.cmtv_bouquets.
   GET /api/cmtv/lineups/{lineup}/groups?product_id= -> the groups, their channel counts and which are standard
-CCTV (same day): the plan's own group list is the choice (no line-ups); renewals send the line's saved picks.
-  GET /api/cmtv/cctv/groups?product_id= -> the groups + sections
+CCTV (same day): the plan's own group list is the choice; renewals send the line's saved picks.
+CCTV packages (2026-10-04, the owner: "match Imperium"): the same three keys as LINEUPS, made from the plan's own groups:
+  full = all of the plan's groups, no_adult = all but Adult (25), na = CCTV_NA (USA/Canada/UK/Australia, every sports
+  group, PPV, Music, 24/7, Movies + Series libraries; no international countries, International VOD or Adult).
+  GET /api/cmtv/cctv/groups?product_id=&lineup= -> the groups + sections (standard = in that package)
 """
 import asyncio
 import logging
@@ -223,6 +226,19 @@ async def _cctv_names(pkg):
     return out
 
 
+CCTV_ADULT = {25}
+CCTV_NA = {2, 8, 32, 13, 23, 22, 28, 20, 21, 27, 3, 5, 24, 26, 30, 31, 55, 4, 15, 1, 12, 14, 33, 18, 35, 17, 11, 34, 10, 16, 82, 84, 47}
+
+
+def cctv_package_ids(lineup, allowed):
+    """The plan's groups that make up a CCTV package (2026-10-04)"""
+    if lineup == "no_adult":
+        return [b for b in allowed if b not in CCTV_ADULT]
+    if lineup == "na":
+        return [b for b in allowed if b in CCTV_NA]
+    return list(allowed)
+
+
 def _cctv_ids(product):
     out = []
     for b in (product or {}).get("bouquets") or []:
@@ -251,7 +267,12 @@ async def _apply_cctv(product: dict, item: dict):
         return product
     picks = clean_bouquets(item.get("bouquets"))
     if not picks:
-        return product
+        lineup = item.get("lineup") if item.get("lineup") in LINEUPS else "full"   # 2026-10-04: CCTV packages
+        keep = cctv_package_ids(lineup, allowed)
+        if lineup == "full" or not keep or set(keep) == set(allowed):
+            return product
+        log.info(f"CCTV packages: {product.get('name')} as {lineup} ({len(keep)} groups)")
+        return {**product, "bouquets": keep, "cmtv_bouquets": keep, "cmtv_lineup": lineup}
     keep = [b for b in picks if b in allowed]
     if len(keep) < len(picks):
         log.warning(f"CCTV groups: {len(picks) - len(keep)} picked group(s) aren't in {product.get('name')}, left out")
@@ -334,8 +355,16 @@ async def remember(order_id: str, order: dict):
     """After provisioning: new Imperium lines remember the line-up they were ordered with."""
     for it in order.get("items") or []:
         if it.get("lineup") in LINEUPS and not it.get("renewal_service_id"):
-            await D["db"].services.update_many({"order_id": order_id, "panel_type": "aether", "cmtv_lineup": {"$exists": False}},
-                                               {"$set": {"cmtv_lineup": it["lineup"]}})
+            await D["db"].services.update_many({"order_id": order_id, "panel_type": {"$in": ["aether", "xtream"]},
+                                                "cmtv_lineup": {"$exists": False}}, {"$set": {"cmtv_lineup": it["lineup"]}})
+            # 2026-10-04: a CCTV package line keeps its groups at renewal (renewals re-post cmtv_bouquets)
+            if it["lineup"] != "full" and not clean_bouquets(it.get("bouquets")) and it.get("product_id"):
+                prod = await D["db"].products.find_one({"_id": _oid(it["product_id"])})
+                if (prod or {}).get("panel_type") == "xtream":
+                    ids = cctv_package_ids(it["lineup"], _cctv_ids(prod))
+                    if ids and set(ids) != set(_cctv_ids(prod)):
+                        await D["db"].services.update_many({"order_id": order_id, "panel_type": "xtream", "product_id": str(it["product_id"]),
+                                                            "cmtv_bouquets": {"$exists": False}}, {"$set": {"cmtv_bouquets": ids}})
         picks = clean_bouquets(it.get("bouquets"))
         if picks and not it.get("renewal_service_id"):   # 2026-09-30: the groups the customer picked (Imperium + CCTV)
             prod = await D["db"].products.find_one({"_id": _oid(it.get("product_id"))}) if it.get("product_id") else None
@@ -372,21 +401,22 @@ async def lineup_groups(lineup: str, product_id: str):
 
 
 @router.get("/cctv/groups")
-async def cctv_groups(product_id: str):
-    """Public: the channel groups a customer can pick for a CCTV plan (all of the plan's groups start ticked)"""
+async def cctv_groups(product_id: str, lineup: str = "full"):
+    """Public: the channel groups a customer can pick for a CCTV plan (the package's groups start ticked; 2026-10-04)"""
     from fastapi import HTTPException
     p = await D["db"].products.find_one({"_id": _oid(product_id)}) if _oid(product_id) else None
     if not _is_line_plan(p, "xtream", trials=True):
         raise HTTPException(status_code=404, detail="No channel groups for this plan")
     names = await _cctv_names(p.get("xtream_package_id"))
     groups = []
+    std = set(cctv_package_ids(lineup if lineup in LINEUPS else "full", _cctv_ids(p)))
     for i in _cctv_ids(p):
         if i not in names:
             continue
         name, ch, ser = names[i]
         vod = "vod" in name.lower()   # VOD groups hold movies (counted as "channels" by the panel) or series
         groups.append({"id": i, "name": name, "live": 0 if vod else ch, "movies": ch if vod else 0, "series": ser,
-                       "standard": True, "section": _cctv_section(name)})
+                       "standard": i in std, "section": _cctv_section(name)})
     if not groups:
         raise HTTPException(status_code=503, detail="Channel groups can't be loaded right now")
     return {"groups": groups, "sections": CCTV_SECTIONS}

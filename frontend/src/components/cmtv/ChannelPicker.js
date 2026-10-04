@@ -19,7 +19,7 @@ export default function ChannelPicker({ productId, lineup, value, onChange, sour
   useEffect(() => {
     if (!open || data) return;
     const url = source === 'cctv' ? '/api/cmtv/cctv/groups' : `/api/cmtv/lineups/${lineup}/groups`;
-    api.get(url, { params: { product_id: productId } })
+    api.get(url, { params: source === 'cctv' ? { product_id: productId, lineup: lineup || 'full' } : { product_id: productId } })   // 2026-10-04: CCTV packages
       .then((r) => setData({ groups: r.data.groups || [], sections: r.data.sections || DEFAULT_SECTIONS }))
       .catch(() => setData('error'));
   }, [open, data, lineup, productId, source]);

@@ -1,13 +1,13 @@
 // CMTV local addition 2026-10-04 (the owner: "prompt users to select their TV channel package before completing").
 // Checkout step for every NEW TV line in the cart (Imperium / CCTV subscriber plans and trials; never renewals or
-// "extend"): Imperium = pick one of the 3 line-ups (nothing pre-selected) + optional custom groups; CCTV = all channel
-// groups or pick my own. Payment stays locked until each line has a confirmed choice (useChannelsReady). Choices are
+// "extend"): pick one of the 3 packages (nothing pre-selected; Imperium line-ups, and since 2026-10-04 the matching CCTV
+// packages) + optional custom groups. Payment stays locked until each line has a confirmed choice (useChannelsReady). Choices are
 // stored on the cart item (lineup, bouquets, product_name, channels_confirmed); checkout already sends lineup + bouquets.
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { productsAPI } from '../../api/api';
 import { useCartStore } from '../../store/store';
-import { LINEUPS, lineupName } from './lineups';
+import { LINEUPS, CCTV_LINEUPS, lineupName } from './lineups';
 import ChannelPicker, { customName } from './ChannelPicker';
 
 const isExtend = (i) => ['extend', 'renew'].includes(i.action_type) && i.renewal_service_id;
@@ -51,20 +51,19 @@ function Step({ item, index, p }) {
   const update = (fields) => useCartStore.setState((st) => ({ items: st.items.map((it, i) => (i === index ? { ...it, ...fields } : it)) }));
   const base = baseName(item, p);
   const imperium = p.panel_type === 'aether';
+  const list = imperium ? LINEUPS : CCTV_LINEUPS;   // 2026-10-04: CCTV packages, same three as Imperium
   const [custom, setCustom] = useState(false);
-  const [cctvMode, setCctvMode] = useState(item.channels_confirmed ? (item.bouquets ? 'pick' : 'all') : '');
 
   const setLineup = (key) => update({ base_name: base, lineup: key, bouquets: null, channels_confirmed: true, product_name: lineupName(base, key) });
-  const setGroups = (ids) => update({ base_name: base, bouquets: ids || null,
-    product_name: customName(imperium ? lineupName(base, item.lineup) : base, ids) });
+  const setGroups = (ids) => update({ base_name: base, bouquets: ids || null, product_name: customName(lineupName(base, item.lineup), ids) });
 
   return (
     <div className="mb-5 last:mb-0">
       <p className="font-semibold text-gray-900 dark:text-white mb-2">{base}{p.is_trial ? ' · free trial' : ''}</p>
-      {imperium ? (
+      {(
         <>
           <div className="space-y-2">
-            {LINEUPS.map((l) => (
+            {list.map((l) => (
               <label key={l.key} className={`flex gap-3 p-3 rounded-lg border-2 cursor-pointer ${item.channels_confirmed && item.lineup === l.key ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700'}`}>
                 <input type="radio" name={`lineup-${index}`} className="mt-1" checked={!!item.channels_confirmed && item.lineup === l.key} onChange={() => setLineup(l.key)} />
                 <span><b className="text-gray-900 dark:text-white">{l.label}</b>
@@ -77,24 +76,9 @@ function Step({ item, index, p }) {
               <p className="text-sm mt-2 text-gray-600 dark:text-gray-400">Custom channels: {item.bouquets.length} groups ·{' '}
                 <button type="button" className="underline" onClick={() => setCustom(true)}>change</button></p>
             ) : (
-              <div className="mt-3"><ChannelPicker productId={item.product_id} lineup={item.lineup} value={item.bouquets || null} onChange={setGroups} /></div>
+              <div className="mt-3"><ChannelPicker source={imperium ? 'imperium' : 'cctv'} productId={item.product_id} lineup={item.lineup}
+                value={item.bouquets || null} onChange={setGroups} /></div>
             )
-          )}
-        </>
-      ) : (
-        <>
-          <div className="space-y-2">
-            {[['all', 'All channel groups', 'Every channel group in this plan. Most people pick this.'],
-              ['pick', 'Choose my channel groups', 'Keep only the countries and categories you want, so your app is easier to scroll.']].map(([k, t, n]) => (
-              <label key={k} className={`flex gap-3 p-3 rounded-lg border-2 cursor-pointer ${cctvMode === k ? 'border-blue-500' : 'border-gray-200 dark:border-gray-700'}`}>
-                <input type="radio" name={`cctv-${index}`} className="mt-1" checked={cctvMode === k}
-                  onChange={() => { setCctvMode(k); update({ base_name: base, channels_confirmed: true, ...(k === 'all' ? { bouquets: null, product_name: base } : {}) }); }} />
-                <span><b className="text-gray-900 dark:text-white">{t}</b><span className="block text-sm text-gray-600 dark:text-gray-400">{n}</span></span>
-              </label>
-            ))}
-          </div>
-          {cctvMode === 'pick' && (
-            <div className="mt-3"><ChannelPicker source="cctv" productId={item.product_id} value={item.bouquets || null} onChange={setGroups} /></div>
           )}
         </>
       )}

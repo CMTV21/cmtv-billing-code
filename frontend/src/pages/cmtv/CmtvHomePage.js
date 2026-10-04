@@ -6,7 +6,7 @@ import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import SiteNav from '../../components/cmtv/SiteNav'; // 2026-10-01: site menu
 import { rememberPlan, pendingPlan, pendingCredits, pendingExtra, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
 import ResellerCredits, { creditPrice } from '../../components/cmtv/ResellerCredits'; // 2026-09-28: any credit amount
-import { LINEUPS, lineupName } from '../../components/cmtv/lineups'; // 2026-09-29: Imperium channel line-ups
+import { LINEUPS, CCTV_LINEUPS, lineupName } from '../../components/cmtv/lineups'; // 2026-09-29: Imperium line-ups; 2026-10-04: CCTV packages
 import ChannelPicker, { customName } from '../../components/cmtv/ChannelPicker'; // 2026-09-30: pick your own channel groups
 import api from '../../api/api';
 import { useQuery } from '@tanstack/react-query';
@@ -334,6 +334,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
   // 2026-09-30: line-up / channel choices by panel, so the trial cards (Trials group) get them too
   const impLine = products[0]?.panel_type === 'aether' && products[0]?.account_type === 'subscriber';
   const cctvLine = products[0]?.panel_type === 'xtream' && products[0]?.account_type === 'subscriber';
+  const lineupList = cctvLine ? CCTV_LINEUPS : LINEUPS;   // 2026-10-04: CCTV packages, same keys as Imperium
   // a paid plan starts from the line-up / channels the customer used on their trial
   const { data: myServices } = useQuery({
     queryKey: ['services'], enabled: !!user && (impLine || cctvLine) && !products[0]?.is_trial, staleTime: 60000,
@@ -348,7 +349,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
   const trialDone = React.useRef(false);
   React.useEffect(() => {   // line-up first; the picker then resets its groups, and this effect (parent, runs after it) sets them
     if (!fromTrial || trialDone.current) return;
-    if (impLine && fromTrial.cmtv_lineup && fromTrial.cmtv_lineup !== lineup) { setLineup(fromTrial.cmtv_lineup); return; }
+    if ((impLine || cctvLine) && fromTrial.cmtv_lineup && fromTrial.cmtv_lineup !== lineup) { setLineup(fromTrial.cmtv_lineup); return; }
     trialDone.current = true;
     if ((fromTrial.cmtv_bouquets || []).length) setBouquets(fromTrial.cmtv_bouquets);
     setTrialApplied(true);
@@ -379,7 +380,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
 
   const buy = (p) => {
     const { term, price } = firstPrice(p);
-    const withLineup = p.panel_type === 'aether' && p.account_type === 'subscriber';   // 2026-09-30: trials too
+    const withLineup = ['aether', 'xtream'].includes(p.panel_type) && p.account_type === 'subscriber';   // 2026-09-30: trials too; 2026-10-04: CCTV packages
     const withGroups = p.panel_type === 'xtream' && p.account_type === 'subscriber';   // 2026-09-30: CCTV channel groups, trials too
     const withStremio = vodChoice && vodApp === 'stremio';   // 2026-09-30: shows on the order as "CMTV+ (with Stremio)"
     const name = withLineup ? customName(lineupName(p.name, lineup), bouquets) : withGroups ? customName(p.name, bouquets)
@@ -432,7 +433,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
             {hasOptions && (
               <button type="button" className="t-opts-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
                 {open ? 'Hide options' : impLine ? 'Options: line-up & channels' : cctvLine ? 'Options: pick your channels' : 'Options: movies & series app'}
-                {bouquets && !open ? ' · customised' : impLine && lineup !== 'full' && !open ? ' · changed' : vodChoice && vodApp !== 'nuvio' && !open ? ' · Stremio' : ''}
+                {bouquets && !open ? ' · customised' : (impLine || cctvLine) && lineup !== 'full' && !open ? ' · changed' : vodChoice && vodApp !== 'nuvio' && !open ? ' · Stremio' : ''}
               </button>
             )}
             {isAddon && details && (
@@ -458,18 +459,18 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
         )}
         {(impLine || cctvLine) && open && (
           <div className="t-opts">
-            {impLine && (
+            {(impLine || cctvLine) && (
               <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 8px', fontSize: 13, color: 'var(--muted)' }}>
                 <span style={{ fontWeight: 700, color: 'var(--text)' }}>Channel line-up</span>
                 <select value={lineup} onChange={(e) => setLineup(e.target.value)} aria-label="Channel line-up"
                   style={{ background: 'var(--deep, #0a1020)', color: 'var(--text, #e9edf8)', border: '1px solid var(--gold, #d8b35a)', borderRadius: 10, padding: '7px 9px', fontSize: 14 }}>
-                  {LINEUPS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+                  {lineupList.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
                 </select>
-                <small>{LINEUPS.find((l) => l.key === lineup)?.note}</small>
+                <small>{lineupList.find((l) => l.key === lineup)?.note}</small>
               </label>
             )}
             {impLine && <ChannelPicker productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />}
-            {cctvLine && <ChannelPicker source="cctv" productId={first.id} value={bouquets} onChange={setBouquets} />}
+            {cctvLine && <ChannelPicker source="cctv" productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />}
             {first.show_channels !== false && (
               <button type="button" className="t-link" onClick={showChannels}><Info className="w-3.5 h-3.5" /> View channels</button>
             )}
@@ -510,21 +511,21 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
         {showIntro && <div className="desc"><FormattedText text={intro} /></div>}
         {focused && <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--gold, #d8b35a)', fontWeight: 700 }}>Choose your channel line-up, then tap your plan below.</p>}
         {trialApplied && <p style={{ margin: '0 0 8px', fontSize: 12.5, color: 'var(--muted)' }}>Set to match your trial. Change it if you like.</p>}
-        {impLine && (
+        {(impLine || cctvLine) && (
           <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>
             <span style={{ fontWeight: 700, color: 'var(--text)' }}>Channel line-up</span>
             <select value={lineup} onChange={(e) => setLineup(e.target.value)} aria-label="Channel line-up"
               style={{ background: 'var(--deep, #0a1020)', color: 'var(--text, #e9edf8)', border: '1px solid var(--gold, #d8b35a)', borderRadius: 10, padding: '8px 10px', fontSize: 14 }}>
-              {LINEUPS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+              {lineupList.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
             </select>
-            <small>{LINEUPS.find((l) => l.key === lineup)?.note} Same price.</small>
+            <small>{lineupList.find((l) => l.key === lineup)?.note} Same price.</small>
           </label>
         )}
         {impLine && (
           <ChannelPicker productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />
         )}
         {cctvLine && (
-          <ChannelPicker source="cctv" productId={first.id} value={bouquets} onChange={setBouquets} />
+          <ChannelPicker source="cctv" productId={first.id} lineup={lineup} value={bouquets} onChange={setBouquets} />
         )}
         {vodChoice && (
           <label className="lineup" style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: '0 0 10px', fontSize: 13, color: 'var(--muted)' }}>
