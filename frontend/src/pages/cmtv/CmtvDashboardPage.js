@@ -348,6 +348,12 @@ export default function CmtvDashboardPage() {
               </div>
               {/* 2026-10-02 */}
               <p style={{ marginTop: 10 }}><Link to="/knowledge-base/cmtv-buffering">Buffering? Quick fixes</Link> · <Link to="/status">Service status</Link></p>
+              {/* 2026-10-04: point people at the recommended devices before they buy (owner: no Firesticks) */}
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(34,230,242,.35)', background: 'rgba(34,230,242,.07)' }}>
+                <b>Thinking of buying a new device?</b>
+                <p style={{ margin: '4px 0 0', fontSize: 13.5 }}>Read our <Link to="/devices#picks">recommended devices</Link> first.
+                  We don't recommend buying a Firestick, especially the newest models.</p>
+              </div>
             </div>
           </aside>
         </div>

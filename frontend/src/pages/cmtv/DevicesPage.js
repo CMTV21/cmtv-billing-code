@@ -37,7 +37,8 @@ const DEVICES = [
     apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'smarttube', 'cmtvpn', 'fast', 'ookla'], guide: 'cmtv-onn-4k-google-tv',
     note: 'Formuler boxes also come with MYTVOnline built in, which works great with CMTV.' },
   { key: 'fire', label: 'Amazon Firestick / Fire TV', sub: 'Fire TV Stick, Fire TV Cube', apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'smarttube', 'cmtvpn', 'fast', 'ookla'],
-    guide: 'cmtv-firestick-android-tv' },
+    guide: 'cmtv-firestick-android-tv',
+    note: 'Already have a Firestick? Most current ones still run these apps. Buying a new device? We don\'t recommend a Firestick, especially the newest models (see "Our picks" below).' },
   { key: 'apple', label: 'iPhone, iPad or Apple TV', sub: 'iOS / tvOS', apps: ['mytv', 'cmtvpn', 'ookla'], guide: 'cmtv-iphone-ipad',
     note: 'Nuvio isn\'t on iPhone yet; use the Web Player in Safari for movies and series in the meantime.' },
   { key: 'phone', label: 'Android phone or tablet', sub: 'Samsung, Pixel and others', apps: ['ghost', 'cmtvpn', 'fast', 'ookla'], guide: 'cmtv-cmtvghost' },
@@ -101,7 +102,13 @@ export default function DevicesPage() {
           {d.guide && !d.web && <p className="dv-more">Step-by-step: <Link to={`/knowledge-base/${d.guide}`}>setup guide for this device</Link></p>}
         </div>
 
-        <h2>Buying a new device? Our picks</h2>
+        <h2 id="picks">Buying a new device? Our picks</h2>
+        <div className="dv-warn">
+          <b>We don't recommend buying a Firestick, especially the newest models.</b>
+          <p>Amazon's newest Fire TV sticks are moving to its own new system (Vega OS), which doesn't run the Android apps CMTV uses
+            (CMTVGhost, TiviMate, Nuvio), and Amazon keeps restricting apps installed from outside its store. Firesticks also have
+            little memory and storage, so they slow down over time. Any of the boxes below is a better buy.</p>
+        </div>
         <p>All three run CMTVGhost, TiviMate and Nuvio. Plug them in with an ethernet cable if you can: it's the single biggest fix for buffering.</p>
         <div className="dv-picks">
           {PICKS.map((p) => (
