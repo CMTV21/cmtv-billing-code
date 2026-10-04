@@ -73,6 +73,9 @@ export default function CheckoutPage() {
   const effectiveDiscount = tierWins ? tierQuote.amount : discountAmount;
   const creditsApplied = Math.min(creditsUsed, Math.max(0, getTotal() - effectiveDiscount));
   const payTotal = Math.max(0, Math.round((getTotal() + shippingCost - effectiveDiscount - creditsApplied) * 100) / 100); // + shipping (3.9.0 merge)
+  // CMTV local change 2026-10-04: a cart of free trials only asks for nothing: no payment methods, a clear "no charge" note
+  // (customers were confused that a trial "asked them to pay").
+  const cmtvAllFree = items.length > 0 && items.every((i) => Number(i.price) === 0) && payTotal === 0 && !shippingCost;
 
   // Reseller credentials state
   const [resellerUsername, setResellerUsername] = useState('');
@@ -221,7 +224,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!paymentMethod) {
+    if (!paymentMethod && !cmtvAllFree) {
       setError('Please select a payment method');
       return;
     }
@@ -1013,9 +1016,22 @@ export default function CheckoutPage() {
 
               {/* Payment Method Selection */}
               <div className="px-6 pb-6">
+                {cmtvAllFree ? (
+                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 mb-5" data-testid="free-trial-note">
+                    <h3 className="text-lg font-semibold text-emerald-300 mb-1">No payment needed</h3>
+                    <p className="text-sm text-gray-300">
+                      {items.length > 1 ? 'These are free trials.' : 'This is a free trial.'} You won't be charged, and we don't
+                      need any card or payment details. Nothing renews by itself when the trial ends.
+                    </p>
+                    <p className="text-sm text-gray-300 mt-2">
+                      Tap <b>Start free trial</b> below. Your login shows on your dashboard and arrives by email.
+                    </p>
+                  </div>
+                ) : (
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Payment Method</h3>
+                )}
                 
-                <div className="space-y-3 mb-6">
+                <div className="space-y-3 mb-6" style={cmtvAllFree ? { display: 'none' } : undefined}>
                   {/* Render payment methods in order from settings */}
                   {(settings?.payment_method_order || ['manual', 'emt', 'zelle', 'cashapp', 'venmo', 'wise', 'stripe', 'paypal', 'square', 'blockonomics', 'ghostpay', 'tagadapay']).map((method) => {
                     // Manual Payment
@@ -1268,7 +1284,7 @@ export default function CheckoutPage() {
 
                 {/* Payment Button/PayPal/Stripe/Square/EMT */}
                 {/* CMTV local change 2026-09-25: nothing to pay (a member's free CMTV+, or credits cover it): one button, no payment */}
-                {tierWins && payTotal === 0 ? (
+                {(tierWins && payTotal === 0) || cmtvAllFree ? (
                   <div>
                     <button
                       onClick={handleCheckout}
@@ -1276,10 +1292,10 @@ export default function CheckoutPage() {
                       className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50"
                       data-testid="free-order-btn"
                     >
-                      {createOrderMutation.isPending ? 'Processing...' : 'Complete order ($0.00)'}
+                      {createOrderMutation.isPending ? 'Processing...' : cmtvAllFree ? 'Start free trial' : 'Complete order ($0.00)'}
                     </button>
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-3 text-center">
-                      Covered by your {tierQuote.tier} benefits. Nothing to pay.
+                      {cmtvAllFree ? 'Free trial: $0.00, nothing to pay.' : `Covered by your ${tierQuote.tier} benefits. Nothing to pay.`}
                     </p>
                   </div>
                 ) : paymentMethod === 'manual' ? (
