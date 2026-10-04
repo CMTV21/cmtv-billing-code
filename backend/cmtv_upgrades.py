@@ -359,9 +359,11 @@ async def provision(order_id, order, user, item):
     if idx is not None:
         await db.orders.update_one({"_id": _oid(order_id)}, {"$set": {f"items.{idx}.panel_credits": charged}})
     try:
+        # same shape as the panel's own entries (the Ops bot checks service_id/user_id/action/reason/created_at)
         await db.lifecycle_logs.insert_one({"service_id": str(svc["_id"]), "user_id": order["user_id"], "action": "upgrade",
-                                            "details": f"Devices {svc.get('max_connections')} -> {n} (order {order_id}, {charged} credits)",
-                                            "performed_by": "system", "created_at": now})
+                                            "reason": f"Devices {svc.get('max_connections')} -> {n} (order {order_id}, {charged} credits)",
+                                            "triggered_by": "system", "old_status": "active", "new_status": "active",
+                                            "created_at": now})
     except Exception:
         pass
     log.info(f"Upgrade: {login} ({NAMES[panel]}) to {n} connections, {charged} credits, order {order_id}")
