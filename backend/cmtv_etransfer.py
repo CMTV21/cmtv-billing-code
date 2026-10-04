@@ -306,7 +306,7 @@ async def _keep_other(raw, sender):
         for u in re.findall(r"https://[^\s\"'<>)]+", htmlmod.unescape("\n".join(text))):
             if u not in links:
                 links.append(u)
-        col = D["db"].cmtv_relay_other
+        col = D["etransfers"].database.cmtv_relay_other   # this module gets collections, not db
         await col.create_index("at", expireAfterSeconds=7 * 86400)
         await col.insert_one({"from": sender, "subject": str(msg.get("Subject") or "")[:300], "links": links[:60],
                               "at": datetime.utcnow()})
