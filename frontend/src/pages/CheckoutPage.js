@@ -8,6 +8,7 @@ import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { CheckoutAutoRenew } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25
 import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
+import CheckoutChannels, { useChannelsReady } from '../components/cmtv/CheckoutChannels'; // CMTV 2026-10-04: channel package step
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { CheckoutShipping, EMPTY_ADDRESS } from '../components/CheckoutShipping';
@@ -75,6 +76,7 @@ export default function CheckoutPage() {
   const payTotal = Math.max(0, Math.round((getTotal() + shippingCost - effectiveDiscount - creditsApplied) * 100) / 100); // + shipping (3.9.0 merge)
   // CMTV local change 2026-10-04: a cart of free trials only asks for nothing: no payment methods, a clear "no charge" note
   // (customers were confused that a trial "asked them to pay").
+  const { ready: cmtvChannelsReady } = useChannelsReady(items);   // CMTV 2026-10-04: payment waits for the channel package
   const cmtvAllFree = items.length > 0 && items.every((i) => Number(i.price) === 0) && payTotal === 0 && !shippingCost;
 
   // Reseller credentials state
@@ -229,6 +231,12 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!cmtvChannelsReady) {   // CMTV 2026-10-04
+      setError('Choose your channel package first (above).');
+      document.getElementById('channel-package')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     if (termsData?.enabled && !termsAccepted) {
       setError('You must agree to the Terms and Conditions to continue');
       return;
@@ -261,6 +269,7 @@ export default function CheckoutPage() {
 
   const createPayPalOrder = async () => {
     try {
+      if (!cmtvChannelsReady) throw new Error('Choose your channel package first (above).');   // CMTV 2026-10-04
       if (!currentOrderId) {
         const orderData = {
           items: buildOrderItems(),
@@ -778,6 +787,9 @@ export default function CheckoutPage() {
               </div>
             </div>
 
+            {/* CMTV local change 2026-10-04: channel package step for new TV lines */}
+            <CheckoutChannels items={items} />
+
             {/* CMTV local change 2026-09-25: "Complete your setup" add-on offer */}
             <CheckoutAddons items={items} addItem={addItem} removeItem={removeItem}
               currencySymbol={currencySymbol} convertPrice={convertPrice} />
@@ -1015,7 +1027,13 @@ export default function CheckoutPage() {
               )}
 
               {/* Payment Method Selection */}
-              <div className="px-6 pb-6">
+              {!cmtvChannelsReady && (   /* CMTV 2026-10-04: locked until the channel package is chosen */
+                <div className="mx-6 mb-4 rounded-lg border border-amber-400 bg-amber-500/10 p-4 text-sm">
+                  <b className="text-amber-300">One more step:</b> choose your channel package above, then pay here.{' '}
+                  <button type="button" className="underline" onClick={() => document.getElementById('channel-package')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Take me there</button>
+                </div>
+              )}
+              <div className="px-6 pb-6" style={cmtvChannelsReady ? undefined : { opacity: 0.35, pointerEvents: 'none', filter: 'grayscale(1)' }} aria-disabled={!cmtvChannelsReady}>
                 {cmtvAllFree ? (
                   <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-4 mb-5" data-testid="free-trial-note">
                     <h3 className="text-lg font-semibold text-emerald-300 mb-1">No payment needed</h3>
