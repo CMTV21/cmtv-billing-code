@@ -289,6 +289,31 @@ async def startup():
 
 # ---------- the inbound endpoint (called by the Cloudflare Email Worker) ----------
 
+async def _keep_other(raw, sender):
+    """2026-10-04: a short note of any non-Interac email that reaches the relay (e.g. Proton's "accept forwarding"
+    invitation, which never showed up in the owner's inbox): sender, subject and the links in it. Kept 7 days
+    (cmtv_relay_other, TTL). Never raises."""
+    try:
+        msg = email.message_from_string(raw, policy=policy.default)
+        text = []
+        for part in msg.walk():
+            if part.get_content_maintype() == "text":
+                try:
+                    text.append(part.get_content())
+                except Exception:
+                    pass
+        links = []
+        for u in re.findall(r"https://[^\s\"'<>)]+", htmlmod.unescape("\n".join(text))):
+            if u not in links:
+                links.append(u)
+        col = D["db"].cmtv_relay_other
+        await col.create_index("at", expireAfterSeconds=7 * 86400)
+        await col.insert_one({"from": sender, "subject": str(msg.get("Subject") or "")[:300], "links": links[:60],
+                              "at": datetime.utcnow()})
+    except Exception as e:
+        log.warning(f"e-Transfer inbound: couldn't note a non-Interac email ({type(e).__name__})")
+
+
 @router.post("/inbound")
 async def inbound(request: Request):
     token = os.environ.get("ETRANSFER_INBOUND_TOKEN", "")
@@ -302,6 +327,7 @@ async def inbound(request: Request):
     facts = parse(raw)
     if not facts["from"].endswith("@" + INTERAC_DOMAIN) and not facts["from"].endswith("." + INTERAC_DOMAIN):
         log.info(f"e-Transfer inbound: ignored an email from {facts['from']}")
+        await _keep_other(raw, facts["from"])
         return {"result": "ignored_not_interac"}
     if not facts["kind"]:
         return {"result": "ignored_not_a_transfer"}
