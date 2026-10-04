@@ -60,6 +60,7 @@ import AdminSettings from './pages/AdminSettings';
 import StaffManagement from './pages/StaffManagement';
 import AdminTickets from './pages/AdminTickets';
 import AdminSupportInbox from './pages/cmtv/AdminSupportInbox'; // CMTV local change 2026-10-04: Support inbox
+import AdminOrdersPage from './pages/cmtv/AdminOrdersPage'; // CMTV local change 2026-10-04: Orders refreshed
 import AdminMassEmail from './pages/AdminMassEmail';
 import AdminEmailTemplates from './pages/AdminEmailTemplates';
 import AdminCoupons from './pages/AdminCoupons';
@@ -351,6 +352,16 @@ function App() {
             />
             <Route
               path="/admin/orders"
+              element={
+                <ProtectedRoute>
+                  <AdminRoute>
+                    <CmtvAdminFrame><AdminOrdersPage /></CmtvAdminFrame>
+                  </AdminRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/orders-classic"
               element={
                 <ProtectedRoute>
                   <AdminRoute>
