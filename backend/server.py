@@ -967,7 +967,8 @@ async def startup_event():
                              get_email_service=get_configured_email_service)
 
     # CMTV local change 2026-09-25: Admin > Audiobooks
-    cmtv_audiobooks.init(services=services_collection, users=users_collection, products=products_collection,
+    # CMTV 2026-10-04: + db (Delete crashed with KeyError 'db' after abadmin had already deleted the user)
+    cmtv_audiobooks.init(db=db, services=services_collection, users=users_collection, products=products_collection,
                          get_email_service=get_configured_email_service)
 
     # CMTV local change 2026-09-26: admin home
