@@ -127,13 +127,12 @@ async def send_emt_pending(order_id, user, total, instructions):
         name = html.escape((user.get("name") or "there").split()[0])
         steps = html.escape(instructions or "Reply to this email and we'll send the e-Transfer details.").replace("\n", "<br>")
         if st["open_now"]:
-            when = (f"We confirm e-Transfers by hand between {st['hours']}. We're online now, so your service will be set "
+            when = (f"We confirm e-Transfers by hand, {st['hours']}. We're online now, so your service will be set "
                     f"up soon after your e-Transfer arrives.")
         else:
             away = f" ({html.escape(st['away_note'])})" if st["away_note"] else ""
-            when = (f"We confirm e-Transfers by hand between {st['hours']}. We're offline right now{away}, so your service "
-                    f"will be set up by about <b>{st['next_open_text']}</b>. Want it working now? Pay by PayPal on the "
-                    f"checkout page instead and it's set up instantly.")
+            when = (f"We confirm e-Transfers by hand, {st['hours']}. We're offline right now{away}, so your service "
+                    f"will be set up by about <b>{st['next_open_text']}</b>.")
         body = f"""
 <h2>Thanks for your order, {name}!</h2>
 <p>Here's how to pay for order <b>#{order_id}</b>.</p>

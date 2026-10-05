@@ -34,7 +34,7 @@ export function EmtHoursNotice() {
   if (h.open_now) {
     return (
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-        🕗 We confirm e-Transfers by hand between <b>{h.hours}</b>. We're online now, so you'll be set up soon after your e-Transfer arrives.
+        🕗 We confirm e-Transfers by hand, <b>{h.hours}</b>. We're online now, so you'll be set up soon after your e-Transfer arrives.
       </p>
     );
   }
@@ -42,7 +42,7 @@ export function EmtHoursNotice() {
     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4 mb-4 text-sm text-amber-900 dark:text-amber-200">
       <p className="font-semibold mb-1">🌙 It's after hours{away(h)}</p>
       <p>
-        We confirm e-Transfers by hand between <b>{h.hours}</b>, so this order will be set up by about <b>{h.next_open_text}</b>.
+        We confirm e-Transfers by hand, <b>{h.hours}</b>, so this order will be set up by about <b>{h.next_open_text}</b>.
       </p>
       <p className="mt-2">Want it working now? Pick <b>PayPal</b> above and you're set up instantly.</p>
     </div>
