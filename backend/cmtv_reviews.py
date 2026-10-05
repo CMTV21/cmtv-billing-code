@@ -9,6 +9,9 @@ Reviews: cmtv_reviews {user_id, rating 1-5, text, display_name ("Chris M."), pro
 rejected, created_at, decided_at, decided_by}. Nothing is public until the admin approves it in Admin > Reviews, and only
 with the customer's consent. The Ops bot (Billing topic) is told about each new review.
 Public: GET /api/cmtv/reviews/public -> approved reviews (newest first, max 12) + count + average (cmtv.info shows them).
+2026-10-05 (2027 marketing plan #3): invites use CMTV's branded email look, and customers who didn't review get ONE more
+ask at a happy moment (happy_round): 2-7 days after they renew, or 1-7 days after a support ticket of theirs is closed.
+Never more than 2 invites per customer, the second at least 60 days after the first, and not within the survey gap.
 """
 import asyncio
 import html
@@ -95,27 +98,47 @@ async def eligible_customers(now: datetime):
     return out
 
 
-async def send_invite(u: dict) -> str:
+MOMENTS = {   # 2026-10-05: (subject, heading, opening line) for each kind of ask
+    None: ("How's CMTV going? (30-second review)", "How's CMTV going?",
+           "you've been with us for a while now, and we'd love to hear how it's going."),
+    "renewal": ("Thanks for renewing! Got 30 seconds?", "Thanks for staying with us",
+                "thanks for renewing your CMTV plan. If you're enjoying it, a quick review would mean a lot to us."),
+    "ticket": ("Glad we could help: got 30 seconds?", "Glad we could help",
+               "we hope everything is working well again after your support ticket. If we looked after you, a quick review "
+               "would mean a lot to us."),
+}
+
+
+def invite_email(first, link, moment=None):
+    """(subject, html) of a review invite, in CMTV's branded email look (cmtv_gifts pieces)."""
+    from cmtv_gifts import _shell, _button, P, FONT
+    subject, heading, opening = MOMENTS.get(moment) or MOMENTS[None]
+    body = (f'<p style="{P}">Hi {first}, {opening}</p>'
+            f'<p style="margin:0 0 22px; font-size:15px; line-height:1.6; color:#374151; {FONT}">It takes 30 seconds: pick a star rating and add '
+            "a line or two. With your OK we may show it on cmtv.info (first name and last initial only), and it really helps "
+            "other people choose us.</p>"
+            + _button(link, "&#11088; Leave a quick review")
+            + f'<p style="margin:0 0 14px; font-size:13px; line-height:1.6; color:#6b7280; {FONT}">Something not right? Just reply or '
+              "open a ticket and we'll fix it.</p>")
+    return subject, _shell(f"{heading}. A quick star rating helps us a lot (30 seconds).", f"{heading} &#11088;", body)
+
+
+async def send_invite(u: dict, moment: str = None) -> str:
     """Make the invite, email it (marketing), and DM it on Telegram if connected. Returns what happened."""
     db = D["db"]
     uid = str(u["_id"])
     token = secrets.token_urlsafe(18)
     now = datetime.utcnow()
     link = f"{SITE}/review?t={token}"
-    await db.cmtv_review_invites.insert_one({"_id": token, "user_id": uid, "created_at": now, "expires_at": now + INVITE_TTL})
+    await db.cmtv_review_invites.insert_one({"_id": token, "user_id": uid, "created_at": now, "expires_at": now + INVITE_TTL,
+                                             "moment": moment})
     first = html.escape(short_name(u.get("name")).split(" ")[0])
-    body = (f"<h2 style=\"margin:0 0 8px\">How's CMTV going?</h2>"
-            f"<p>Hi {first}, you've been with us for a while now, and we'd love to hear how it's going.</p>"
-            f"<p>It takes 30 seconds: pick a star rating and add a line or two. With your OK we may show it on cmtv.info "
-            f"(first name and last initial only), and it really helps other people choose us.</p>"
-            f"<p style=\"margin:22px 0\"><a href=\"{link}\" style=\"background:#22e6f2;color:#07101a;padding:12px 22px;"
-            f"border-radius:999px;text-decoration:none;font-weight:700\">Leave a quick review</a></p>"
-            f"<p style=\"color:#666;font-size:13px\">Something not right? Just reply or open a ticket and we'll fix it.</p>")
+    subject, body = invite_email(first or "there", link, moment)
     sent = False
     es = await D["get_email_service"]()
     if es and getattr(es, "enabled", False):
         sent = bool(await es.send_email(
-            to_email=u["email"], subject="How's CMTV going? (30-second review)",
+            to_email=u["email"], subject=subject,
             html_content=es._wrap_email(body, "Leave a review", u["email"], "marketing"),
             email_type="marketing", template_type="cmtv_review_request", customer_id=uid,
             recipient_name=u.get("name") or ""))
@@ -148,6 +171,53 @@ async def invite_round(now: datetime = None) -> int:
     return n
 
 
+async def happy_candidates(now: datetime):
+    """[(user, moment)]: customers who didn't review, at a happy moment (renewed 2-7 days ago / ticket closed 1-7 days ago),
+    with fewer than 2 invites, the last one 60+ days ago, and not within the survey gap. 2026-10-05."""
+    db = D["db"]
+    reviewed = set(await db.cmtv_reviews.distinct("user_id"))
+    gap = now - timedelta(days=SURVEY_GAP_DAYS)
+    survey = set(await db.cmtv_survey_invites.distinct("user_id", {"$or": [{"created_at": {"$gte": gap}}, {"sent_at": {"$gte": gap}}]}))
+    survey |= set(await db.cmtv_survey_responses.distinct("user_id", {"$or": [
+        {"completed_at": {"$gte": gap}}, {"first_completed_at": {"$gte": gap}}, {"followup.replies.at": {"$gte": gap}}]}))
+    moments = {}
+    async for t in db.tickets.find({"status": "closed", "updated_at": {"$gte": now - timedelta(days=7), "$lt": now - timedelta(days=1)}},
+                                   {"user_id": 1}):
+        moments.setdefault(str(t.get("user_id")), "ticket")
+    async for o in db.orders.find({"status": "paid", "total": {"$gt": 0}, "paid_at": {"$gte": now - timedelta(days=7), "$lt": now - timedelta(days=2)}},
+                                  {"user_id": 1, "paid_at": 1, "items": 1}):
+        uid = str(o.get("user_id"))
+        renew = any(i.get("action_type") in ("renew", "extend") for i in o.get("items") or []) or \
+            await db.orders.find_one({"user_id": o.get("user_id"), "status": "paid", "total": {"$gt": 0}, "paid_at": {"$lt": o["paid_at"]}}, {"_id": 1})
+        if renew:
+            moments.setdefault(uid, "renewal")
+    out = []
+    for uid, moment in moments.items():
+        if uid in reviewed or uid in survey or not _oid(uid):
+            continue
+        invs = await db.cmtv_review_invites.find({"user_id": uid}).sort("created_at", -1).to_list(5)
+        if len(invs) >= 2 or (invs and invs[0]["created_at"] > now - timedelta(days=60)):
+            continue
+        u = await db.users.find_one({"_id": _oid(uid), "role": "user"})
+        if not u or not u.get("email") or str(u["email"]).lower().endswith("@panel.local") or u.get("cmtv_demo"):
+            continue
+        out.append((u, moment))
+    return out
+
+
+async def happy_round(now: datetime = None) -> int:
+    now = now or datetime.utcnow()
+    room = DAILY_CAP - await D["db"].cmtv_review_invites.count_documents({"created_at": {"$gte": now - timedelta(hours=24)}})
+    n = 0
+    for u, moment in (await happy_candidates(now))[:max(room, 0)]:
+        try:
+            await send_invite(u, moment)
+            n += 1
+        except Exception as e:
+            log.warning(f"happy-moment review invite failed for {u.get('_id')}: {e}")
+    return n
+
+
 async def _loop():
     while True:
         try:
@@ -155,6 +225,7 @@ async def _loop():
             hour = datetime.now(TZ).hour
             if cfg.get("invites_enabled", False) and 11 <= hour < 19:
                 n = await invite_round()
+                n += await happy_round()   # 2026-10-05: second ask at a happy moment
                 if n:
                     log.info(f"review invites sent: {n}")
         except Exception as e:

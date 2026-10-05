@@ -4,6 +4,7 @@
 // price and length (the old button put a $0, 1-month item in the cart as a NEW line); the "days left" bar uses the
 // service's own term instead of assuming 30 days.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ReferralOfferLine, ReferralShare } from '../../components/cmtv/ReferralShare'; // 2026-10-05: referral offer + share
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import TelegramAlerts from '../../components/cmtv/TelegramAlerts'; // 2026-09-28: Telegram alerts panel
 import NuvioDevices from '../../components/cmtv/NuvioDevices'; // 2026-09-29: devices on a Nuvio service card
@@ -341,11 +342,12 @@ export default function CmtvDashboardPage() {
                 </div>
                 <p>{t.next ? <><b>{t.next.needs} more friend{t.next.needs === 1 ? '' : 's'}</b> and you get <b>{t.next.pct}% off everything</b>
                   {t.next.free_cmtv_plus ? ' plus CMTV+ free' : ''}. </> : <><b>{t.pct}% off everything</b>, applied automatically. </>}
-                  You earn credit for each friend who joins.</p>
+                  <ReferralOfferLine /></p>{/* 2026-10-05 */}
                 {refCode.data?.referral_code && (
                   <div className="ca-codebox"><code>{refCode.data.referral_code}</code>
                     <button type="button" className="ca-icon" onClick={() => copy(refCode.data.referral_link || refCode.data.referral_code, 'Referral link')}>Copy link</button></div>
                 )}
+                <ReferralShare link={refCode.data?.referral_link} />{/* 2026-10-05: share buttons */}
                 <Link className="ca-more" to="/referrals">Your referrals →</Link>
               </div>
             )}

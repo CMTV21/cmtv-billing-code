@@ -288,6 +288,11 @@ import cmtv_reach
 cmtv_reach.D["get_current_admin_user"] = get_current_admin_user
 cmtv_reach.init_routes()
 app.include_router(cmtv_reach.router)
+# CMTV local change 2026-10-05: referral campaigns (bigger rewards for set dates) (cmtv_refboost.py)
+import cmtv_refboost
+cmtv_refboost.D["get_current_admin_user"] = get_current_admin_user
+cmtv_refboost.init_routes()
+app.include_router(cmtv_refboost.router)
 
 # CMTV local change 2026-09-28: reseller credits in any amount 50-1000, priced per credit (cmtv_reseller_credits.py)
 import cmtv_reseller_credits
@@ -1096,6 +1101,8 @@ async def startup_event():
     await cmtv_reach.startup()
     import cmtv_renew_email   # CMTV 2026-10-05: renewal reminder with real options
     cmtv_renew_email.init(db=db, get_email_service=get_configured_email_service)
+    cmtv_refboost.init(db=db)   # CMTV 2026-10-05: referral campaigns
+    await cmtv_refboost.startup()
     cmtv_trial_nurture.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-02
     cmtv_trial_nurture.start()
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
