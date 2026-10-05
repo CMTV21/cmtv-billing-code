@@ -13,6 +13,7 @@ import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: late
 import SpellOut from '../../components/cmtv/SpellOut'; // 2026-10-04: I / l look-alikes spelled out
 import UpgradeDevices from '../../components/cmtv/UpgradeDevices'; // 2026-10-04: add devices, prorated
 import FeedbackBox from '../../components/cmtv/FeedbackBox'; // 2026-10-04: suggestions + leave a review
+import LineCheck from '../../components/cmtv/LineCheck'; // 2026-10-04: Test my line
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -205,6 +206,8 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
               title="Opens the CMTV Web Player, signed in with this line">Watch in browser</a>
           )}
           <AutoRenewSwitch d={d} enabled={autoRenewEnabled} />
+          {['xtream', 'aether'].includes(s.panel_type) && s.account_type !== 'reseller'
+            && <LineCheck service={s} onRenew={d.canRenew ? () => onRenew(d) : null} />}
           {!d.ended && !d.isTrial && ['xtream', 'aether'].includes(s.panel_type) && s.account_type !== 'reseller' && s.status === 'active'
             && <UpgradeDevices service={s} />}
         </div>

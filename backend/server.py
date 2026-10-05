@@ -169,6 +169,11 @@ cmtv_feedback.D["get_current_user"] = get_current_user
 cmtv_feedback.D["get_current_admin_user"] = get_current_admin_user
 cmtv_feedback.init_routes()
 app.include_router(cmtv_feedback.router)
+# CMTV local change 2026-10-04: dashboard "Test my line" (cmtv_linecheck.py)
+import cmtv_linecheck
+cmtv_linecheck.D["get_current_user"] = get_current_user
+cmtv_linecheck.init_routes()
+app.include_router(cmtv_linecheck.router)
 
 # CMTV local change 2026-09-27: new Admin > Analytics (cmtv_analytics.py)
 import cmtv_analytics
@@ -1001,6 +1006,7 @@ async def startup_event():
     cmtv_support_inbox.init(db=db)   # CMTV 2026-10-04: Support inbox
     cmtv_admin_orders.init(db=db)   # CMTV 2026-10-04: Admin > Orders
     cmtv_feedback.init(db=db)   # CMTV 2026-10-04: suggestions + review button
+    cmtv_linecheck.init(db=db, get_settings=get_settings)   # CMTV 2026-10-04: Test my line
     cmtv_upgrades.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)   # CMTV 2026-10-04
     cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
                              get_email_service=get_configured_email_service)
