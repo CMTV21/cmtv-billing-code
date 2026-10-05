@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '../../api/api';
 import '../../components/cmtv/cmtv-reviews.css';
+import AdminFeedbackList from '../../components/cmtv/AdminFeedbackList'; // 2026-10-04: customer suggestions
 
 const STATUS = { pending: 'Waiting', approved: 'On cmtv.info', rejected: 'Not shown' };
 
@@ -36,6 +37,7 @@ export default function AdminReviewsPage() {
           <p>Reviews your customers left through their review link. Only approved reviews from customers who agreed appear on cmtv.info.</p>
         </div>
       </div>
+      <AdminFeedbackList />
       <div className="rv-stats">
         <div><b>{approved.length}</b><span>on cmtv.info</span></div>
         <div><b>{avg}</b><span>average ★ (shown)</span></div>

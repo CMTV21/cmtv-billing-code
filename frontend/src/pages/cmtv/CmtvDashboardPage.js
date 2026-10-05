@@ -12,6 +12,7 @@ import ResellerPanels from '../../components/cmtv/ResellerPanels'; // 2026-09-28
 import CmtvUpdates from '../../components/cmtv/CmtvUpdates'; // 2026-09-28: latest CMTV Updates post
 import SpellOut from '../../components/cmtv/SpellOut'; // 2026-10-04: I / l look-alikes spelled out
 import UpgradeDevices from '../../components/cmtv/UpgradeDevices'; // 2026-10-04: add devices, prorated
+import FeedbackBox from '../../components/cmtv/FeedbackBox'; // 2026-10-04: suggestions + leave a review
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -342,6 +343,7 @@ export default function CmtvDashboardPage() {
               </div>
             )}
             <TelegramAlerts />
+            <FeedbackBox />
             <div className="ca-panel">
               <h2 className="ca-h2">Need help?</h2>
               <p>Most answers are in the setup steps on each service. For anything else:</p>
