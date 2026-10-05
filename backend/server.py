@@ -6327,6 +6327,12 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 await run_item(item["product_name"], item, provision_gold_service(order_id, order, user, item, product, settings, email_service))
             else:
                 await run_item(item["product_name"], item, provision_xtream_service(order_id, order, user, item, product, settings, email_service))
+            # CMTV local change 2026-10-05: trial flag on TV trial lines + "keep my trial login" bookkeeping (cmtv_trial_watch)
+            try:
+                import cmtv_trial_watch
+                await cmtv_trial_watch.after_item(order_id, order, item, product)
+            except Exception as _e:
+                logger.warning(f"trial after_item failed for order {order_id}: {_e}")
             # CMTV local change 2026-10-05: holiday bonus months -> the same line extended by the bonus (cmtv_promo.py)
             if item.get("bonus_months"):
                 await cmtv_promo.apply_bonus(order_id, order, user, item, product, settings, run_item,

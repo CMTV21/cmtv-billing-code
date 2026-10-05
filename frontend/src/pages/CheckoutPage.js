@@ -11,6 +11,7 @@ import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../
 import CheckoutChannels, { useChannelsReady } from '../components/cmtv/CheckoutChannels'; // CMTV 2026-10-04: channel package step
 import { EmtHoursHint, EmtHoursNotice } from '../components/cmtv/SupportHours'; // CMTV 2026-10-05: support hours
 import { PromoCheckoutLine, PromoPlusSync } from '../components/cmtv/Promo'; // CMTV 2026-10-05: holiday bonus months + CMTV+ price
+import KeepTrialLogin, { isRunningTvTrial } from '../components/cmtv/KeepTrialLogin'; // CMTV 2026-10-05: keep the trial's login
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { CheckoutShipping, EMPTY_ADDRESS } from '../components/CheckoutShipping';
@@ -777,9 +778,10 @@ export default function CheckoutPage() {
                               />
                               <RefreshCw className="w-5 h-5 text-blue-600" />
                               <div className="flex-1">
-                                <span className="font-medium text-gray-900 dark:text-white">Extend: {service.xtream_username}</span>
+                                <span className="font-medium text-gray-900 dark:text-white">{isRunningTvTrial(service) ? 'Keep my trial login' : 'Extend'}: {service.xtream_username}</span>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  Expires: {service.expiry_date ? new Date(service.expiry_date).toLocaleDateString() : 'N/A'}
+                                  {isRunningTvTrial(service) ? 'Same login, nothing to set up again on your TV' /* CMTV 2026-10-05 */
+                                    : `Expires: ${service.expiry_date ? new Date(service.expiry_date).toLocaleDateString() : 'N/A'}`}
                                 </p>
                               </div>
                             </label>
@@ -795,6 +797,7 @@ export default function CheckoutPage() {
             {/* CMTV local change 2026-10-04: channel package step for new TV lines */}
             <CheckoutChannels items={items} />
             <PromoPlusSync items={items} setItems={(next) => useCartStore.setState({ items: next })} />{/* CMTV 2026-10-05 */}
+            <KeepTrialLogin items={items} services={userServices} updateItemAction={updateItemAction} />{/* CMTV 2026-10-05 */}
 
             {/* CMTV local change 2026-09-25: "Complete your setup" add-on offer */}
             <CheckoutAddons items={items} addItem={addItem} removeItem={removeItem}

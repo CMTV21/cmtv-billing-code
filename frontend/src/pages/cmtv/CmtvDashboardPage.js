@@ -190,6 +190,9 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
           {d.canRenew && (
             <button type="button" className={`ca-btn ${warn || d.ended ? 'ca-glow' : 'ca-ghost'}`} onClick={() => onRenew(d)}>{renewLabel}</button>
           )}
+          {d.isTrial && !d.canRenew && !d.ended && ['cctv', 'imperium'].includes(d.family) && (   /* 2026-10-05: keep the trial's login */
+            <Link className={`ca-btn ${d.family === 'imperium' ? 'ca-gold' : 'ca-glow'}`} to={`/?tab=${d.family}`} title="Pick any plan: you keep this login">Keep it · choose a plan</Link>
+          )}
           {d.yearly && (
             <button type="button" className="ca-btn ca-glow" onClick={() => onRenew(d, d.yearly)}
               title={`$${d.yearly.monthlyEquivalent.toFixed(2)} a month instead of $${(d.rp.price / d.rp.term).toFixed(2)}`}>

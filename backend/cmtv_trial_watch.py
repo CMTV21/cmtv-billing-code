@@ -75,6 +75,37 @@ async def alert_owner(user, svc, fam):
         logger.warning(f"trial watch alert failed: {e}")
 
 
+async def after_item(order_id, order, item, product):
+    """Called by provision_order_services after each item (2026-10-05, tested on both live panels the same day):
+    - a TRIAL item: make sure the line it made is marked is_trial (the CCTV path never set it, so CCTV trials got no trial
+      messages and weren't watched);
+    - a PAID item that extended a trial line ("keep my trial login"): the panel has already turned it into a paid line with
+      the plan's devices and end date (CCTV and Imperium both do), so billing's record follows: is_trial False, the paid
+      product, its devices. Only when the line now runs 20+ days out (the extension worked)."""
+    db = D["db"]
+    uid = order.get("user_id")
+    if product.get("is_trial"):
+        await db.services.update_many({"order_id": order_id, "user_id": uid, "is_trial": {"$ne": True},
+                                       "panel_type": {"$in": ["xtream", "aether"]}}, {"$set": {"is_trial": True}})
+        return
+    rid = item.get("renewal_service_id")
+    if not rid or item.get("action_type") not in ("renew", "extend"):
+        return
+    from bson import ObjectId
+    if not ObjectId.is_valid(str(rid)):
+        return
+    svc = await db.services.find_one({"_id": ObjectId(str(rid)), "user_id": uid})
+    if not svc or not svc.get("is_trial") or not svc.get("expiry_date") or svc["expiry_date"] < datetime.utcnow() + timedelta(days=20):
+        return
+    upd = {"is_trial": False, "product_id": str(product.get("_id") or item.get("product_id")),
+           "product_name": product.get("name") or item.get("product_name"), "status": "active",
+           "cmtv_trial_converted": {"order_id": order_id, "at": datetime.utcnow()}}
+    if product.get("max_connections"):
+        upd["max_connections"] = int(product["max_connections"])
+    await db.services.update_one({"_id": svc["_id"]}, {"$set": upd})
+    logger.info(f"Trial line {svc.get('xtream_username') or svc.get('username')} kept its login: now {upd['product_name']}")
+
+
 async def _loop():
     await asyncio.sleep(150)
     while True:

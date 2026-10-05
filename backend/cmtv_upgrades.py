@@ -427,6 +427,8 @@ async def renewal_plan(user_id, service_id, product):
     svc = await D["db"].services.find_one({"_id": _oid(service_id), "user_id": str(user_id)})
     if not svc or svc.get("panel_type") != (product or {}).get("panel_type"):
         return None
+    if svc.get("is_trial"):   # 2026-10-05: keeping a trial login: the customer picks the plan's devices (Imperium trials have 2)
+        return None
     return await bigger_plan(svc["panel_type"], int(svc.get("max_connections") or 0), product)
 
 
