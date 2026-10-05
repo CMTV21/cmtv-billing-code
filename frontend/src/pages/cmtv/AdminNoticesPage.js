@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '../../api/api';
 import { NoticeBox } from './AdminResellersPage';
+import SportsKeyBox from '../../components/cmtv/SportsKeyBox'; // 2026-10-04: TheSportsDB key
 import '../../components/cmtv/reseller-credits.css';
 
 const FAMILIES = [
@@ -186,6 +187,7 @@ export default function AdminNoticesPage() {
       </p>
       <ServiceStatus />
       <DailyChangelog />
+      <SportsKeyBox />
       <CustomerUpdate />
       <CustomerNotice />
       <NoticeBox />
