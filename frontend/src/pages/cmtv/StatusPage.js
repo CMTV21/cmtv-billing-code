@@ -5,6 +5,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/api';
+import { HoursBadge } from '../../components/cmtv/SupportHours'; // CMTV 2026-10-05: support hours
 import '../../components/cmtv/cmtv-kb.css';
 
 const fmt = (iso) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -20,6 +21,7 @@ export default function StatusPage() {
     <div className="cmtv-kb">
       <article className="kb-article" style={{ marginTop: 12 }}>
         <h1>Service status</h1>
+        <HoursBadge style={{ margin: '4px 0 14px' }} />
         {isLoading ? <p className="kb-lede">Loading…</p> : isError ? <p className="kb-lede">Status can't be loaded right now. Please try again in a minute.</p> : (
           <>
             <p className="kb-lede" style={{ fontWeight: 600, color: down.length ? '#f87171' : '#34d399' }}>

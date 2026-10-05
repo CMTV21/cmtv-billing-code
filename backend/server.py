@@ -179,6 +179,11 @@ import cmtv_sports
 cmtv_sports.D["get_current_admin_user"] = get_current_admin_user
 cmtv_sports.init_routes()
 app.include_router(cmtv_sports.router)
+# CMTV local change 2026-10-05: support hours (8 am - 9 pm Eastern) + e-Transfer order email (cmtv_hours.py)
+import cmtv_hours
+cmtv_hours.D["get_current_admin_user"] = get_current_admin_user
+cmtv_hours.init_routes()
+app.include_router(cmtv_hours.router)
 
 # CMTV local change 2026-09-27: new Admin > Analytics (cmtv_analytics.py)
 import cmtv_analytics
@@ -1013,6 +1018,7 @@ async def startup_event():
     cmtv_feedback.init(db=db)   # CMTV 2026-10-04: suggestions + review button
     cmtv_linecheck.init(db=db, get_settings=get_settings)   # CMTV 2026-10-04: Test my line
     cmtv_sports.init(db=db)   # CMTV 2026-10-04: sports schedule
+    cmtv_hours.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: support hours
     cmtv_upgrades.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)   # CMTV 2026-10-04
     cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
                              get_email_service=get_configured_email_service)
@@ -4237,6 +4243,11 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
     )
     await send_sms_notification("new_order", f"Customer: {user.get('name', 'Unknown')}\nEmail: {user.get('email', 'N/A')}\nTotal: ${final_total:.2f}\n\nItems:\n{order_items_text}")
     
+    # CMTV local change 2026-10-05: e-Transfer order email (how to pay, order id for the message, when it'll be set up)
+    if payment_method == "emt" and final_total > 0:
+        background_tasks.add_task(cmtv_hours.send_emt_pending, order_id, user, final_total,
+                                  settings.get("emt", {}).get("instructions", ""))
+
     # If fully paid with credits, mark order as paid and provision service
     if final_total == 0:
         await orders_collection.update_one(

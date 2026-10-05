@@ -9,6 +9,7 @@ import { CheckoutAutoRenew } from './../components/cmtv/AutoRenew'; // CMTV loca
 import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
 import CheckoutChannels, { useChannelsReady } from '../components/cmtv/CheckoutChannels'; // CMTV 2026-10-04: channel package step
+import { EmtHoursHint, EmtHoursNotice } from '../components/cmtv/SupportHours'; // CMTV 2026-10-05: support hours
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { CheckoutShipping, EMPTY_ADDRESS } from '../components/CheckoutShipping';
@@ -1195,6 +1196,7 @@ export default function CheckoutPage() {
                             <div>
                               <p className="font-semibold text-gray-900 dark:text-white">Interac e-Transfer</p>
                               <p className="text-sm text-gray-600 dark:text-gray-400">Pay via EMT (Canadian banks)</p>
+                              <EmtHoursHint />{/* CMTV 2026-10-05 */}
                             </div>
                           </div>
                         </label>
@@ -1332,6 +1334,7 @@ export default function CheckoutPage() {
                   </div>
                 ) : paymentMethod === 'emt' ? (
                   <div>
+                    <EmtHoursNotice />{/* CMTV 2026-10-05: after-hours notice */}
                     <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-5 mb-4">
                       <h4 className="font-semibold text-emerald-900 dark:text-emerald-200 mb-3 flex items-center gap-2">
                         <DollarSign className="w-5 h-5" />

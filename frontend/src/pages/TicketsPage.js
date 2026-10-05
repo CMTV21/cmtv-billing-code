@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, MessageSquare, Plus, X, Send, Package } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { HoursBadge, TicketHoursNotice } from '../components/cmtv/SupportHours'; // CMTV 2026-10-05: support hours
 import CmtvUpdates from '../components/cmtv/CmtvUpdates'; // CMTV local change 2026-09-28: CMTV Updates posts before writing in
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
@@ -84,6 +85,7 @@ export default function TicketsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-8">Support Tickets</h1>
+        <HoursBadge style={{ marginBottom: 16 }} />{/* CMTV 2026-10-05 */}
         <CmtvUpdates variant="tickets" />{/* CMTV local change 2026-09-28 */}
 
         {isLoading ? (
@@ -222,6 +224,7 @@ function CreateTicketModal({ onClose, onSuccess }) {
           </button>
         </div>
         <CmtvUpdates variant="modal" />{/* CMTV local change 2026-09-28: known issues before writing in */}
+        <TicketHoursNotice />{/* CMTV 2026-10-05: support hours */}
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div>
