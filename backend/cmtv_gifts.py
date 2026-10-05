@@ -187,38 +187,108 @@ async def admin_issue(data, admin_user):
     return doc
 
 
-def _card(doc):
-    """The gift card itself, as email-safe HTML."""
-    msg = html.escape(doc.get("message") or "").replace("\n", "<br>")
-    to = html.escape(doc.get("to_name") or "")
-    return f"""
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0">
- <tr><td style="background:#0b1430;background-image:linear-gradient(135deg,#0e7490,#6d28d9);border-radius:16px;padding:26px 24px;color:#ffffff">
-  <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.85">CMTV gift card</div>
-  <div style="font-size:44px;font-weight:800;line-height:1.1;margin:8px 0 4px">${doc['amount']:.0f}</div>
-  {f'<div style="font-size:15px;opacity:.9">For {to}</div>' if to else ''}
-  <div style="margin-top:18px;background:rgba(0,0,0,.28);border-radius:10px;padding:12px 14px;font-family:Consolas,Menlo,monospace;
-   font-size:21px;font-weight:700;letter-spacing:.08em;text-align:center">{doc['code']}</div>
- </td></tr>
+# Emails use CMTV's email look (the "service_activated" template, 2026-10-05 the owner: "branded, like our site"): grey page,
+# white card, navy header with the logo and the cyan / blue / purple strip, navy footer with Telegram + email.
+LOGO = "https://pub-082b63f75b76409f80ab3f95b2ab0a23.r2.dev/CMTV-Logo.jpg"
+FONT = "font-family:Arial, Helvetica, sans-serif;"
+P = f"margin:0 0 14px; font-size:15px; line-height:1.6; color:#374151; {FONT}"
+STRIP = ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+         '<td width="33.3%" height="3" style="background-color:#00d4ff; line-height:3px; font-size:1px;">&nbsp;</td>'
+         '<td width="33.3%" height="3" style="background-color:#5533ff; line-height:3px; font-size:1px;">&nbsp;</td>'
+         '<td width="33.4%" height="3" style="background-color:#cc00ff; line-height:3px; font-size:1px;">&nbsp;</td></tr></table>')
+
+
+def _shell(preheader, heading, body):
+    return f"""<div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#eef1f5; opacity:0;">{html.escape(preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eef1f5; padding:40px 0; {FONT}">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%; background-color:#ffffff; border-radius:10px; overflow:hidden; border:1px solid #e2e5eb;">
+  <tr><td style="background-color:#0a0e1a; padding:28px 32px 0;">
+    <img src="{LOGO}" alt="CMTV" height="36" style="display:block; height:36px; width:auto; border:0; margin-bottom:24px; color:#ffffff; font-size:22px; font-weight:bold; {FONT}">
+    {STRIP}
+  </td></tr>
+  <tr><td style="padding:36px 32px 8px;">
+    <h1 style="margin:0 0 20px; font-size:24px; line-height:1.3; color:#0a0e1a; {FONT}">{heading}</h1>
+    {body}
+    <p style="margin:20px 0 32px; font-size:14px; line-height:1.6; color:#374151; {FONT}">Best regards,<br><strong>The CMTV Team</strong></p>
+  </td></tr>
+  <tr><td style="padding:24px 32px; background-color:#0a0e1a;">
+    <p style="margin:0 0 6px; font-size:12px; color:#8b96b3; {FONT}">&copy; {datetime.now(TZ).year} CMTV. All rights reserved.</p>
+    <p style="margin:0; font-size:12px; color:#8b96b3; {FONT}">
+      <a href="https://t.me/+Kw9rjQKInL02ZDBh" style="color:#00d4ff; text-decoration:none;">Telegram</a>
+      &nbsp;&middot;&nbsp;<a href="mailto:cmtv@pm.me" style="color:#00d4ff; text-decoration:none;">cmtv@pm.me</a>
+      &nbsp;&middot;&nbsp;<a href="{SITE}" style="color:#00d4ff; text-decoration:none;">billing.cmtv.info</a>
+    </p>
+  </td></tr>
 </table>
-{f'<blockquote style="margin:0 0 16px;padding:10px 14px;border-left:4px solid #8b5cf6;background:#f5f3ff;border-radius:6px">{msg}<br><span style="color:#6b7280">– {html.escape(doc.get("from_name") or "")}</span></blockquote>' if msg else ''}"""
+</td></tr>
+</table>"""
+
+
+def _card(doc):
+    """The gift card itself: a navy card with the CMTV strip, the amount, who it's for and the code."""
+    to = html.escape(doc.get("to_name") or "")
+    frm = html.escape(doc.get("from_name") or "")
+    who = " &nbsp;&middot;&nbsp; ".join(x for x in (f"For {to}" if to else "", f"From {frm}" if frm else "") if x)
+    return f"""
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e1a; border-radius:12px; margin:8px 0 24px; overflow:hidden;">
+  <tr><td>{STRIP}</td></tr>
+  <tr><td style="padding:24px 26px 26px; {FONT}">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="font-size:12px; letter-spacing:2px; text-transform:uppercase; color:#8b96b3; {FONT}">CMTV gift card</td>
+      <td align="right" style="font-size:20px;">&#127873;</td>
+    </tr></table>
+    <div style="font-size:48px; font-weight:bold; line-height:1.1; color:#ffffff; margin:10px 0 4px; {FONT}">${doc['amount']:.0f}</div>
+    {f'<div style="font-size:14px; color:#c7d2ee; {FONT}">{who}</div>' if who else ''}
+    <div style="margin-top:20px; font-size:12px; color:#8b96b3; {FONT}">Gift card code</div>
+    <div style="margin-top:6px; background-color:#141d33; border:1px dashed #00d4ff; border-radius:8px; padding:13px 10px; text-align:center;
+      font-family:Consolas, Menlo, 'Courier New', monospace; font-size:22px; font-weight:bold; letter-spacing:2px; color:#ffffff;">{doc['code']}</div>
+  </td></tr>
+</table>"""
+
+
+def _message(doc):
+    msg = html.escape(doc.get("message") or "").replace("\n", "<br>")
+    if not msg:
+        return ""
+    return f"""
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr>
+  <td width="4" style="background-color:#5533ff; border-radius:2px; font-size:1px; line-height:1px;">&nbsp;</td>
+  <td style="padding:4px 0 4px 14px; font-size:15px; line-height:1.6; color:#374151; font-style:italic; {FONT}">&ldquo;{msg}&rdquo;
+    <div style="font-style:normal; color:#9ca3af; font-size:13px; margin-top:4px;">&ndash; {html.escape(doc.get('from_name') or '')}</div></td>
+</tr></table>"""
+
+
+def _button(href, label):
+    return f"""
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 28px;"><tr>
+  <td style="background-color:#5533ff; background-image:linear-gradient(135deg,#00d4ff,#5533ff 55%,#cc00ff); border-radius:8px;">
+    <a href="{href}" style="display:inline-block; padding:14px 28px; font-size:15px; font-weight:bold; color:#ffffff; text-decoration:none; {FONT}">{label}</a>
+  </td></tr></table>"""
+
+
+def _section(title):
+    return f"""
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:10px;"><tr>
+  <td width="4" style="background-color:#00d4ff; border-radius:2px; font-size:1px; line-height:1px;">&nbsp;</td>
+  <td style="padding-left:12px; font-size:16px; font-weight:bold; color:#0a0e1a; line-height:1; {FONT}">{title}</td>
+</tr></table>"""
 
 
 def _how():
-    return f"""
-<p style="margin:16px 0"><a href="{SITE}/redeem" style="display:inline-block;background:#6d28d9;color:#fff;text-decoration:none;
- font-weight:700;padding:12px 22px;border-radius:10px">Redeem your gift card</a></p>
-<ol style="padding-left:20px;color:#374151">
- <li>Sign in at billing.cmtv.info, or create a free account.</li>
- <li>Go to <b>Redeem a gift card</b> ({SITE}/redeem) and enter the code.</li>
- <li>The amount goes on your account as credit and is used at checkout, for any plan or add-on.</li>
+    li = f"margin:0 0 8px; font-size:15px; line-height:1.6; color:#374151; {FONT}"
+    return _section("How to use it") + f"""
+<ol style="margin:0 0 18px; padding-left:22px;">
+  <li style="{li}">Sign in at <a href="{SITE}" style="color:#5533ff;">billing.cmtv.info</a>, or create a free account.</li>
+  <li style="{li}">Open <b>Redeem a gift card</b> and enter the code above.</li>
+  <li style="{li}">The amount goes on your account as credit. Use it at checkout on any plan or add-on.</li>
 </ol>
-<p style="color:#6b7280;font-size:13px">Gift cards never expire. Questions? Reply to this email or message us on Telegram (@Cmtv_support_bot).</p>"""
+<p style="margin:0 0 14px; font-size:12px; line-height:1.5; color:#9ca3af; {FONT}">Gift cards never expire. Questions? Reply to this email or message us on Telegram.</p>"""
 
 
-async def _send(to, subject, body, title, order_id=None, name=None):
+async def _send(to, subject, html_body, order_id=None, name=None):
     es = await D["get_email_service"]()
-    return await es.send_email(to_email=to, subject=subject, html_content=es._wrap_email(body, title, to, "transactional"),
+    return await es.send_email(to_email=to, subject=subject, html_content=es._wrap_email(html_body, subject, to, "transactional"),
                                email_type="transactional", order_id=order_id, recipient_name=name)
 
 
@@ -226,11 +296,15 @@ async def deliver(doc):
     """Email the gift card to its recipient now."""
     frm = html.escape(doc.get("from_name") or "Someone")
     hi = html.escape((doc.get("to_name") or "").split(" ")[0] or "there")
-    body = f"<h2>Hi {hi}, you've got a gift! 🎁</h2><p><b>{frm}</b> sent you a ${doc['amount']:.0f} CMTV gift card.</p>" \
-           + _card(doc) + _how()
+    amt = f"${doc['amount']:.0f}"
+    body = (f'<p style="{P}">Hi {hi},</p>'
+            f'<p style="margin:0 0 24px; font-size:15px; line-height:1.6; color:#374151; {FONT}"><strong style="color:#0a0e1a;">{frm}</strong> '
+            f'sent you a <strong style="color:#0a0e1a;">{amt} CMTV gift card</strong>. Spend it on live TV, movies and series, or any add-on.</p>'
+            + _card(doc) + _message(doc) + _button(f"{SITE}/redeem?code={doc['code']}", "Redeem your gift card") + _how())
     try:
-        await _send(doc["to_email"], f"{doc.get('from_name') or 'Someone'} sent you a ${doc['amount']:.0f} CMTV gift card",
-                    body, "Your CMTV gift card", doc.get("order_id"), doc.get("to_name"))
+        await _send(doc["to_email"], f"{doc.get('from_name') or 'Someone'} sent you a {amt} CMTV gift card",
+                    _shell(f"{doc.get('from_name') or 'Someone'} sent you a {amt} CMTV gift card. Your code is inside.",
+                           "You've got a gift! &#127873;", body), doc.get("order_id"), doc.get("to_name"))
         await D["db"].cmtv_gifts.update_one({"_id": doc["_id"], "status": {"$in": ["issued", "scheduled"]}},
                                             {"$set": {"status": "sent", "sent_at": datetime.utcnow()}, "$unset": {"send_error": ""}})
         return True
@@ -249,18 +323,24 @@ async def _receipt(doc):
     if not doc.get("buyer_email"):
         return
     to = html.escape(doc.get("to_name") or doc.get("to_email") or "")
+    em = html.escape(doc.get("to_email") or "")
+    b = 'style="color:#0a0e1a;"'
     if doc["status"] == "scheduled":
-        what = f"It will be emailed to <b>{to}</b> ({html.escape(doc['to_email'])}) on <b>{_nice_date(doc['deliver_on'])}</b> at about 8 am Eastern."
+        what = f"It will be emailed to <strong {b}>{to}</strong> ({em}) on <strong {b}>{_nice_date(doc['deliver_on'])}</strong> at about 8 am Eastern."
     elif doc.get("to_email"):
-        what = f"We've emailed it to <b>{to}</b> ({html.escape(doc['to_email'])})."
+        what = f"We've emailed it to <strong {b}>{to}</strong> ({em}). They'll find the code and how to use it inside."
     else:
-        what = "Here's the code to give them. Print this email or forward it: they redeem it at billing.cmtv.info/redeem."
-    body = f"<h2>Thanks for your gift! 🎁</h2><p>{what}</p>" + _card(doc) + \
-           "<p style='color:#6b7280;font-size:13px'>Keep this email: the code works once, never expires, and the amount goes on " \
-           "the account of whoever redeems it. If it goes missing, reply to this email and we'll help.</p>"
+        what = ("Here's the code to give them. Print this email or forward it: they redeem it at "
+                f'<a href="{SITE}/redeem" style="color:#5533ff;">billing.cmtv.info/redeem</a>.')
+    hi = html.escape((doc.get("buyer_name") or "").split(" ")[0] or "there")
+    body = (f'<p style="{P}">Hi {hi},</p><p style="margin:0 0 24px; font-size:15px; line-height:1.6; color:#374151; {FONT}">'
+            f'Thanks for giving CMTV! {what}</p>' + _card(doc) + _message(doc)
+            + f'<p style="margin:0 0 14px; font-size:12px; line-height:1.5; color:#9ca3af; {FONT}">Keep this email: the code works once, '
+              "never expires, and the amount goes on the account of whoever redeems it. If it goes missing, reply and we'll help.</p>")
     try:
-        await _send(doc["buyer_email"], f"Your ${doc['amount']:.0f} CMTV gift card", body, "Your CMTV gift card",
-                    doc.get("order_id"), doc.get("buyer_name"))
+        await _send(doc["buyer_email"], f"Your ${doc['amount']:.0f} CMTV gift card",
+                    _shell(f"Your ${doc['amount']:.0f} CMTV gift card for {doc.get('to_name') or doc.get('to_email') or 'someone special'}.",
+                           "Your gift card is ready &#127873;", body), doc.get("order_id"), doc.get("buyer_name"))
     except Exception as e:
         logger.warning(f"CMTV gifts: receipt to {doc.get('buyer_email')} failed: {e}")
 
