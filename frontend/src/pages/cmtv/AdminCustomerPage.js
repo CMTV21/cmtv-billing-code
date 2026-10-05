@@ -1,6 +1,7 @@
 // CMTV local addition 2026-09-27: one page per customer (backend: cmtv_customer.py). Route /admin/customer/:id and
 // /admin/customer (search). Services with quick actions, orders, tickets, notes, referrals + credit, emails, activity.
 import React, { useEffect, useRef, useState } from 'react';
+import AdminTvExtend from '../../components/cmtv/AdminTvExtend'; // 2026-10-05: extend TV lines here
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -101,6 +102,7 @@ function ServiceCard({ s, onChanged }) {
         {isAddon && [1, 3, 12].map((m) => (
           <button key={m} type="button" className="btn sm" disabled={!!busy} onClick={() => extend(m)}>+{m === 12 ? '1 yr' : `${m} mo`}</button>
         ))}
+        {canSuspend && <AdminTvExtend s={s} onDone={onChanged} />}{/* 2026-10-05 */}
         {isAddon && s.cockpit_module !== 'audiobooks' && (
           <Link className="btn sm" to={s.cockpit_module === 'vpn' ? '/admin/cmtvpn' : '/admin/stremio'}>Manage</Link>
         )}
