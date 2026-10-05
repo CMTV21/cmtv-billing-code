@@ -116,13 +116,19 @@ async def _paid_since(uid, since):
                                                "created_at": {"$gte": since}}, {"_id": 1}))
 
 
-async def _send(u, svc, stage, fam):
+async def _send(u, svc, stage, fam, variant=None):
+    """variant (2026-10-05, cmtv_trial_watch): "ending_watched" (glad you're enjoying it -> plans) / "ending_stuck" (we'll help
+    you set it up -> their dashboard's setup steps). A missing variant template falls back to the stage's own.
+    NOTE: TV trials can't keep their login yet (no cmtv_trial_of on the CCTV / Imperium trial products), so no
+    "same login" promise for them."""
     import cmtv_reseller_credits as RC
     uid = str(u["_id"])
     es = await D["get_email_service"]()
     um = getattr(es, "unsubscribe_manager", None) if es else None
     email = str(u.get("email") or "")
     plan_link, price = await plan_info(svc, fam)
+    if variant == "ending_stuck":
+        plan_link = f"{SITE}/dashboard"
     vals = {"first_name": html.escape(_first(u)), "service": html.escape(fam), "ends": _when(svc["expiry_date"]),
             "steps": steps_html(fam), "setup_link": f"{SITE}/dashboard", "plan_link": plan_link,
             "from_price": price or "a few dollars",
@@ -131,7 +137,7 @@ async def _send(u, svc, stage, fam):
     ok_email = (es and getattr(es, "enabled", False) and "@" in email and not email.endswith("@panel.local")
                 and not (um and not await um.can_send_marketing(email)))
     if ok_email:
-        r = await RC.render(f"cmtv_trial_{stage}", vals)
+        r = (await RC.render(f"cmtv_trial_{variant}", vals) if variant else None) or await RC.render(f"cmtv_trial_{stage}", vals)
         if r:
             subject, page = r
             page = ("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
@@ -154,6 +160,14 @@ async def _send(u, svc, stage, fam):
                 text = (f"👋 <b>How's your {html.escape(fam)} trial going, {html.escape(_first(u))}?</b>\n\nYour login and setup steps "
                         f"are on your dashboard. Stuck? Message us here and we'll get you watching.")
                 buttons = [[{"text": "Open my setup steps", "url": f"{SITE}/dashboard"}]]
+            elif variant == "ending_watched":
+                text = (f"⏳ <b>Glad you're enjoying {html.escape(fam)}!</b>\n\nYour trial ends {vals['ends']}. Choose a plan to keep "
+                        f"watching" + (f", from {price} a month on a 12-month plan." if price else "."))
+                buttons = [[{"text": "Choose my plan", "url": plan_link}]]
+            elif variant == "ending_stuck":
+                text = (f"⏳ <b>Your {html.escape(fam)} trial ends {vals['ends']}</b>\n\nDidn't get it playing yet? Message us "
+                        f"here and we'll set it up with you, usually in a few minutes.")
+                buttons = [[{"text": "Open my setup steps", "url": plan_link}]]
             else:
                 text = (f"⏳ <b>Your {html.escape(fam)} trial ends {vals['ends']}</b>\n\nChoose a plan to keep watching"
                         + (f", from {price} a month on a 12-month plan." if price else "."))
@@ -198,12 +212,28 @@ async def run_once(now=None, dry_run=False):
             await db.cmtv_trial_nurture.update_one({"_id": sid}, {"$set": {f"{stage}_at": now, f"{stage}_skipped": "paid or not a customer"}}, upsert=True)
             continue
         fam = family(svc)
-        if dry_run:
-            done.append((u.get("email"), fam, stage))
+        # 2026-10-05: follow what the customer actually did (cmtv_trial_watch: True / False / None = don't know)
+        w, variant = None, None
+        if fam in ("CCTV", "Imperium"):
+            try:
+                import cmtv_trial_watch
+                w = await cmtv_trial_watch.watched(sid)
+            except Exception:
+                w = None
+        if stage == "checkin" and w is True:
+            await db.cmtv_trial_nurture.update_one({"_id": sid}, {"$set": {"checkin_at": now, "checkin_skipped": "already watching"}}, upsert=True)
             continue
-        emailed, tg = await _send(u, svc, stage, fam)
+        if stage == "ending" and w is not None:
+            variant = "ending_watched" if w else "ending_stuck"
+        if dry_run:
+            done.append((u.get("email"), fam, variant or stage))
+            continue
+        emailed, tg = await _send(u, svc, stage, fam, variant)
+        if stage == "checkin" and w is False:
+            await cmtv_trial_watch.alert_owner(u, svc, fam)
         await db.cmtv_trial_nurture.update_one({"_id": sid}, {"$set": {
-            f"{stage}_at": now, f"{stage}_email": emailed, f"{stage}_telegram": tg, "user_id": uid, "family": fam}}, upsert=True)
+            f"{stage}_at": now, f"{stage}_email": emailed, f"{stage}_telegram": tg, "user_id": uid, "family": fam,
+            f"{stage}_variant": variant, "watched": w}}, upsert=True)
         done.append((u.get("email"), fam, stage))
     if done and not dry_run:
         log.info(f"trial messages sent: {done}")

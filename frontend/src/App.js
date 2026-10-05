@@ -29,6 +29,7 @@ import RedeemPage from './pages/cmtv/RedeemPage'; // CMTV local change 2026-10-0
 import AdminGiftsPage from './pages/cmtv/AdminGiftsPage'; // CMTV local change 2026-10-05: Admin > Gift cards
 import HiPage from './pages/cmtv/HiPage'; // CMTV local change 2026-10-05: personal link for panel-only customers
 import AdminReachPage from './pages/cmtv/AdminReachPage'; // CMTV local change 2026-10-05: Admin > Reach customers
+import AdminBusinessPlanPage from './pages/cmtv/AdminBusinessPlanPage'; // CMTV local change 2026-10-05: Admin > Business plan
 import PrivacyPage from './pages/cmtv/PrivacyPage'; // CMTV local change 2026-09-27: public privacy policy
 import ReviewPage from './pages/cmtv/ReviewPage'; // CMTV local change 2026-09-28: customer review form (/review?t=)
 import AdminReviewsPage from './pages/cmtv/AdminReviewsPage'; // CMTV local change 2026-09-28: Admin > Reviews
@@ -519,6 +520,10 @@ function App() {
             <Route
               path="/admin/resellers"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminResellersPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/business-plan"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminBusinessPlanPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/reach"
