@@ -303,6 +303,11 @@ import cmtv_admin_extend
 cmtv_admin_extend.D["get_current_admin_user"] = get_current_admin_user
 cmtv_admin_extend.init_routes()
 app.include_router(cmtv_admin_extend.router)
+# CMTV local change 2026-10-05: Admin > Customers, phone-first (cmtv_customers_list.py)
+import cmtv_customers_list
+cmtv_customers_list.D["get_current_admin_user"] = get_current_admin_user
+cmtv_customers_list.init_routes()
+app.include_router(cmtv_customers_list.router)
 
 # CMTV local change 2026-09-28: reseller credits in any amount 50-1000, priced per credit (cmtv_reseller_credits.py)
 import cmtv_reseller_credits
@@ -1120,6 +1125,7 @@ async def startup_event():
     cmtv_admin_extend.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,   # CMTV 2026-10-05
                            provisioners={"xtream": provision_xtream_service, "aether": provision_aether_service},
                            lineups_apply=cmtv_lineups.apply)
+    cmtv_customers_list.init(db=db)   # CMTV 2026-10-05: phone-first customer list
     cmtv_trial_nurture.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-02
     cmtv_trial_nurture.start()
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,

@@ -60,6 +60,7 @@ import AdminDashboard from './pages/AdminDashboard'; // eslint-disable-line no-u
 import AdminHomePage from './pages/cmtv/AdminHomePage'; // CMTV local change 2026-09-26: admin home "command centre"
 import { CmtvAdminFrame } from './components/cmtv/AdminShell'; // CMTV local change 2026-09-26: navy frame + sidebar around every admin tab
 import AdminCustomers from './pages/AdminCustomers';
+import AdminCustomersPage from './pages/cmtv/AdminCustomersPage'; // CMTV local change 2026-10-05: phone-first customer list
 import AdminOrders from './pages/AdminOrders';
 import AdminInvoices from './pages/AdminInvoices';
 import AdminProducts from './pages/AdminProducts';
@@ -353,6 +354,10 @@ function App() {
 
             <Route
               path="/admin/customers"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminCustomersPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />{/* CMTV 2026-10-05: phone-first list; the developer's table below */}
+            <Route
+              path="/admin/customers-classic"
               element={
                 <ProtectedRoute>
                   <AdminRoute>
