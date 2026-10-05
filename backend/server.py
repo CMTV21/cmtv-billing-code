@@ -1094,6 +1094,8 @@ async def startup_event():
     cmtv_survey_followup.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: survey replies
     cmtv_reach.init(db=db, get_settings=get_settings)   # CMTV 2026-10-05: reach panel-only customers
     await cmtv_reach.startup()
+    import cmtv_renew_email   # CMTV 2026-10-05: renewal reminder with real options
+    cmtv_renew_email.init(db=db, get_email_service=get_configured_email_service)
     cmtv_trial_nurture.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-02
     cmtv_trial_nurture.start()
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,

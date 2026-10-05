@@ -238,7 +238,8 @@ class ServiceLifecycleManager:
                 service_name = service.get("product_name", "Unknown Service")
 
                 # Send email if user has a real email
-                if self.email_service and customer_email:
+                # CMTV local change 2026-10-05: the reminder with real options (cmtv_renew_email.py); the plain one if it fails
+                if self.email_service and customer_email and not await _cmtv_reminder(service, user, days_before):
                     try:
                         await self.email_service.send_expiry_warning(
                             customer_email=customer_email,
@@ -257,6 +258,8 @@ class ServiceLifecycleManager:
                     await send_telegram_notification(
                         "service_expiry_warning",
                         f"⚠️ *Service Expiring in {days_before} Day{'s' if days_before != 1 else ''}*\n\nCustomer: {customer_name}\nEmail: {customer_email or 'N/A'}\nService: {service_name}\nExpires: {expiry_str}"
+                        # CMTV local change 2026-10-05: panel-only customers (no email) -> the owner sends their link
+                        + ("" if customer_email else "\n\n📇 No email: send their sign-up link from Admin > Reach customers")
                     )
                     await send_email_notification(
                         "service_expiry_warning",
@@ -384,3 +387,14 @@ class ServiceLifecycleManager:
         except Exception as e:
             logger.error(f"Credit check failed: {e}")
 
+
+
+async def _cmtv_reminder(service, user, days):
+    """CMTV local change 2026-10-05: send cmtv_renew_email's reminder (renew / switch to a year / auto-renew). True if it
+    went out; False on any problem, so the developer's plain reminder is sent instead."""
+    try:
+        import cmtv_renew_email
+        return bool(await cmtv_renew_email.send(service, user, days))
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"CMTV renewal reminder failed, sending the plain one: {e}")
+        return False
