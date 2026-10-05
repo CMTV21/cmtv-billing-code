@@ -118,35 +118,51 @@ def init_routes():
         return status(cfg)
 
 
+def emt_email(order_id, user, total, instructions, st):
+    """(subject, html) of the e-Transfer order email, in CMTV's branded email look (2026-10-05, owner: "brand the email
+    for e-Transfers"; the pieces come from cmtv_gifts)."""
+    from cmtv_gifts import _shell, _section, P, FONT, STRIP
+    name = html.escape((user.get("name") or "there").split()[0])
+    steps = html.escape(instructions or "Reply to this email and we'll send the e-Transfer details.").strip().replace("\n", "<br>")
+    if st["open_now"]:
+        when = (f"&#128994; We confirm e-Transfers by hand, {st['hours']}. We're online now, so your service will be set "
+                f"up soon after your e-Transfer arrives.")
+    else:
+        away = f" ({html.escape(st['away_note'])})" if st["away_note"] else ""
+        when = (f"&#127769; We confirm e-Transfers by hand, {st['hours']}. We're offline right now{away}, so your service "
+                f"will be set up by about <strong style=\"color:#0a0e1a;\">{st['next_open_text']}</strong>.")
+    row = lambda k, v, mono=False: (
+        f'<tr><td style="padding:11px 0; font-size:13px; color:#8b96b3; border-bottom:1px solid #1d2740; width:44%; {FONT}">{k}</td>'
+        f'<td style="padding:11px 0; font-size:{"16" if mono else "15"}px; color:#ffffff; border-bottom:1px solid #1d2740; font-weight:bold; '
+        f'{"font-family:Consolas, Menlo, monospace; letter-spacing:1px; word-break:break-all;" if mono else FONT}">{v}</td></tr>')
+    subject = f"How to pay for your CMTV order (${total:.2f})"
+    body = (f'<p style="{P}">Hi {name},</p>'
+            f'<p style="margin:0 0 24px; font-size:15px; line-height:1.6; color:#374151; {FONT}">Thanks for your order! '
+            "Here's everything you need to pay by Interac e-Transfer.</p>"
+            f"""<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e1a; border-radius:8px; margin-bottom:28px; overflow:hidden;">
+  <tr><td>{STRIP}</td></tr>
+  <tr><td style="padding:14px 22px 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    {row("Amount", f"${total:.2f} CAD")}{row("Put this in the message", html.escape(order_id), True)}
+  </table></td></tr>
+</table>"""
+            + _section("How to pay")
+            + f'<p style="margin:0 0 28px; font-size:15px; line-height:1.7; color:#374151; {FONT}">{steps}</p>'
+            + _section("When it's ready")
+            + f'<p style="margin:0 0 14px; font-size:15px; line-height:1.6; color:#374151; {FONT}">{when}</p>'
+            + f'<p style="margin:0 0 14px; font-size:15px; line-height:1.6; color:#374151; {FONT}">You\'ll get another email with your '
+              "login details as soon as it's set up.</p>")
+    return subject, _shell(f"Pay ${total:.2f} by Interac e-Transfer: put {order_id} in the message.", "Thanks for your order!", body)
+
+
 async def send_emt_pending(order_id, user, total, instructions):
     """Email after an e-Transfer order is placed: how to pay, the order id for the message, and when it will be set up."""
     try:
         if not (user or {}).get("email"):
             return
-        st = await current()
-        name = html.escape((user.get("name") or "there").split()[0])
-        steps = html.escape(instructions or "Reply to this email and we'll send the e-Transfer details.").replace("\n", "<br>")
-        if st["open_now"]:
-            when = (f"We confirm e-Transfers by hand, {st['hours']}. We're online now, so your service will be set "
-                    f"up soon after your e-Transfer arrives.")
-        else:
-            away = f" ({html.escape(st['away_note'])})" if st["away_note"] else ""
-            when = (f"We confirm e-Transfers by hand, {st['hours']}. We're offline right now{away}, so your service "
-                    f"will be set up by about <b>{st['next_open_text']}</b>.")
-        body = f"""
-<h2>Thanks for your order, {name}!</h2>
-<p>Here's how to pay for order <b>#{order_id}</b>.</p>
-<div style="background:#f3f6fb;border-radius:8px;padding:16px 18px;margin:16px 0">
-  <p style="margin:0 0 8px"><b>Amount:</b> ${total:.2f} CAD</p>
-  <p style="margin:0 0 8px"><b>Put this in the e-Transfer message:</b> <span style="font-family:monospace">{order_id}</span></p>
-  <p style="margin:0">{steps}</p>
-</div>
-<p>{when}</p>
-<p>You'll get another email with your login details once it's ready.</p>
-"""
+        subject, body = emt_email(order_id, user, total, instructions, await current())
         es = await D["get_email_service"]()
-        await es.send_email(to_email=user["email"], subject=f"How to pay for your CMTV order (${total:.2f})",
-                            html_content=es._wrap_email(body, "Your CMTV order", user["email"], "transactional"),
+        await es.send_email(to_email=user["email"], subject=subject,
+                            html_content=es._wrap_email(body, subject, user["email"], "transactional"),
                             email_type="transactional", order_id=order_id, recipient_name=user.get("name"))
     except Exception as e:
         logger.warning(f"CMTV hours: e-Transfer order email failed for {order_id}: {e}")
