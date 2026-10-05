@@ -379,6 +379,12 @@ export default function CmtvDashboardPage() {
                 <p style={{ margin: '4px 0 8px', fontSize: 13.5 }}>We don't recommend buying a Firestick, especially the newest models.</p>
                 <Link className="ca-btn ca-ghost" to="/devices#picks">See our recommended devices →</Link>
               </div>
+              {/* 2026-10-05: gift cards */}
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(139,92,246,.4)', background: 'rgba(139,92,246,.08)' }}>
+                <b>Give CMTV 🎁</b>
+                <p style={{ margin: '4px 0 8px', fontSize: 13.5 }}>Gift cards from $10, emailed now or on the day you pick. Got one? <Link to="/redeem">Redeem it</Link>.</p>
+                <Link className="ca-btn ca-ghost" to="/gift">Send a gift card →</Link>
+              </div>
             </div>
           </aside>
         </div>
