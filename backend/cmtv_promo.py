@@ -23,7 +23,8 @@ router = APIRouter(prefix="/api/cmtv/promo", tags=["cmtv-promo"])
 D = {}
 TZ = ZoneInfo("America/Toronto")
 TV = ("aether", "xtream")
-DEFAULT = {"enabled": False, "start": None, "end": None, "months": 3, "label": "Black Friday"}
+DEFAULT = {"enabled": False, "start": None, "end": None, "months": 3, "label": "Black Friday",
+           "plus_price": 45}   # 2026-10-05: CMTV+ price with a yearly TV plan during the sale (0 = no CMTV+ offer)
 
 
 def init(**deps):
@@ -47,7 +48,7 @@ def state(cfg, now=None):
     if cfg.get("enabled") and cfg.get("start") and cfg.get("end"):
         st = "scheduled" if now < _day(cfg["start"]) else "ended" if now > _day(cfg["end"], True) else "running"
     return {"active": st == "running", "status": st, "months": int(cfg.get("months") or 3), "label": cfg.get("label") or "",
-            "start": cfg.get("start"), "end": cfg.get("end")}
+            "start": cfg.get("start"), "end": cfg.get("end"), "plus_price": float(cfg.get("plus_price") or 0)}
 
 
 def _term(product):
@@ -65,6 +66,26 @@ async def bonus_for(product, item, now=None):
     """Months to stamp on this order item (0 = none)."""
     st = state(await config(), now)
     return st["months"] if st["active"] and eligible(product, item) else 0
+
+
+async def plus_offer(items, now=None):
+    """CMTV+ at the holiday price in an order that has a yearly TV plan during the sale (one per yearly plan). Changes the
+    items' price and name; returns how much to take off the order's total. Call after bonus_months is stamped."""
+    st = state(await config(), now)
+    price = st["plus_price"]
+    yearly = sum(1 for i in items if int(getattr(i, "bonus_months", 0) or 0) > 0)
+    if not st["active"] or price <= 0 or not yearly:
+        return 0.0
+    plus_ids = {str(p["_id"]) async for p in D["db"].products.find({"cmtv_plus": True}, {"_id": 1})}
+    off = 0.0
+    for i in items:
+        if yearly and str(getattr(i, "product_id", "")) in plus_ids and not getattr(i, "gift", None) \
+                and float(getattr(i, "price", 0) or 0) > price:
+            off += float(i.price) - price
+            i.price = price
+            i.product_name = f"{i.product_name} · {st['label'] or 'holiday'} price"
+            yearly -= 1
+    return round(off, 2)
 
 
 # ---------- provisioning ----------
@@ -172,7 +193,11 @@ def init_routes():
     @router.get("")
     async def public():
         st = state(await config())
-        return st if st["active"] else {"active": False, "status": "off"}
+        if not st["active"]:
+            return {"active": False, "status": "off"}
+        plus = await D["db"].products.find_one({"cmtv_plus": True, "active": True}, {"_id": 1, "prices": 1})
+        return {**st, "plus_product_id": str(plus["_id"]) if plus and st["plus_price"] > 0 else None,
+                "plus_list_price": float(next(iter((plus or {}).get("prices", {}).values()), 0) or 0)}
 
     @router.get("/admin")
     async def admin_get(current_user: dict = Depends(admin)):
@@ -198,6 +223,14 @@ def init_routes():
             if not 1 <= m <= 12:
                 raise HTTPException(400, "Bonus months: 1 to 12.")
             cfg["months"] = m
+        if "plus_price" in data:
+            try:
+                pp = round(float(data.get("plus_price") or 0), 2)
+            except (TypeError, ValueError):
+                raise HTTPException(400, "CMTV+ price: a number, or 0 for no CMTV+ offer.")
+            if not 0 <= pp <= 500:
+                raise HTTPException(400, "CMTV+ price: 0 to 500.")
+            cfg["plus_price"] = pp
         if "label" in data:
             cfg["label"] = " ".join(str(data.get("label") or "").split())[:40] or "Holiday"
         if "enabled" in data:

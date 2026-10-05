@@ -4124,6 +4124,8 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         item.bonus_months = await cmtv_promo.bonus_for(product, item)   # CMTV 2026-10-05: holiday bonus months (server decides)
         actual_total += item.price
 
+    # CMTV local change 2026-10-05: holiday CMTV+ price with a yearly TV plan during the sale (cmtv_promo.plus_offer)
+    actual_total -= await cmtv_promo.plus_offer(order_data.items)
 
     # Shipping (developer 3.9.0, merged 2026-09-30): required for physical items, priced on the server
     # Shipping (required when the cart has physical items) — price is recomputed server-side

@@ -1,6 +1,7 @@
 // CMTV local addition 2026-09-25: "Complete your setup" add-on offer at checkout, plus the list of add-on products
 // (so an add-on in the cart only offers to extend the same add-on, and a TV plan never offers to extend an add-on).
 import React, { useState } from 'react';
+import { usePlusOffer } from './Promo'; // 2026-10-05: holiday CMTV+ price
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -65,6 +66,7 @@ export default function CheckoutAddons({ items, addItem, removeItem, currencySym
     staleTime: 60000,
   });
 
+  const plusOffer = usePlusOffer(items);   // 2026-10-05
   if (dismissed || addons.length === 0) return null;
   const addonIds = new Set(addons.map((a) => a.id));
   const hasMainPlan = items.some((i) => !addonIds.has(i.product_id) && i.account_type !== 'reseller' && Number(i.price) > 0 && !i.gift); // 2026-10-05: not gift cards
@@ -87,7 +89,8 @@ export default function CheckoutAddons({ items, addItem, removeItem, currencySym
   const freeForMe = !!tier?.free_cmtv_plus;
 
   const add = (p) => {
-    const { term, price } = firstPrice(p);
+    const { term, price: listPrice } = firstPrice(p);
+    const price = plusOffer && p.id === plusOffer.id ? Math.min(plusOffer.price, listPrice) : listPrice;   // 2026-10-05
     if (bundle && p.id === bundle.id) {
       // The bundle replaces any of its parts already in the cart
       items.filter((i) => parts.includes(norm(i.product_name)) && !i.renewal_service_id)
@@ -115,7 +118,8 @@ export default function CheckoutAddons({ items, addItem, removeItem, currencySym
       </div>
       <div className="p-4 grid sm:grid-cols-2 gap-3">
         {offers.map((p) => {
-          const { term, price } = firstPrice(p);
+          const { term, price: listPrice } = firstPrice(p);
+          const price = plusOffer && p.id === plusOffer.id ? Math.min(plusOffer.price, listPrice) : listPrice;   // 2026-10-05
           const isBundle = bundle && p.id === bundle.id;
           const saving = isBundle ? Math.max(0, partsTotal - price) : 0;
           const logo = lookup(BRAND.logos || {}, p.name);

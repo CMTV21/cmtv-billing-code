@@ -10,7 +10,7 @@ import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local ch
 import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
 import CheckoutChannels, { useChannelsReady } from '../components/cmtv/CheckoutChannels'; // CMTV 2026-10-04: channel package step
 import { EmtHoursHint, EmtHoursNotice } from '../components/cmtv/SupportHours'; // CMTV 2026-10-05: support hours
-import { PromoCheckoutLine } from '../components/cmtv/Promo'; // CMTV 2026-10-05: holiday bonus months
+import { PromoCheckoutLine, PromoPlusSync } from '../components/cmtv/Promo'; // CMTV 2026-10-05: holiday bonus months + CMTV+ price
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { CheckoutShipping, EMPTY_ADDRESS } from '../components/CheckoutShipping';
@@ -794,6 +794,7 @@ export default function CheckoutPage() {
 
             {/* CMTV local change 2026-10-04: channel package step for new TV lines */}
             <CheckoutChannels items={items} />
+            <PromoPlusSync items={items} setItems={(next) => useCartStore.setState({ items: next })} />{/* CMTV 2026-10-05 */}
 
             {/* CMTV local change 2026-09-25: "Complete your setup" add-on offer */}
             <CheckoutAddons items={items} addItem={addItem} removeItem={removeItem}
