@@ -162,6 +162,8 @@ async def check_trial(user_id: str, product: dict, request: Request):
     hit = await D["db"].cmtv_trial_marks.find_one({
         "product_id": str(product["_id"]), "user_id": {"$ne": str(user_id)},
         "at": {"$gte": datetime.utcnow() - timedelta(days=TRIAL_DAYS)}, "$or": ors})
+    if not hit:
+        hit = await _trial_by_seen_account(user_id, product, ors)
     if hit:
         how = "device" if dev and hit.get("device") == dev else "internet connection"
         await D["db"].cmtv_trial_refusals.insert_one({"user_id": str(user_id), "product_id": str(product["_id"]),
@@ -175,6 +177,26 @@ async def check_trial(user_id: str, product: dict, request: Request):
         except Exception:
             pass
         raise HTTPException(400, MSG_TRIAL)
+
+
+async def _trial_by_seen_account(user_id: str, product: dict, ors: list):
+    """2026-10-05 (gamebattles1 came back as a 4th account): trial marks only exist since 2026-10-04, so trials taken before
+    that were invisible to the check. Also refuse when ANOTHER account seen on this device / connection (cmtv_fingerprints,
+    last 90 days) has an order for this trial in the last 90 days. Returns a mark-like {user_id, device, ip} or None."""
+    db = D["db"]
+    since = datetime.utcnow() - timedelta(days=TRIAL_DAYS)
+    seen = {}
+    async for f in db.cmtv_fingerprints.find({"$or": ors, "user_id": {"$ne": str(user_id)}, "at": {"$gte": since}},
+                                              {"user_id": 1, "device": 1, "ip": 1}):
+        seen.setdefault(str(f.get("user_id")), f)
+    if not seen:
+        return None
+    o = await db.orders.find_one({"user_id": {"$in": list(seen)}, "status": {"$in": ["paid", "pending"]},
+                                  "created_at": {"$gte": since}, "items.product_id": str(product["_id"])}, {"user_id": 1})
+    if not o:
+        return None
+    f = seen.get(str(o["user_id"])) or {}
+    return {"user_id": str(o["user_id"]), "device": f.get("device"), "ip": f.get("ip")}
 
 
 async def mark_trial(user_id: str, product: dict, request: Request, order_id: str = ""):
