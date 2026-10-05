@@ -184,6 +184,12 @@ import cmtv_hours
 cmtv_hours.D["get_current_admin_user"] = get_current_admin_user
 cmtv_hours.init_routes()
 app.include_router(cmtv_hours.router)
+# CMTV local change 2026-10-05: gift cards (cmtv_gifts.py): bought at checkout, redeemed as account credit
+import cmtv_gifts
+cmtv_gifts.D["get_current_user"] = get_current_user
+cmtv_gifts.D["get_current_admin_user"] = get_current_admin_user
+cmtv_gifts.init_routes()
+app.include_router(cmtv_gifts.router)
 
 # CMTV local change 2026-09-27: new Admin > Analytics (cmtv_analytics.py)
 import cmtv_analytics
@@ -1019,6 +1025,8 @@ async def startup_event():
     cmtv_linecheck.init(db=db, get_settings=get_settings)   # CMTV 2026-10-04: Test my line
     cmtv_sports.init(db=db)   # CMTV 2026-10-04: sports schedule
     cmtv_hours.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: support hours
+    cmtv_gifts.init(db=db, credit_service=credit_service, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: gift cards
+    await cmtv_gifts.startup()
     cmtv_upgrades.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)   # CMTV 2026-10-04
     cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
                              get_email_service=get_configured_email_service)
@@ -4003,6 +4011,13 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
                     detail=f"You have already used a trial for this service. Only one trial per customer is allowed."
                 )
     
+    # CMTV local change 2026-10-05: gift cards are checked out on their own, with no coupon / account credit (cmtv_gifts.py)
+    if any(getattr(i, "gift", None) for i in order_data.items):
+        try:
+            await cmtv_gifts.check_order(order_data, current_user)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     # Calculate pricing — validate item prices against actual product prices
     # CMTV local change 2026-09-24: always charge the product's own price. The browser's price was trusted
     # unless it was <= 0, so a modified request could buy any plan for $0.01. Each product holds one price.
@@ -4053,6 +4068,16 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if abs(float(item.price or 0) - actual_price) > 0.009:
             logger.warning(f"Order item {item.product_name}: client price ${item.price} replaced by product price ${actual_price}")
         item.price = actual_price
+        # CMTV local change 2026-10-05: the gift card amount + details are checked here (cmtv_gifts.clean_gift);
+        # `gift` on any other product is dropped
+        if product.get("cmtv_gift"):
+            try:
+                item.price, item.product_name, item.gift = cmtv_gifts.clean_gift(getattr(item, "gift", None))
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            item.action_type = item.renewal_service_id = item.lineup = item.bouquets = item.credits = None
+        elif getattr(item, "gift", None):
+            item.gift = None
         # CMTV local change 2026-10-04: "add devices" to a running line, prorated (cmtv_upgrades.price_for_order)
         if getattr(item, "action_type", None) == "upgrade":
             _up = await cmtv_upgrades.price_for_order(user_id, product, item)
@@ -6114,6 +6139,13 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
         
         for item in order["items"]:
             if item.get("item_type") == "physical":
+                continue
+            if item.get("gift"):   # CMTV local change 2026-10-05: gift card -> code + email (cmtv_gifts.issue)
+                units += 1
+                try:
+                    await cmtv_gifts.issue(order_id, order, user, item, next(k for k, x in enumerate(order["items"]) if x is item))
+                except Exception as e:
+                    failures.append(f"{item.get('product_name') or 'Gift card'}: {e}"[:300])
                 continue
             if item.get("action_type") == "upgrade":   # CMTV local change 2026-10-04: add devices (cmtv_upgrades.py)
                 await run_item(item.get("product_name") or "Add devices", item, cmtv_upgrades.provision(order_id, order, user, item))

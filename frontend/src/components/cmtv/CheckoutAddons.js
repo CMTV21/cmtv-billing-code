@@ -67,7 +67,7 @@ export default function CheckoutAddons({ items, addItem, removeItem, currencySym
 
   if (dismissed || addons.length === 0) return null;
   const addonIds = new Set(addons.map((a) => a.id));
-  const hasMainPlan = items.some((i) => !addonIds.has(i.product_id) && i.account_type !== 'reseller' && Number(i.price) > 0);
+  const hasMainPlan = items.some((i) => !addonIds.has(i.product_id) && i.account_type !== 'reseller' && Number(i.price) > 0 && !i.gift); // 2026-10-05: not gift cards
   if (!hasMainPlan) return null;
 
   const bundleName = Object.keys(BRAND.bundles || {})[0];

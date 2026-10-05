@@ -136,7 +136,7 @@ export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null
   const [orderId, setOrderId] = useState(null);
   const item = items?.length === 1 ? items[0] : null;
   const eligible = cfg?.enabled && item && item.account_type !== 'reseller' && Number(item.price) > 0
-    && !discounted && memberPrice !== 0 && Math.abs(Number(total) - Number(item.price)) < 0.01;
+    && !discounted && memberPrice !== 0 && Math.abs(Number(total) - Number(item.price)) < 0.01 && !item.gift; // 2026-10-05: not gift cards
   if (!eligible) return children;
 
   const ensureOrder = async () => {

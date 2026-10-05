@@ -50,6 +50,7 @@ export default function CheckoutPage() {
     item_type: i.item_type || 'service', quantity: i.quantity || 1,
     credits: i.credits, lineup: i.lineup, // CMTV 2026-09-28/29: reseller credit amount, Imperium line-up
     bouquets: i.bouquets, // CMTV 2026-09-30: Imperium channel groups the customer picked
+    gift: i.gift, // CMTV 2026-10-05: gift card details
   }));
   const shippingPayload = () => hasPhysicalItems ? { shipping_address: shippingAddress, shipping_method_id: shippingMethod?.method_id } : {};
   const validateShipping = () => {
@@ -713,10 +714,10 @@ export default function CheckoutPage() {
                         ) : (
                           <>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                              {cmtvTrialLabel(item) || `${item.term_months} ${item.term_months === 1 ? 'Month' : 'Months'}`}
+                              {item.gift /* CMTV 2026-10-05 */ ? (item.gift.deliver_on ? `Emailed to ${item.gift.to_email} on ${item.gift.deliver_on}` : item.gift.to_email ? `Emailed to ${item.gift.to_email} after you pay` : 'We email the code to you') : (cmtvTrialLabel(item) || `${item.term_months} ${item.term_months === 1 ? 'Month' : 'Months'}`)}
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-300">
-                              {item.account_type === 'subscriber' ? 'Subscriber' : item.account_type === 'reseller' ? 'Reseller' : 'Add-on' /* CMTV 2026-09-30: manual products are add-ons */}
+                              {item.gift ? 'Gift card' : item.account_type === 'subscriber' ? 'Subscriber' : item.account_type === 'reseller' ? 'Reseller' : 'Add-on' /* CMTV 2026-09-30: manual products are add-ons */}
                             </p>
                           </>
                         )}
@@ -804,7 +805,7 @@ export default function CheckoutPage() {
           {/* Order Summary */}
           <div>
             {/* Coupon & Credits Section */}
-            <div className="mb-6">
+            <div className="mb-6" style={items.some((i) => i.gift) ? { display: 'none' } : undefined}>{/* CMTV 2026-10-05: not for gift cards */}
               <CheckoutCouponCredits
                 subtotal={getTotal()}
                 onDiscountChange={(discount, code) => {

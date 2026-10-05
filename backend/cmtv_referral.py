@@ -129,7 +129,7 @@ async def order_discount(user_id, items):
         pid = str(_get(it, "product_id") or "")
         price = float(_get(it, "price") or 0)
         product = await D["products"].find_one({"_id": _oid(pid)}) if pid else None
-        if not product or price <= 0 or product.get("is_trial") or product.get("account_type") == "reseller" \
+        if not product or price <= 0 or product.get("is_trial") or product.get("account_type") == "reseller" or product.get("cmtv_gift") \
                 or str(_get(it, "account_type") or "") == "reseller":
             continue
         free = False

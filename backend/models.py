@@ -134,6 +134,7 @@ class OrderItemCreate(BaseModel):
     credits: Optional[int] = None  # CMTV local change 2026-09-28: chosen reseller credit amount (cmtv_reseller_credits.py)
     lineup: Optional[str] = None  # CMTV local change 2026-09-29: Imperium channel line-up (cmtv_lineups.py)
     bouquets: Optional[List[int]] = None  # CMTV local change 2026-09-30: Imperium channel groups the customer picked
+    gift: Optional[dict] = None  # CMTV local change 2026-10-05: gift card details (cmtv_gifts.py)
     item_type: Optional[str] = "service"  # 'service' or 'physical'
     quantity: Optional[int] = 1
 
