@@ -63,13 +63,23 @@ function describe(s, productsById, groupsById, now) {
   const renewWith = !isTrial ? product : paid;
   const rp = firstPrice(renewWith);
   const canRenew = !!renewWith && rp.price > 0 && s.account_type !== 'reseller' && !renewWith.is_bundle;
+  // 2026-10-04: "Renew for a year and save" (same server + devices, 12-month price vs 12 months of the current plan)
+  let yearly = null;
+  if (canRenew && rp.term < 12 && renewWith.account_type === 'subscriber') {
+    const y = Object.values(productsById).find((p) => p.panel_type === renewWith.panel_type && p.account_type === 'subscriber'
+      && !p.is_trial && Number(p.max_connections) === Number(renewWith.max_connections) && firstPrice(p).term === 12 && firstPrice(p).price > 0);
+    if (y) {
+      const save = Math.round((rp.price / rp.term) * 12 - firstPrice(y).price);
+      if (save > 0) yearly = { product: y, price: firstPrice(y).price, save, monthlyEquivalent: (firstPrice(y).price / 12) };
+    }
+  }
   const username = s.xtream_username || s.username || s.vpn_username;
   const password = s.xtream_password || s.password || s.vpn_password;
   const server = s.panel_type !== 'manual' ? s.streaming_url : null;
   const conns = s.max_connections || product?.max_connections;
   const subtitle = family === 'addons' ? (lookup(BRAND.taglines, addonName) || '')
     : conns ? `${conns} device${conns === 1 ? '' : 's'} at once` : '';
-  return { s, product, family, logo, addonName, expiry, daysLeft, totalDays, ended, isTrial, renewWith, rp, canRenew,
+  return { s, product, family, logo, addonName, expiry, daysLeft, totalDays, ended, isTrial, renewWith, rp, canRenew, yearly,
            username, password, server, subtitle, setup: s.setup_instructions || product?.setup_instructions || renewWith?.setup_instructions };
 }
 
@@ -176,6 +186,12 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
           {d.canRenew && (
             <button type="button" className={`ca-btn ${warn || d.ended ? 'ca-glow' : 'ca-ghost'}`} onClick={() => onRenew(d)}>{renewLabel}</button>
           )}
+          {d.yearly && (
+            <button type="button" className="ca-btn ca-glow" onClick={() => onRenew(d, d.yearly)}
+              title={`$${d.yearly.monthlyEquivalent.toFixed(2)} a month instead of $${(d.rp.price / d.rp.term).toFixed(2)}`}>
+              Renew for a year · ${d.yearly.price.toFixed(0)} (save ${d.yearly.save})
+            </button>
+          )}
           {!d.canRenew && d.ended && (
             <Link className={`ca-btn ${d.family === 'imperium' ? 'ca-gold' : 'ca-glow'}`} to="/">See plans</Link>
           )}
@@ -227,10 +243,11 @@ export default function CmtvDashboardPage() {
   // Ended services worth showing: anything from the last 60 days (older ones live on the Services page)
   const ended = cards.filter((d) => d.ended && (!d.expiry || now - d.expiry < 60 * DAY));
 
-  const renew = (d) => {
-    addRenewalItem({ product_id: d.renewWith.id, product_name: d.renewWith.name, term_months: d.rp.term, price: d.rp.price,
-                     account_type: d.renewWith.account_type || d.s.account_type }, d.s.id, 'extend');
-    toast.success(`${d.renewWith.name} added. It extends your current login.`);
+  const renew = (d, yearly = null) => {
+    const p = yearly ? yearly.product : d.renewWith;   // 2026-10-04: "Renew for a year"
+    addRenewalItem({ product_id: p.id, product_name: p.name, term_months: yearly ? 12 : d.rp.term, price: yearly ? yearly.price : d.rp.price,
+                     account_type: p.account_type || d.s.account_type }, d.s.id, 'extend');
+    toast.success(`${p.name} added. It extends your current login.`);
     navigate('/checkout');
   };
 
