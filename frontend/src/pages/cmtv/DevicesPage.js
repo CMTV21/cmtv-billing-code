@@ -26,6 +26,13 @@ const APPS = {
     how: 'Follow the install steps on its official page', link: 'https://github.com/reisxd/TizenTube', linkText: 'Official page' },
   cmtvpn: { name: 'CMTVpn', tag: 'VPN · add-on', what: 'Keeps your streaming private. Available as a CMTV add-on (or use your own VPN).',
     how: 'Add it to your account, then follow the guide', link: '/?tab=addons', linkText: 'See the add-on', guide: 'cmtv-cmtvpn' },
+  // 2026-10-05 (owner): audiobooks: Audiobookshelf on Android and computers, Prologue on iPhone / iPad
+  abs: { name: 'Audiobookshelf', tag: 'Audiobooks · add-on', what: 'Our pick for CMTV Audiobooks on Android: download books to listen offline, and your place is saved on every device.',
+    how: 'Google Play → "Audiobookshelf" → server address audiobooks.cmtv.info', link: 'https://play.google.com/store/apps/details?id=com.audiobookshelf.app', linkText: 'Google Play', plan: '/?tab=addons' },
+  prologue: { name: 'Prologue', tag: 'Audiobooks · add-on', what: 'Our pick for CMTV Audiobooks on iPhone and iPad. Free (an optional $5 unlock adds offline downloads).',
+    how: 'App Store → "Prologue" → add an Audiobookshelf server: audiobooks.cmtv.info', link: 'https://apps.apple.com/app/id1459223267', linkText: 'App Store', plan: '/?tab=addons' },
+  absweb: { name: 'Audiobookshelf (browser)', tag: 'Audiobooks · add-on', what: 'On a computer there\'s nothing to install: listen to CMTV Audiobooks right in your browser.',
+    how: 'Open audiobooks.cmtv.info and log in', link: 'https://audiobooks.cmtv.info', linkText: 'Open Audiobooks', plan: '/?tab=addons' },
   fast: { name: 'Fast Speed Test', tag: 'Speed test', what: 'One tap to check your internet speed. You want 25 Mbps or more for HD.',
     how: 'fast.com, or "Fast Speed Test" in your app store', link: 'https://fast.com', linkText: 'fast.com' },
   ookla: { name: 'Speedtest by Ookla', tag: 'Speed test', what: 'A more detailed speed test (speed, ping, jitter): handy when talking to your internet provider.',
@@ -39,12 +46,12 @@ const DEVICES = [
   { key: 'fire', label: 'Amazon Firestick / Fire TV', sub: 'Fire TV Stick, Fire TV Cube', apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'smarttube', 'cmtvpn', 'fast', 'ookla'],
     guide: 'cmtv-firestick-android-tv',
     note: 'Already have a Firestick? Most current ones still run these apps. Buying a new device? We don\'t recommend a Firestick, especially the newest models.' },
-  { key: 'apple', label: 'iPhone, iPad or Apple TV', sub: 'iOS / tvOS', apps: ['mytv', 'cmtvpn', 'ookla'], guide: 'cmtv-iphone-ipad',
+  { key: 'apple', label: 'iPhone, iPad or Apple TV', sub: 'iOS / tvOS', apps: ['mytv', 'prologue', 'cmtvpn', 'ookla'], guide: 'cmtv-iphone-ipad',
     note: 'Nuvio isn\'t on iPhone yet; use the Web Player in Safari for movies and series in the meantime.' },
-  { key: 'phone', label: 'Android phone or tablet', sub: 'Samsung, Pixel and others', apps: ['ghost', 'cmtvpn', 'fast', 'ookla'], guide: 'cmtv-cmtvghost' },
+  { key: 'phone', label: 'Android phone or tablet', sub: 'Samsung, Pixel and others', apps: ['ghost', 'abs', 'cmtvpn', 'fast', 'ookla'], guide: 'cmtv-cmtvghost' },
   { key: 'samsung', label: 'Samsung or LG smart TV', sub: 'Built-in TV apps', apps: ['tizentube', 'fast'],
     note: 'Smart TVs\' own apps are limited for live TV. Plug in one of the devices below (from about $50) for the best picture, guide and fewest problems.' },
-  { key: 'computer', label: 'Computer', sub: 'Windows, Mac, Chromebook', apps: ['ookla'], guide: 'cmtv-web-player', web: true },
+  { key: 'computer', label: 'Computer', sub: 'Windows, Mac, Chromebook', apps: ['absweb', 'ookla'], guide: 'cmtv-web-player', web: true },
 ];
 
 const PICKS = [

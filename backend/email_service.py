@@ -861,6 +861,8 @@ class EmailService:
                     logger.error(f"send_cockpit_account: template failed ({e}); sending the plain version")
         greeting = f"Hi {escape(customer_name)}," if customer_name else "Hi,"
         steps = escape(setup_instructions or "").replace("\n", "<br>")
+        import re as _re   # CMTV local change 2026-10-05: links in the setup steps are clickable (app store links)
+        steps = _re.sub(r"(https?://[^\s<]+[^\s<.,;:!?)])", r'<a href="\1">\1</a>', steps)
         content = f"""<p>{greeting}</p>
 <p>Your <strong>{escape(service_name)}</strong> account is ready. Here are your login details:</p>
 <p>Username: <strong>{escape(username)}</strong><br>Password: <strong>{escape(password)}</strong><br>Valid until: {escape(expiry_date)}</p>

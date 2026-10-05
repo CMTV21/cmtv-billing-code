@@ -11,6 +11,7 @@ Stremio instead of Nuvio: the cart item says "Stremio" (checkout drop-down: "CMT
 customer's CMTV+ already has Stremio and no Nuvio.
 """
 import logging
+import re
 from datetime import datetime
 
 from bson import ObjectId
@@ -154,6 +155,7 @@ def welcome_email(user, results):
             continue
         tag = "Same login as before, extended" if state == "extended" else "New login"
         steps = html.escape((product or {}).get("setup_instructions") or "").strip().replace("\n", "<br>")
+        steps = re.sub(r"(https?://[^\s<]+[^\s<.,;:!?)])", r'<a href="\1" style="color:#00d4ff;">\1</a>', steps)   # 2026-10-05: app links
         parts += f"""
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0e1a; border-radius:10px; margin:0 0 18px; overflow:hidden;">
   <tr><td>{STRIP}</td></tr>
