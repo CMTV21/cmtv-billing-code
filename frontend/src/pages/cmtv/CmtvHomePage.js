@@ -2,6 +2,7 @@
 // his HomePage.js is left untouched, so his updates to it can't clash with this design.
 // Reuses the same data and flows: products + product groups from the API, the cart store, login redirect, checkout.
 import React, { useMemo, useState } from 'react';
+import { PromoBanner, PromoTag } from '../../components/cmtv/Promo'; // 2026-10-05: holiday bonus months
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import SiteNav from '../../components/cmtv/SiteNav'; // 2026-10-01: site menu
 import { rememberPlan, pendingPlan, pendingCredits, pendingExtra, forgetPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28
@@ -267,6 +268,7 @@ export default function CmtvHomePage() {
         <div className="wrap">
           <h2>Choose your plan</h2>
           <p className="sub">Two services, one account. Pay once, get your login right away.</p>
+          <PromoBanner />
           {tabs.length > 2 && (
             <div className="tabs" role="group" aria-label="Show plans for">
               {tabs.map((t) => (
@@ -545,7 +547,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
           return (
             <button key={p.id} type="button" className="row" onClick={() => buy(p)}
               style={focus === p.id ? { outline: '2px solid var(--gold, #d8b35a)', outlineOffset: -2 } : undefined}>
-              <span className="term">{termLabel(p)}</span>
+              <span className="term">{termLabel(p)}<PromoTag product={p} /></span>
               <span className="right">
                 {perMonth && p.account_type !== 'reseller' && (
                   <span className="permo">{money(perMonth)}/mo{save > 0 && <> · <b>save {save}%</b></>}</span>

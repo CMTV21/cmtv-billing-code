@@ -192,6 +192,11 @@ cmtv_gifts.init_routes()
 app.include_router(cmtv_gifts.router)
 # CMTV local change 2026-10-05: CMTV+ set up automatically (Nuvio/Stremio + CMTVpn + Audiobooks) (cmtv_plus.py)
 import cmtv_plus
+# CMTV local change 2026-10-05: holiday bonus months, e.g. Black Friday "12 months + 3 free" (cmtv_promo.py)
+import cmtv_promo
+cmtv_promo.D["get_current_admin_user"] = get_current_admin_user
+cmtv_promo.init_routes()
+app.include_router(cmtv_promo.router)
 
 # CMTV local change 2026-09-27: new Admin > Analytics (cmtv_analytics.py)
 import cmtv_analytics
@@ -1030,6 +1035,7 @@ async def startup_event():
     cmtv_gifts.init(db=db, credit_service=credit_service, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: gift cards
     await cmtv_gifts.startup()
     cmtv_plus.init(db=db)   # CMTV 2026-10-05: CMTV+ automatic setup
+    cmtv_promo.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: holiday bonus months
     cmtv_upgrades.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)   # CMTV 2026-10-04
     cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
                              get_email_service=get_configured_email_service)
@@ -4109,6 +4115,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             if product.get("panel_type") not in ("aether", "xtream") or product.get("account_type", "subscriber") != "subscriber" \
                     or item.renewal_service_id:   # 2026-09-30: trials can pick groups too
                 item.bouquets = None
+        item.bonus_months = await cmtv_promo.bonus_for(product, item)   # CMTV 2026-10-05: holiday bonus months (server decides)
         actual_total += item.price
 
 
@@ -6287,6 +6294,11 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                 await run_item(item["product_name"], item, provision_gold_service(order_id, order, user, item, product, settings, email_service))
             else:
                 await run_item(item["product_name"], item, provision_xtream_service(order_id, order, user, item, product, settings, email_service))
+            # CMTV local change 2026-10-05: holiday bonus months -> the same line extended by the bonus (cmtv_promo.py)
+            if item.get("bonus_months"):
+                await cmtv_promo.apply_bonus(order_id, order, user, item, product, settings, run_item,
+                                             {"xtream": provision_xtream_service, "aether": provision_aether_service},
+                                             cmtv_lineups.apply)
 
     except Exception as e:
         logger.error(f"Provisioning error: {str(e)}")

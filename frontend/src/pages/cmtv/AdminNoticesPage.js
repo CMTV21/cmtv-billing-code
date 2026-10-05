@@ -9,6 +9,7 @@ import api from '../../api/api';
 import { NoticeBox } from './AdminResellersPage';
 import SportsKeyBox from '../../components/cmtv/SportsKeyBox'; // 2026-10-04: TheSportsDB key
 import HoursBox from '../../components/cmtv/HoursBox'; // 2026-10-05: support hours
+import { PromoBox } from '../../components/cmtv/Promo'; // 2026-10-05: holiday bonus months
 import '../../components/cmtv/reseller-credits.css';
 
 const FAMILIES = [
@@ -188,6 +189,7 @@ export default function AdminNoticesPage() {
       </p>
       <ServiceStatus />
       <DailyChangelog />
+      <PromoBox />
       <HoursBox />
       <SportsKeyBox />
       <CustomerUpdate />

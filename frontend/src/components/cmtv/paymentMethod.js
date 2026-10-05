@@ -6,10 +6,10 @@ export const PAYMENT_LABELS = {
   manual: 'Manual', emt: 'e-Transfer', zelle: 'Zelle', cashapp: 'Cash App', venmo: 'Venmo', wise: 'Wise',
   paypal: 'PayPal', paypal_autorenew: 'PayPal (auto-renew)', stripe: 'Stripe', square: 'Square', helcim: 'Helcim',
   tagadapay: 'TagadaPay', ghostpay: 'GhostPay', blockonomics: 'Bitcoin', manual_admin: 'Added by admin',
-  credits: 'Account credit', free: 'Free', cash: 'Cash', other: 'Other',
+  credits: 'Account credit', free: 'Free', cash: 'Cash', other: 'Other', test: 'Test (no money)', // 2026-10-05
 };
 // Choices when marking an order paid by hand (same list as cmtv_payments.ADMIN)
-export const ADMIN_PAID_BY = ['emt', 'manual', 'cash', 'zelle', 'cashapp', 'venmo', 'wise', 'paypal', 'ghostpay', 'other'];
+export const ADMIN_PAID_BY = ['emt', 'manual', 'cash', 'zelle', 'cashapp', 'venmo', 'wise', 'paypal', 'ghostpay', 'other', 'test'];
 
 export function paymentLabel(order) {
   const m = String(order?.payment_method || '').toLowerCase();

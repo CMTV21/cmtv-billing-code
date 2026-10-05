@@ -120,7 +120,7 @@ def init_routes():
         except Exception:
             fin = {}
         billing_month = 0.0
-        async for o in orders.find({"status": "paid", "total": {"$gt": 0},
+        async for o in orders.find({"status": "paid", "payment_method": {"$ne": "test"}, "total": {"$gt": 0},
                                     "paid_at": {"$gte": month_start.astimezone(timezone.utc).replace(tzinfo=None)}}):
             billing_month += float(o.get("total") or 0)
         today = now.date()
@@ -165,7 +165,7 @@ def init_routes():
         prev30 = await users.count_documents({**users_q, "created_at": {"$gte": now_utc - timedelta(days=60), "$lt": now_utc - timedelta(days=30)}})
         referred30 = await users.count_documents({**users_q, "created_at": {"$gte": now_utc - timedelta(days=30)},
                                                   "referred_by": {"$nin": [None, ""]}})
-        first_paid = orders.aggregate([{"$match": {"status": "paid", "total": {"$gt": 0}}},
+        first_paid = orders.aggregate([{"$match": {"status": "paid", "payment_method": {"$ne": "test"}, "total": {"$gt": 0}}},
                                        {"$group": {"_id": "$user_id", "first": {"$min": "$paid_at"}}},
                                        {"$match": {"first": {"$gte": now_utc - timedelta(days=30)}}}, {"$count": "n"}])
         new_paying30 = ((await first_paid.to_list(1)) or [{"n": 0}])[0]["n"]

@@ -10,6 +10,7 @@ import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local ch
 import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
 import CheckoutChannels, { useChannelsReady } from '../components/cmtv/CheckoutChannels'; // CMTV 2026-10-04: channel package step
 import { EmtHoursHint, EmtHoursNotice } from '../components/cmtv/SupportHours'; // CMTV 2026-10-05: support hours
+import { PromoCheckoutLine } from '../components/cmtv/Promo'; // CMTV 2026-10-05: holiday bonus months
 import SquarePaymentForm from '../components/SquarePaymentForm';
 import CheckoutCouponCredits from '../components/CheckoutCouponCredits';
 import { CheckoutShipping, EMPTY_ADDRESS } from '../components/CheckoutShipping';
@@ -716,6 +717,7 @@ export default function CheckoutPage() {
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                               {item.gift /* CMTV 2026-10-05 */ ? (item.gift.deliver_on ? `Emailed to ${item.gift.to_email} on ${item.gift.deliver_on}` : item.gift.to_email ? `Emailed to ${item.gift.to_email} after you pay` : 'We email the code to you') : (cmtvTrialLabel(item) || `${item.term_months} ${item.term_months === 1 ? 'Month' : 'Months'}`)}
                             </p>
+                            <PromoCheckoutLine item={item} />
                             <p className="text-sm text-gray-600 dark:text-gray-300">
                               {item.gift ? 'Gift card' : item.account_type === 'subscriber' ? 'Subscriber' : item.account_type === 'reseller' ? 'Reseller' : 'Add-on' /* CMTV 2026-09-30: manual products are add-ons */}
                             </p>

@@ -25,12 +25,13 @@ LABELS = {
     "free": "Free",
     "cash": "Cash",
     "other": "Other",
+    "test": "Test (no money)",   # 2026-10-05: owner's test orders, kept out of Finances
 }
 # What checkout may send
 CHECKOUT = {"manual", "emt", "zelle", "cashapp", "venmo", "wise", "paypal", "stripe", "square", "helcim",
             "tagadapay", "ghostpay", "blockonomics"}
 # What the admin may choose when marking an order paid by hand
-ADMIN = {"emt", "manual", "cash", "zelle", "cashapp", "venmo", "wise", "paypal", "ghostpay", "other"}
+ADMIN = {"emt", "manual", "cash", "zelle", "cashapp", "venmo", "wise", "paypal", "ghostpay", "other", "test"}
 
 
 def label(method, recorded=True):

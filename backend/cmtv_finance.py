@@ -245,6 +245,8 @@ async def sync_billing_orders():
     added, review = 0, 0
     async for o in D["orders"].find({"status": "paid", "paid_at": {"$gte": cfg["cutover"]}, "total": {"$gt": 0}}):
         oid = str(o["_id"])
+        if o.get("payment_method") == "test":   # 2026-10-05: "Test (no money)" orders stay out of the ledger
+            continue
         if await D["tx"].find_one({"order_id": oid}):
             continue
         user = await D["users"].find_one({"_id": ObjectId(o["user_id"])}) if ObjectId.is_valid(str(o.get("user_id"))) else None
@@ -267,6 +269,11 @@ async def sync_billing_orders():
                 c = 0.0
                 note.append(f"credits unknown for {it.get('product_name')}")
             credits += c
+            if it.get("bonus_months"):   # 2026-10-05: holiday bonus months use panel credits too (cmtv_promo.py)
+                b = credits_for(cfg, _server_for(p, groups), (p or {}).get("max_connections"), int(it["bonus_months"]))
+                if b is None:
+                    note.append(f"bonus credits unknown for {it.get('product_name')}")
+                credits += b or 0.0
         row = complete(cfg, {
             "date": o.get("paid_at"), "server": server or "CCTV",
             "customer": (user or {}).get("name") or (user or {}).get("email") or "",
