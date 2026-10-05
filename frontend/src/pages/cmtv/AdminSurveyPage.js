@@ -2,6 +2,7 @@
 // recommend score (NPS), stars, ratings by server, what to add, what could make them leave, add-on interest, comments and
 // the unhappy customers to follow up. Backend: /api/cmtv/survey/admin (cmtv_survey.py).
 import React, { useState } from 'react';
+import SurveyFollowUp from '../../components/cmtv/SurveyFollowUp'; // 2026-10-05: responses + replies
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -87,6 +88,7 @@ export default function AdminSurveyPage() {
               <div className="sv-cmt" key={`${c.user_id}-${c.at}`}><Link to={`/admin/customer/${c.user_id}`}>{c.name}</Link> <small>· {c.nps}/10 · {c.stars}★</small>
                 {c.comment && <div>“{c.comment}”</div>}{c.other.map((o) => <div key={o}><small>Other: {o}</small></div>)}</div>
             ))}</div>
+          <SurveyFollowUp />
         </>
       )}
     </div>

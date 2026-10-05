@@ -278,6 +278,11 @@ cmtv_trial_nurture.D["get_current_admin_user"] = get_current_admin_user
 cmtv_trial_nurture.init_routes()
 app.include_router(cmtv_trial_nurture.router)
 app.include_router(cmtv_survey.router)
+# CMTV local change 2026-10-05: survey follow-up: Responded tick + reply from the panel (cmtv_survey_followup.py)
+import cmtv_survey_followup
+cmtv_survey_followup.D["get_current_admin_user"] = get_current_admin_user
+cmtv_survey_followup.init_routes()
+app.include_router(cmtv_survey_followup.router)
 
 # CMTV local change 2026-09-28: reseller credits in any amount 50-1000, priced per credit (cmtv_reseller_credits.py)
 import cmtv_reseller_credits
@@ -1081,6 +1086,7 @@ async def startup_event():
     cmtv_reviews.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # 2026-09-28: reviews
     await cmtv_reviews.startup()
     cmtv_survey.init(db=db, get_email_service=get_configured_email_service, credit_service=credit_service)  # CMTV 2026-09-29: survey
+    cmtv_survey_followup.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: survey replies
     cmtv_trial_nurture.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-02
     cmtv_trial_nurture.start()
     cmtv_reseller_credits.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service,
