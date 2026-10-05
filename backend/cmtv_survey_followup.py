@@ -30,6 +30,11 @@ def _oid(v):
     return ObjectId(str(v)) if ObjectId.is_valid(str(v)) else None
 
 
+def _rid(v):
+    """A survey response's _id: "<survey>:<user id>" text (not an ObjectId) - 2026-10-05 fix, the tick said 404"""
+    return ObjectId(str(v)) if ObjectId.is_valid(str(v)) else str(v)
+
+
 def reply_email(first, text, comment):
     from cmtv_gifts import _shell, P, FONT
     msg = html.escape(text.strip()).replace("\n", "<br>")
@@ -74,7 +79,7 @@ def init_routes():
     @router.post("/{rid}/done")
     async def mark(rid: str, data: dict = Body(default={}), current_user: dict = Depends(admin)):
         done = bool(data.get("done", True))
-        r = await D["db"].cmtv_survey_responses.update_one({"_id": _oid(rid)}, {"$set": {
+        r = await D["db"].cmtv_survey_responses.update_one({"_id": _rid(rid)}, {"$set": {
             "followup.done": done, "followup.done_at": datetime.utcnow() if done else None,
             "followup.done_by": current_user.get("sub")}})
         if not r.matched_count:
@@ -87,7 +92,7 @@ def init_routes():
         if not 2 <= len(text) <= 3000:
             raise HTTPException(400, "Write a message first.")
         db = D["db"]
-        r = await db.cmtv_survey_responses.find_one({"_id": _oid(rid)})
+        r = await db.cmtv_survey_responses.find_one({"_id": _rid(rid)})
         if not r:
             raise HTTPException(404, "Response not found")
         u = await db.users.find_one({"_id": _oid(r.get("user_id"))}, {"name": 1, "email": 1}) or {}

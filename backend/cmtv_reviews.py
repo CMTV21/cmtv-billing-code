@@ -28,6 +28,7 @@ SITE = "https://billing.cmtv.info"
 TZ = ZoneInfo("America/Toronto")
 DAILY_CAP = 10
 MIN_DAYS = 30
+SURVEY_GAP_DAYS = 30   # 2026-10-05 (owner): no review invite this soon after the survey
 INVITE_TTL = timedelta(days=60)
 PROVINCES = ["Alberta", "British Columbia", "Manitoba", "New Brunswick", "Newfoundland and Labrador", "Nova Scotia",
              "Ontario", "Prince Edward Island", "Quebec", "Saskatchewan", "Northwest Territories", "Nunavut", "Yukon"]
@@ -70,6 +71,11 @@ async def eligible_customers(now: datetime):
     out = []
     invited = set(await db.cmtv_review_invites.distinct("user_id"))
     reviewed = set(await db.cmtv_reviews.distinct("user_id"))
+    # 2026-10-05 (owner): not within 30 days of the survey (sent it, answered it, or we replied); they get it later
+    gap = now - timedelta(days=SURVEY_GAP_DAYS)
+    recent_survey = set(await db.cmtv_survey_invites.distinct("user_id", {"$or": [{"created_at": {"$gte": gap}}, {"sent_at": {"$gte": gap}}]}))
+    recent_survey |= set(await db.cmtv_survey_responses.distinct("user_id", {"$or": [
+        {"completed_at": {"$gte": gap}}, {"first_completed_at": {"$gte": gap}}, {"followup.replies.at": {"$gte": gap}}]}))
     first_paid = {}
     async for o in db.orders.find({"status": "paid", "total": {"$gt": 0}}, {"user_id": 1, "paid_at": 1, "created_at": 1}):
         t = o.get("paid_at") or o.get("created_at")
@@ -77,7 +83,7 @@ async def eligible_customers(now: datetime):
             u = str(o.get("user_id"))
             first_paid[u] = min(first_paid.get(u, t), t)
     for uid, first in sorted(first_paid.items(), key=lambda x: x[1]):
-        if uid in invited or uid in reviewed or now - first < timedelta(days=MIN_DAYS):
+        if uid in invited or uid in reviewed or uid in recent_survey or now - first < timedelta(days=MIN_DAYS):
             continue
         u = await db.users.find_one({"_id": _oid(uid), "role": "user"})
         if not u or not u.get("email") or str(u["email"]).lower().endswith("@panel.local"):
