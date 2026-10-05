@@ -61,7 +61,9 @@ function describe(s, productsById, groupsById, now) {
   const ended = s.status !== 'active' || (daysLeft !== null && daysLeft <= 0);
   const isTrial = !!(s.is_trial || product?.is_trial);
   // What "Renew" adds to the cart: the service's own product, or for a trial its paid product (same login)
-  const renewWith = !isTrial ? product : paid;
+  // 2026-10-05: a part of CMTV+ renews as CMTV+ (all three, one price), never on its own
+  const plusProduct = s.cmtv_plus ? Object.values(productsById).find((p) => p.cmtv_plus) : null;
+  const renewWith = plusProduct || (!isTrial ? product : paid);
   const rp = firstPrice(renewWith);
   const canRenew = !!renewWith && rp.price > 0 && s.account_type !== 'reseller' && !renewWith.is_bundle;
   // 2026-10-04: "Renew for a year and save" (same server + devices, 12-month price vs 12 months of the current plan)
@@ -78,7 +80,7 @@ function describe(s, productsById, groupsById, now) {
   const password = s.xtream_password || s.password || s.vpn_password;
   const server = s.panel_type !== 'manual' ? s.streaming_url : null;
   const conns = s.max_connections || product?.max_connections;
-  const subtitle = family === 'addons' ? (lookup(BRAND.taglines, addonName) || '')
+  const subtitle = family === 'addons' ? (s.cmtv_plus ? ['Part of CMTV+', lookup(BRAND.taglines, addonName)].filter(Boolean).join(' · ') : (lookup(BRAND.taglines, addonName) || ''))
     : conns ? `${conns} device${conns === 1 ? '' : 's'} at once` : '';
   return { s, product, family, logo, addonName, expiry, daysLeft, totalDays, ended, isTrial, renewWith, rp, canRenew, yearly,
            username, password, server, subtitle, setup: s.setup_instructions || product?.setup_instructions || renewWith?.setup_instructions };
@@ -90,7 +92,7 @@ function AutoRenewSwitch({ d, enabled }) {
   const [confirmOff, setConfirmOff] = useState(false);
   const ar = d.s.auto_renew || {};
   const on = ar.status === 'ACTIVE';
-  const eligible = enabled && d.renewWith && !d.isTrial && d.rp.price > 0 && d.s.account_type !== 'reseller'
+  const eligible = enabled && d.renewWith && !d.isTrial && d.rp.price > 0 && d.s.account_type !== 'reseller' && !d.s.cmtv_plus /* 2026-10-05 */
     && ['active', 'expired', 'suspended'].includes(d.s.status);
   if (!on && !eligible) return null;
   const start = async () => {
@@ -136,7 +138,7 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
   const pill = d.ended ? (d.isTrial ? ['crit', 'Trial ended'] : s.status === 'suspended' ? ['crit', 'Suspended'] : ['crit', 'Expired'])
     : warn ? ['warn', `${d.daysLeft} day${d.daysLeft === 1 ? '' : 's'} left`] : ['good', d.isTrial ? 'Trial' : 'Active'];
   const pct = d.daysLeft === null ? 100 : Math.max(2, Math.min(100, (d.daysLeft / d.totalDays) * 100));
-  const renewLabel = d.isTrial ? `Keep it · $${d.rp.price.toFixed(0)}/${termText(d.rp.term)}` : `Renew · $${d.rp.price.toFixed(d.rp.price % 1 ? 2 : 0)}/${termText(d.rp.term)}`;
+  const renewLabel = s.cmtv_plus ? `Renew CMTV+ · $${d.rp.price.toFixed(0)}/${termText(d.rp.term)}` /* 2026-10-05 */ : d.isTrial ? `Keep it · $${d.rp.price.toFixed(0)}/${termText(d.rp.term)}` : `Renew · $${d.rp.price.toFixed(d.rp.price % 1 ? 2 : 0)}/${termText(d.rp.term)}`;
   return (
     <article className={`ca-svc ${d.family}${d.ended ? ' dim' : ''}`}>
       <div className="ca-side">

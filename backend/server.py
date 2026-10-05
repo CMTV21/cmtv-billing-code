@@ -190,6 +190,8 @@ cmtv_gifts.D["get_current_user"] = get_current_user
 cmtv_gifts.D["get_current_admin_user"] = get_current_admin_user
 cmtv_gifts.init_routes()
 app.include_router(cmtv_gifts.router)
+# CMTV local change 2026-10-05: CMTV+ set up automatically (Nuvio/Stremio + CMTVpn + Audiobooks) (cmtv_plus.py)
+import cmtv_plus
 
 # CMTV local change 2026-09-27: new Admin > Analytics (cmtv_analytics.py)
 import cmtv_analytics
@@ -1027,6 +1029,7 @@ async def startup_event():
     cmtv_hours.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: support hours
     cmtv_gifts.init(db=db, credit_service=credit_service, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: gift cards
     await cmtv_gifts.startup()
+    cmtv_plus.init(db=db)   # CMTV 2026-10-05: CMTV+ automatic setup
     cmtv_upgrades.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)   # CMTV 2026-10-04
     cmtv_tickets_bridge.init(db=db, tickets=tickets_collection, users=users_collection,
                              get_email_service=get_configured_email_service)
@@ -6182,6 +6185,11 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
                     continue
             # CMTV local change 2026-09-29: Imperium line-up -> the matching package (renewals keep the line's line-up)
             product = await cmtv_lineups.apply(product, item)
+
+            # CMTV local change 2026-10-05: CMTV+ -> each part created, or the customer's own login extended (cmtv_plus.py)
+            if product.get("cmtv_plus"):
+                await cmtv_plus.provision(order_id, order, user, item, settings, email_service, run_item, provision_cockpit_service)
+                continue
 
             # Bundle product - provision each included product separately
             if product.get("is_bundle") and product.get("bundle_product_ids"):
