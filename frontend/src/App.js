@@ -27,6 +27,8 @@ import DevicesPage from './pages/cmtv/DevicesPage'; // CMTV local change 2026-10
 import GiftPage from './pages/cmtv/GiftPage'; // CMTV local change 2026-10-05: gift cards
 import RedeemPage from './pages/cmtv/RedeemPage'; // CMTV local change 2026-10-05: redeem a gift card
 import AdminGiftsPage from './pages/cmtv/AdminGiftsPage'; // CMTV local change 2026-10-05: Admin > Gift cards
+import HiPage from './pages/cmtv/HiPage'; // CMTV local change 2026-10-05: personal link for panel-only customers
+import AdminReachPage from './pages/cmtv/AdminReachPage'; // CMTV local change 2026-10-05: Admin > Reach customers
 import PrivacyPage from './pages/cmtv/PrivacyPage'; // CMTV local change 2026-09-27: public privacy policy
 import ReviewPage from './pages/cmtv/ReviewPage'; // CMTV local change 2026-09-28: customer review form (/review?t=)
 import AdminReviewsPage from './pages/cmtv/AdminReviewsPage'; // CMTV local change 2026-09-28: Admin > Reviews
@@ -241,6 +243,7 @@ function App() {
             <Route path="/devices" element={<CmtvAccountFrame><DevicesPage /></CmtvAccountFrame>} />
             <Route path="/gift" element={<CmtvAccountFrame><GiftPage /></CmtvAccountFrame>} />
             <Route path="/redeem" element={<CmtvAccountFrame><RedeemPage /></CmtvAccountFrame>} />
+            <Route path="/hi/:token" element={<CmtvAccountFrame><HiPage /></CmtvAccountFrame>} />
             <Route path="/privacy" element={<CmtvAccountFrame><PrivacyPage /></CmtvAccountFrame>} />
             <Route path="/review" element={<CmtvAccountFrame><ReviewPage /></CmtvAccountFrame>} />
             <Route path="/survey" element={<CmtvAccountFrame><SurveyPage /></CmtvAccountFrame>} />
@@ -516,6 +519,10 @@ function App() {
             <Route
               path="/admin/resellers"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminResellersPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/reach"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminReachPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/gifts"
