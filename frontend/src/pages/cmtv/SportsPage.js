@@ -11,12 +11,14 @@ const card = { background: '#141d33', border: '1px solid #27345a', borderRadius:
 const chip = (on) => ({ flex: 'none', font: 'inherit', fontSize: 13.5, fontWeight: 700, borderRadius: 999, padding: '7px 12px', cursor: 'pointer',
   border: '1px solid #27345a', background: on ? '#22e6f2' : '#141d33', color: on ? '#07101f' : '#e9edf8' });
 
-function Team({ name, badge, right }) {
+// 2026-10-06: one team per line (full names fit on a phone), score on the right
+function Team({ name, badge, score, win }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexDirection: right ? 'row-reverse' : 'row', textAlign: right ? 'right' : 'left', flex: 1 }}>
-      {badge ? <img src={`${badge}/tiny`} alt="" width="28" height="28" loading="lazy" style={{ flex: 'none', objectFit: 'contain' }}
-        onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
-      <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      {badge ? <img src={`${badge}/tiny`} alt="" width="26" height="26" loading="lazy" style={{ flex: 'none', objectFit: 'contain' }}
+        onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} /> : <span style={{ width: 26, flex: 'none' }} />}
+      <span style={{ fontWeight: 700, flex: 1, minWidth: 0, lineHeight: 1.25 }}>{name}</span>
+      {score != null && <b style={{ flex: 'none', fontSize: 17, color: win ? '#e9edf8' : '#8391b5' }}>{score}</b>}
     </div>
   );
 }
@@ -61,13 +63,15 @@ export default function SportsPage() {
                         {g.status === 'live' ? '● LIVE' : g.status === 'final' ? 'Final' : g.time}</span>
                       {g.tv && <span>{g.tv}</span>}
                     </div>
-                    {g.home && g.away ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <Team name={g.away} badge={g.away_badge} />
-                        <b style={{ flex: 'none', fontSize: 16, minWidth: 44, textAlign: 'center', color: g.score ? '#e9edf8' : '#8391b5' }}>{g.score || '@'}</b>
-                        <Team name={g.home} badge={g.home_badge} right />
-                      </div>
-                    ) : <b>{g.event}</b>}
+                    {g.home && g.away ? (() => {
+                      const [a, h] = g.score ? g.score.split('–').map(Number) : [null, null];
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <Team name={g.away} badge={g.away_badge} score={g.score ? a : null} win={a > h} />
+                          <Team name={`@ ${g.home}`} badge={g.home_badge} score={g.score ? h : null} win={h > a} />
+                        </div>
+                      );
+                    })() : <b>{g.event}</b>}
                   </div>
                 ))}
               </div>
