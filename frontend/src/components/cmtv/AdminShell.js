@@ -42,7 +42,10 @@ const NAV = [
   ] },
 ];
 const OPEN_KEY = 'cmtv-admin-open-groups';
-const readOpen = () => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '[]'); } catch (e) { return []; } };
+const readOpen = () => {   // {group: open?}; 2026-10-06: every group can fold, even the current page's
+  try { const v = JSON.parse(localStorage.getItem(OPEN_KEY) || '{}'); return Array.isArray(v) ? Object.fromEntries(v.map((g) => [g, true])) : v; }
+  catch (e) { return {}; }
+};
 
 // Shared with the admin home (same query keys, so one fetch serves both)
 export const useAdminOverview = (enabled = true) => useQuery({
@@ -73,8 +76,10 @@ function AdminSidebar() {
   };
   useEffect(() => { setOpen(false); }, [pathname]);
   const [openGroups, setOpenGroups] = useState(readOpen);   // 2026-10-06: folding groups
+  const hasCurrent = (name) => (NAV.find((g) => g.group === name)?.items || []).some((it) => isOn(it.to));
+  const isOpenNow = (name) => (name in openGroups ? openGroups[name] : hasCurrent(name));
   const toggle = (name) => setOpenGroups((cur) => {
-    const next = cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name];
+    const next = { ...cur, [name]: !isOpenNow(name) };
     try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch (e) { /* private mode */ }
     return next;
   });
@@ -91,15 +96,14 @@ function AdminSidebar() {
       <div className="links">
         {!isStaff && <CustomerSearch compact />}
         {groups.map((g) => {
-          const has = g.items.some((it) => isOn(it.to));
-          const show = !g.group || g.fixed || has || openGroups.includes(g.group);
+          const show = !g.group || g.fixed || isOpenNow(g.group);
           const waiting = g.items.reduce((n, it) => n + (counts[it.count] || 0), 0);
           return (
             <React.Fragment key={g.group || 'top'}>
               {g.group && (g.fixed ? <div className="grp">{g.group}</div> : (
-                <button type="button" className="grp grp-btn" aria-expanded={show} onClick={() => toggle(g.group)} disabled={has}>
+                <button type="button" className="grp grp-btn" aria-expanded={show} onClick={() => toggle(g.group)}>
                   <span>{g.group}{!show && waiting > 0 ? <span className="count" style={{ marginLeft: 6 }}>{waiting}</span> : null}</span>
-                  {!has && <span aria-hidden="true">{show ? '−' : '+'}</span>}
+                  <span aria-hidden="true">{show ? '−' : '+'}</span>
                 </button>
               ))}
               {show && g.items.map((it) => (
