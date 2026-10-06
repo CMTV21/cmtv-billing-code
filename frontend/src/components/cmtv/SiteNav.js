@@ -12,6 +12,7 @@ const PLANS = [
   ['CCTV', '/?tab=cctv'], ['Imperium', '/?tab=imperium'], ['Add-ons', '/?tab=addons'],
   ['Compare CCTV & Imperium', '/?tab=all&go=compare'],
   ['Gift cards 🎁', '/gift'],   // 2026-10-05
+  ['Sports tonight 🏟️', '/sports'],   // 2026-10-05
 ];
 const supportItems = (signedIn) => [
   ...(signedIn ? [['My support tickets', '/tickets']] : []),
