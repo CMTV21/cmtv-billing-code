@@ -29,6 +29,7 @@ import RedeemPage from './pages/cmtv/RedeemPage'; // CMTV local change 2026-10-0
 import AdminGiftsPage from './pages/cmtv/AdminGiftsPage'; // CMTV local change 2026-10-05: Admin > Gift cards
 import HiPage from './pages/cmtv/HiPage'; // CMTV local change 2026-10-05: personal link for panel-only customers
 import SportsPage from './pages/cmtv/SportsPage'; // CMTV local change 2026-10-05: What's on tonight
+import TopAudiobooksPage from './pages/cmtv/TopAudiobooksPage'; // CMTV local change 2026-10-06: NYT bestsellers
 import AdminReachPage from './pages/cmtv/AdminReachPage'; // CMTV local change 2026-10-05: Admin > Reach customers
 import AdminBusinessPlanPage from './pages/cmtv/AdminBusinessPlanPage'; // CMTV local change 2026-10-05: Admin > Business plan
 import PrivacyPage from './pages/cmtv/PrivacyPage'; // CMTV local change 2026-09-27: public privacy policy
@@ -248,6 +249,7 @@ function App() {
             <Route path="/redeem" element={<CmtvAccountFrame><RedeemPage /></CmtvAccountFrame>} />
             <Route path="/hi/:token" element={<CmtvAccountFrame><HiPage /></CmtvAccountFrame>} />
             <Route path="/sports" element={<CmtvAccountFrame><SportsPage /></CmtvAccountFrame>} />
+            <Route path="/audiobooks/top" element={<CmtvAccountFrame><TopAudiobooksPage /></CmtvAccountFrame>} />
             <Route path="/privacy" element={<CmtvAccountFrame><PrivacyPage /></CmtvAccountFrame>} />
             <Route path="/review" element={<CmtvAccountFrame><ReviewPage /></CmtvAccountFrame>} />
             <Route path="/survey" element={<CmtvAccountFrame><SurveyPage /></CmtvAccountFrame>} />

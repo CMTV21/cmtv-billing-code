@@ -181,6 +181,9 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
               <button type="button" className="ca-icon" onClick={() => copy(d.s.cmtv_tivimate.code, 'CMTivi code')}>Copy</button></div>
               <small style={{ display: 'block', color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>Enter this code when the CMTivi app asks for an activation code.</small></div>}
             {s.cockpit_module === 'nuviocloud' && d.username && <NuvioDevices username={d.username} />}
+            {s.cockpit_module === 'audiobooks' && !d.ended && (   /* 2026-10-06: NYT bestsellers */
+              <p style={{ margin: '8px 0 0', fontSize: 14 }}><Link to="/audiobooks/top">📚 See this month's bestselling audiobooks and request one →</Link></p>
+            )}
           </div>
         )}
         {d.ended && d.isTrial && !d.canRenew && (

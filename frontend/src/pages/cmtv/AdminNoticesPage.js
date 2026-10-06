@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import api from '../../api/api';
 import { NoticeBox } from './AdminResellersPage';
 import SportsKeyBox from '../../components/cmtv/SportsKeyBox'; // 2026-10-04: TheSportsDB key
+import NytKeyBox from '../../components/cmtv/NytKeyBox'; // 2026-10-06: NYT bestseller lists key
 import HoursBox from '../../components/cmtv/HoursBox'; // 2026-10-05: support hours
 import { PromoBox } from '../../components/cmtv/Promo'; // 2026-10-05: holiday bonus months
 import { RefBoostBox } from '../../components/cmtv/ReferralShare'; // 2026-10-05: referral campaigns
@@ -194,6 +195,7 @@ export default function AdminNoticesPage() {
       <RefBoostBox />
       <HoursBox />
       <SportsKeyBox />
+      <NytKeyBox />
       <CustomerUpdate />
       <CustomerNotice />
       <NoticeBox />
