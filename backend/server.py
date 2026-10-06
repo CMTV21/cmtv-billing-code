@@ -16034,18 +16034,19 @@ async def get_public_kb_article(article_id: str):
 
 # ============ ANALYTICS ============
 @app.get("/api/admin/analytics")
+# CMTV local change 2026-10-06: owner test orders ("Test (no money)") are left out of every figure here
 async def get_admin_analytics(period: str = "30d", current_user: dict = Depends(get_current_admin_user)):
     """Get comprehensive revenue analytics"""
     days = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}.get(period, 30)
     start_date = datetime.utcnow() - timedelta(days=days)
     prev_start = start_date - timedelta(days=days)
 
-    cur_pipeline = [{"$match": {"status": "paid", "paid_at": {"$gte": start_date}}}, {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}]
+    cur_pipeline = [{"$match": {"status": "paid", "payment_method": {"$ne": "test"}, "paid_at": {"$gte": start_date}}}, {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}]
     cur = await orders_collection.aggregate(cur_pipeline).to_list(1)
     cur_revenue = cur[0]["total"] if cur else 0
     cur_orders = cur[0]["count"] if cur else 0
 
-    prev_pipeline = [{"$match": {"status": "paid", "paid_at": {"$gte": prev_start, "$lt": start_date}}}, {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}]
+    prev_pipeline = [{"$match": {"status": "paid", "payment_method": {"$ne": "test"}, "paid_at": {"$gte": prev_start, "$lt": start_date}}}, {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}]
     prev = await orders_collection.aggregate(prev_pipeline).to_list(1)
     prev_revenue = prev[0]["total"] if prev else 0
     prev_orders = prev[0]["count"] if prev else 0
@@ -16061,19 +16062,19 @@ async def get_admin_analytics(period: str = "30d", current_user: dict = Depends(
     for i in range(min(days, 90)):
         d_start = start_date + timedelta(days=i)
         d_end = d_start + timedelta(days=1)
-        d_pipe = [{"$match": {"status": "paid", "paid_at": {"$gte": d_start, "$lt": d_end}}}, {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}]
+        d_pipe = [{"$match": {"status": "paid", "payment_method": {"$ne": "test"}, "paid_at": {"$gte": d_start, "$lt": d_end}}}, {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}]
         d_res = await orders_collection.aggregate(d_pipe).to_list(1)
         chart_data.append({"date": d_start.strftime("%b %d"), "revenue": round(d_res[0]["total"], 2) if d_res else 0, "orders": d_res[0]["count"] if d_res else 0})
 
     method_pipeline = [
-        {"$match": {"status": "paid", "paid_at": {"$gte": start_date}}},
+        {"$match": {"status": "paid", "payment_method": {"$ne": "test"}, "paid_at": {"$gte": start_date}}},
         {"$group": {"_id": "$payment_method", "total": {"$sum": "$total"}, "count": {"$sum": 1}}}
     ]
     methods = await orders_collection.aggregate(method_pipeline).to_list(20)
     by_method = [{"method": m["_id"] or "unknown", "revenue": round(m["total"], 2), "orders": m["count"]} for m in methods]
 
     product_pipeline = [
-        {"$match": {"status": "paid", "paid_at": {"$gte": start_date}}},
+        {"$match": {"status": "paid", "payment_method": {"$ne": "test"}, "paid_at": {"$gte": start_date}}},
         {"$unwind": "$items"},
         {"$group": {"_id": "$items.product_name", "revenue": {"$sum": "$items.price"}, "count": {"$sum": 1}}},
         {"$sort": {"revenue": -1}}, {"$limit": 10}
