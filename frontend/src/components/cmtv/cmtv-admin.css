@@ -294,3 +294,10 @@ html.cmtv-adm-on .recharts-text { fill: var(--faint); }
 /* pop-ups the pages draw themselves ("fixed inset-0" overlays) and shadcn ones rendered outside the page */
 html.cmtv-adm-on [role="dialog"], html.cmtv-adm-on [role="alertdialog"] { color: var(--text); }
 html.cmtv-adm-on .bg-black.bg-opacity-50, html.cmtv-adm-on .bg-black\/50 { background-color: rgba(5, 9, 20, .75) !important; }
+
+/* 2026-10-06: folding sidebar groups */
+.cmtv-adm .side button.grp-btn { display: flex; width: 100%; align-items: center; justify-content: space-between; background: none; border: 0;
+  cursor: pointer; font: inherit; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); padding: 12px 10px 4px; text-align: left; }
+.cmtv-adm .side button.grp-btn:hover:not(:disabled) { color: var(--text, #e9edf8); }
+.cmtv-adm .side button.grp-btn:disabled { cursor: default; opacity: 1; }
+.cmtv-adm .side button.grp-btn > span[aria-hidden] { font-size: 15px; letter-spacing: 0; }

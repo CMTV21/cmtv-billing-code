@@ -9,29 +9,40 @@ import './cmtv-admin.css';
 import { CustomerSearch } from '../../pages/cmtv/AdminCustomerPage';   // 2026-09-27: find a customer from any admin page
 
 // perm = the staff permission that shows the item to staff (items without one are admin-only), like the developer's sidebar
+// 2026-10-06 (owner: "getting messy and long"): grouped by when it's used; groups fold (Daily + the current page's group
+// stay open; what you open is remembered); "Customer profile" dropped from the menu (the search box opens profiles).
 const NAV = [
   { group: null, items: [{ label: 'Overview', to: '/admin', perm: 'dashboard' }] },
-  { group: 'Money', items: [
-    { label: 'Orders', to: '/admin/orders', count: 'pending', perm: 'orders' }, { label: 'Finances', to: '/admin/finances' },
-    { label: 'Analytics', to: '/admin/analytics' }, { label: 'Invoices', to: '/admin/invoices', perm: 'orders' },
-    { label: 'Refunds', to: '/admin/refunds' }, { label: 'Coupons', to: '/admin/coupons' },
-  ] },
-  { group: 'Customers', items: [
-    { label: 'Customers', to: '/admin/customers', perm: 'customers' }, { label: 'Customer profile', to: '/admin/customer' },
+  { group: 'Daily', fixed: true, items: [
+    { label: 'Orders', to: '/admin/orders', count: 'pending', perm: 'orders' },
     { label: 'Support', to: '/admin/tickets', count: 'tickets', crit: true, perm: 'tickets' },
-    { label: 'Referrals', to: '/admin/referrals' }, { label: 'Possible duplicates', to: '/admin/duplicates' }, { label: 'Reviews & feedback', to: '/admin/reviews' }, { label: 'Gift cards', to: '/admin/gifts' }, { label: 'Reach customers', to: '/admin/reach' }, { label: 'Business plan', to: '/admin/business-plan' }, { label: 'Survey', to: '/admin/survey' }, { label: 'Resellers', to: '/admin/resellers' }, { label: 'Notices', to: '/admin/notices' }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
+    { label: 'Customers', to: '/admin/customers', perm: 'customers' },
+    { label: 'Reach customers', to: '/admin/reach' },
+  ] },
+  { group: 'Money', items: [
+    { label: 'Finances', to: '/admin/finances' }, { label: 'Analytics', to: '/admin/analytics' },
+    { label: 'Invoices', to: '/admin/invoices', perm: 'orders' }, { label: 'Refunds', to: '/admin/refunds' },
+    { label: 'Coupons', to: '/admin/coupons' }, { label: 'Gift cards', to: '/admin/gifts' },
+  ] },
+  { group: 'Growth', items: [
+    { label: 'Business plan', to: '/admin/business-plan' }, { label: 'Referrals', to: '/admin/referrals' },
+    { label: 'Reviews & feedback', to: '/admin/reviews' }, { label: 'Survey', to: '/admin/survey' },
+    { label: 'Resellers', to: '/admin/resellers' }, { label: 'Notices & campaigns', to: '/admin/notices' },
   ] },
   { group: 'Services', items: [
-    { label: 'Products', to: '/admin/products' }, { label: 'Stremio', to: '/admin/stremio' }, { label: 'Nuvio', to: '/admin/nuvio' }, { label: 'CMTVpn', to: '/admin/cmtvpn' },
-    { label: 'Audiobooks', to: '/admin/audiobooks', count: 'stuck' },
-    { label: 'Launcher', to: '/admin/launcher' }, { label: 'Downloads', to: '/admin/downloads' },
+    { label: 'Products', to: '/admin/products' }, { label: 'Nuvio', to: '/admin/nuvio' }, { label: 'Stremio', to: '/admin/stremio' },
+    { label: 'CMTVpn', to: '/admin/cmtvpn' }, { label: 'Audiobooks', to: '/admin/audiobooks', count: 'stuck' },
+    { label: 'Downloads', to: '/admin/downloads' }, { label: 'Launcher', to: '/admin/launcher' },
     { label: 'Knowledge base', to: '/admin/knowledge-base' },
   ] },
   { group: 'System', items: [
+    { label: 'Possible duplicates', to: '/admin/duplicates' }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
     { label: 'Mass email', to: '/admin/mass-email' }, { label: 'Email templates', to: '/admin/email-templates' },
     { label: 'Staff', to: '/admin/staff' }, { label: 'Settings', to: '/admin/settings' },
   ] },
 ];
+const OPEN_KEY = 'cmtv-admin-open-groups';
+const readOpen = () => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '[]'); } catch (e) { return []; } };
 
 // Shared with the admin home (same query keys, so one fetch serves both)
 export const useAdminOverview = (enabled = true) => useQuery({
@@ -61,6 +72,12 @@ function AdminSidebar() {
     stuck: stuck?.requests?.length || 0,
   };
   useEffect(() => { setOpen(false); }, [pathname]);
+  const [openGroups, setOpenGroups] = useState(readOpen);   // 2026-10-06: folding groups
+  const toggle = (name) => setOpenGroups((cur) => {
+    const next = cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name];
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch (e) { /* private mode */ }
+    return next;
+  });
   const isOn = (to) => (to === '/admin' ? pathname === '/admin' : pathname === to || pathname.startsWith(`${to}/`));
   const groups = NAV.map((g) => ({ ...g, items: g.items.filter((it) => !isStaff || (it.perm && perms.includes(it.perm))) }))
     .filter((g) => g.items.length);
@@ -73,17 +90,27 @@ function AdminSidebar() {
       </div>
       <div className="links">
         {!isStaff && <CustomerSearch compact />}
-        {groups.map((g) => (
-          <React.Fragment key={g.group || 'top'}>
-            {g.group && <div className="grp">{g.group}</div>}
-            {g.items.map((it) => (
-              <Link key={it.to} to={it.to} className={isOn(it.to) ? 'on' : ''} aria-current={isOn(it.to) ? 'page' : undefined}>
-                {it.label}
-                {counts[it.count] > 0 && <span className={`count ${it.crit ? 'crit' : ''}`}>{counts[it.count]}</span>}
-              </Link>
-            ))}
-          </React.Fragment>
-        ))}
+        {groups.map((g) => {
+          const has = g.items.some((it) => isOn(it.to));
+          const show = !g.group || g.fixed || has || openGroups.includes(g.group);
+          const waiting = g.items.reduce((n, it) => n + (counts[it.count] || 0), 0);
+          return (
+            <React.Fragment key={g.group || 'top'}>
+              {g.group && (g.fixed ? <div className="grp">{g.group}</div> : (
+                <button type="button" className="grp grp-btn" aria-expanded={show} onClick={() => toggle(g.group)} disabled={has}>
+                  <span>{g.group}{!show && waiting > 0 ? <span className="count" style={{ marginLeft: 6 }}>{waiting}</span> : null}</span>
+                  {!has && <span aria-hidden="true">{show ? '−' : '+'}</span>}
+                </button>
+              ))}
+              {show && g.items.map((it) => (
+                <Link key={it.to} to={it.to} className={isOn(it.to) ? 'on' : ''} aria-current={isOn(it.to) ? 'page' : undefined}>
+                  {it.label}
+                  {counts[it.count] > 0 && <span className={`count ${it.crit ? 'crit' : ''}`}>{counts[it.count]}</span>}
+                </Link>
+              ))}
+            </React.Fragment>
+          );
+        })}
         <div className="grp">You</div>
         <Link to="/">View the store</Link>
         <button type="button" className="as-link" onClick={() => { logout(); navigate('/login'); }}>Log out</button>
