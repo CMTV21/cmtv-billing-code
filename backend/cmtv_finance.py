@@ -13,6 +13,7 @@ import asyncio
 import io
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from bson import ObjectId
@@ -275,7 +276,7 @@ async def sync_billing_orders():
                     note.append(f"bonus credits unknown for {it.get('product_name')}")
                 credits += b or 0.0
         row = complete(cfg, {
-            "date": o.get("paid_at"), "server": server or "CCTV",
+            "date": _local(o.get("paid_at")), "cmtv_date_local": True, "server": server or "CCTV",
             "customer": (user or {}).get("name") or (user or {}).get("email") or "",
             "customer_email": (user or {}).get("email", ""), "user_id": o.get("user_id"),
             "new_user": bool(first_paid and first_paid["_id"] == o["_id"]),
@@ -445,7 +446,22 @@ async def export_xlsx():
 
 # ---------------- API (admin only) ----------------
 
+TORONTO = ZoneInfo("America/Toronto")
+
+
+# CMTV local change 2026-10-07: ledger dates are Toronto wall-clock time (hand-entered and imported rows already were),
+# so evening payments land on the right day and month everywhere (Finances, admin home, Analytics)
+def _local(dt):
+    if not isinstance(dt, datetime):
+        return dt
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    return dt.astimezone(TORONTO).replace(tzinfo=None)
+
+
 def _clean_date(v):
+    if v in (None, ""):   # CMTV local change 2026-10-07: no date given (e.g. Admin extend) = today in Toronto
+        return _local(datetime.utcnow()).replace(hour=0, minute=0, second=0, microsecond=0)
     try:
         return datetime.strptime(str(v)[:10], "%Y-%m-%d")
     except ValueError:
