@@ -106,8 +106,12 @@ def build(user, service, days, opt):
         parts.append(card(f"Switch to a year: ${y['price']:.0f} <span style=\"color:#86efac;\">(save {y['save']}%)</span>",
                           f"Pay once and forget about it until <b style=\"color:#fff\">{_date(y['until'])}</b>.{extra}", "#cc00ff"))
     if opt["autorenew"] and opt["price"] > 0:
+        # CMTV local change 2026-10-08: say the actual price (auto-renew nudge; nobody was using it)
+        ar = round(opt["price"] * (100 - AUTORENEW_PCT) / 100, 2)
         parts.append(card(f"Never get cut off: auto-renew, {AUTORENEW_PCT}% off",
-                          "Renews by itself with PayPal the day before it ends, and every renewal costs 10% less. Turn it off any time.", "#5533ff"))
+                          f"Renews by itself with PayPal the day before it ends, for <b style=\"color:#fff\">${ar:.2f}</b> instead of "
+                          f"${opt['price']:.2f} {'every year' if opt['term'] == 12 else 'each time'}. Turn it on with the "
+                          "<b style=\"color:#fff\">Auto-renew</b> switch on your dashboard, and off any time.", "#5533ff"))
     parts.append(_button(f"{SITE}/dashboard", "Renew on my dashboard"))
     parts.append(f'<p style="margin:0 0 14px; font-size:13px; line-height:1.6; color:#6b7280; {FONT}">Having any buffering or trouble? '
                  f'Tap <b>Test my line</b> on your dashboard, or reply to this email: we\'d rather fix it than lose you.</p>')

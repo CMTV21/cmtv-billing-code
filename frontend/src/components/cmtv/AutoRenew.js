@@ -130,14 +130,44 @@ export function AutoRenewReturn() {
 // Shown only for a single, full-price plan (no coupon or credits). Otherwise the normal PayPal buttons show unchanged.
 // memberPrice: the referral-tier price when the tier discount applies (2026-09-25); it renews at that price.
 // 2026-09-28: the subscription is 10% off (or the member price if lower) from the first payment.
+// The one cart item that can be bought on auto-renew, or null
+const checkoutItem = (cfg, items, total, discounted, memberPrice) => {
+  const item = items?.length === 1 ? items[0] : null;
+  const ok = cfg?.enabled && item && item.account_type !== 'reseller' && Number(item.price) > 0
+    && !discounted && memberPrice !== 0 && Math.abs(Number(total) - Number(item.price)) < 0.01 && !item.gift; // 2026-10-05: not gift cards
+  return ok ? item : null;
+};
+const yearlySaving = (cfg, item, memberPrice) => (item && Number(item.term_months) === 12
+  ? Math.round((Number(item.price) - arPrice(Number(item.price), cfg?.discount_percent, memberPrice)) * 100) / 100 : 0);
+
+// 2026-10-08 (nobody used auto-renew; plan target 25%): on a yearly plan, say what it saves before a payment method is
+// picked, so e-Transfer payers see it too. "Use PayPal" just selects PayPal; the tick box there stays unticked.
+export function CheckoutAutoRenewHint({ items, total, discounted, memberPrice = null, paymentMethod, onPickPaypal }) {
+  const { data: cfg } = useAutoRenewConfig();
+  const item = checkoutItem(cfg, items, total, discounted, memberPrice);
+  const save = yearlySaving(cfg, item, memberPrice);
+  if (!item || save <= 0 || paymentMethod === 'paypal') return null;
+  return (
+    <div className="flex items-start gap-3 p-3 mb-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
+      <RefreshCw className="w-5 h-5 mt-0.5 text-blue-600 dark:text-blue-300 shrink-0" aria-hidden="true" />
+      <div className="text-sm text-blue-900 dark:text-blue-200 flex-1">
+        <span className="font-semibold">Save ${save.toFixed(2)} every year with auto-renew</span><br />
+        Pay with PayPal and tick <b>Renew automatically</b>: {cfg.currency} ${(Number(item.price) - save).toFixed(2)} a year instead
+        of ${Number(item.price).toFixed(2)}, and you never get cut off. Turn it off any time in My Services.
+      </div>
+      <button type="button" onClick={onPickPaypal}
+        className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700">Use PayPal</button>
+    </div>
+  );
+}
+
 export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null, clientId, onDone, onError, children }) {
   const { data: cfg } = useAutoRenewConfig();
   const [auto, setAuto] = useState(false);
   const [orderId, setOrderId] = useState(null);
-  const item = items?.length === 1 ? items[0] : null;
-  const eligible = cfg?.enabled && item && item.account_type !== 'reseller' && Number(item.price) > 0
-    && !discounted && memberPrice !== 0 && Math.abs(Number(total) - Number(item.price)) < 0.01 && !item.gift; // 2026-10-05: not gift cards
-  if (!eligible) return children;
+  const item = checkoutItem(cfg, items, total, discounted, memberPrice);
+  if (!item) return children;
+  const save = yearlySaving(cfg, item, memberPrice);   // 2026-10-08: yearly plans say the dollar saving
 
   const ensureOrder = async () => {
     if (orderId) return orderId;
@@ -156,7 +186,8 @@ export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null
       <label className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 cursor-pointer">
         <input type="checkbox" className="mt-1" checked={auto} onChange={(e) => setAuto(e.target.checked)} id="cmtv-autorenew" />
         <span className="text-sm text-blue-900 dark:text-blue-200">
-          <span className="font-semibold">Renew automatically with PayPal{cfg.discount_percent ? ` and save ${cfg.discount_percent}%` : ''}</span><br />
+          <span className="font-semibold">Renew automatically with PayPal{save > 0 ? ` and save $${save.toFixed(2)} every year`
+            : cfg.discount_percent ? ` and save ${cfg.discount_percent}%` : ''}</span><br />
           {cfg.currency} ${arPrice(Number(item.price), cfg.discount_percent, memberPrice).toFixed(2)} {every(Number(item.term_months) || 1)}
           {memberPrice != null && Number(memberPrice) <= arPrice(Number(item.price), cfg.discount_percent) ? ' (your member price)'
             : cfg.discount_percent ? ` (${cfg.discount_percent}% off), starting today` : ''}. PayPal charges this price instead of the total above. Turn it off any time in My Services.

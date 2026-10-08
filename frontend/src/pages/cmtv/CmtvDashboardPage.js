@@ -316,6 +316,7 @@ export default function CmtvDashboardPage() {
           </section>
         )}
 
+        <TelegramAlerts variant="nudge" show={active.length > 0} />{/* 2026-10-08: Telegram alerts nudge */}
         <div className="ca-layout">
           <section aria-label="Your services">
             <h2 className="ca-h2">Your services</h2>

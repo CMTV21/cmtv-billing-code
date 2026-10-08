@@ -5,7 +5,7 @@ import { ordersAPI, servicesAPI } from '../api/api';
 import { useCartStore, useAuthStore } from '../store/store';
 import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign, Minus, Package } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import { CheckoutAutoRenew } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25
+import { CheckoutAutoRenew, CheckoutAutoRenewHint } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25; hint 2026-10-08
 import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
 import CheckoutChannels, { useChannelsReady } from '../components/cmtv/CheckoutChannels'; // CMTV 2026-10-04: channel package step
@@ -1058,6 +1058,10 @@ export default function CheckoutPage() {
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Payment Method</h3>
                 )}
                 
+                {!cmtvAllFree && settings?.paypal?.client_id && (   /* CMTV local change 2026-10-08: auto-renew saving on yearly plans */
+                  <CheckoutAutoRenewHint items={items} total={getTotal()} discounted={(!!appliedCouponCode && !tierWins) || creditsApplied > 0}
+                    memberPrice={tierWins ? payTotal : null} paymentMethod={paymentMethod} onPickPaypal={() => setPaymentMethod('paypal')} />
+                )}
                 <div className="space-y-3 mb-6" style={cmtvAllFree ? { display: 'none' } : undefined}>
                   {/* Render payment methods in order from settings */}
                   {(settings?.payment_method_order || ['manual', 'emt', 'zelle', 'cashapp', 'venmo', 'wise', 'stripe', 'paypal', 'square', 'blockonomics', 'ghostpay', 'tagadapay']).map((method) => {

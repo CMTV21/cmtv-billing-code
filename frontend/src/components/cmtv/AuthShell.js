@@ -67,6 +67,19 @@ export function Note({ kind = 'info', children }) {
   return <div className={`ab-note ${kind}`} role={kind === 'err' ? 'alert' : 'status'}>{children}</div>;
 }
 
+// 2026-10-08 (owner): a blocked reCAPTCHA check (usually an ad blocker or privacy browser) said "refresh and try again",
+// which doesn't help. One clear message + a way to reach us without signing in (the support bot opens tickets).
+export const HUMAN_MSG = "Couldn't verify you're human. Turn off your ad blocker or try another browser, or open a ticket.";
+export const isHumanCheck = (msg) => /verify you're human|security check failed|security verification required|recaptcha check failed/i.test(String(msg || ''));
+export const humanOr = (msg) => (isHumanCheck(msg) ? HUMAN_MSG : msg);
+export function HumanCheckHelp({ error }) {
+  if (!isHumanCheck(error)) return null;
+  return (
+    <span className="ab-human"> <a href="https://t.me/Cmtv_support_bot" target="_blank" rel="noopener noreferrer">Open a ticket with our Telegram support bot</a>{' '}
+      or email <a href="mailto:cmtv@pm.me">cmtv@pm.me</a>.</span>
+  );
+}
+
 export function RecaptchaLegal({ enabled }) {
   if (!enabled) return null;
   return (

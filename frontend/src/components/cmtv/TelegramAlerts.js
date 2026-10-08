@@ -15,7 +15,14 @@ function Toggle({ on, label, note, onChange, busy }) {
   );
 }
 
-export default function TelegramAlerts() {
+// 2026-10-08 (only 4-6 of ~220 paying customers linked; the panel sits low in the side column): variant="nudge" = a short
+// card near the top of the dashboard for customers with an active service who haven't connected. "Not now" hides it for
+// 60 days on this browser. Same connect flow and query as the panel, so both update together.
+const NUDGE_KEY = 'cmtv-tg-nudge-hidden-until';
+const nudgeHidden = () => { try { return Number(localStorage.getItem(NUDGE_KEY) || 0) > Date.now(); } catch (e) { return false; } };
+
+export default function TelegramAlerts({ variant = 'panel', show = true }) {
+  const [hidden, setHidden] = useState(() => variant === 'nudge' && nudgeHidden());
   const qc = useQueryClient();
   const [waiting, setWaiting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,6 +65,26 @@ export default function TelegramAlerts() {
   };
 
   if (!d) return null;
+  if (variant === 'nudge') {
+    if (!show || hidden || d.linked) return null;
+    const notNow = () => {
+      try { localStorage.setItem(NUDGE_KEY, String(Date.now() + 60 * 24 * 3600 * 1000)); } catch (e) { /* private mode */ }
+      setHidden(true);
+    };
+    return (
+      <section className="ca-attention" aria-label="Telegram alerts">
+        <div className="ca-alert info ca-tg-nudge">
+          <div className="msg"><b>Get expiry and outage alerts in Telegram</b>
+            <small>{waiting ? <>In Telegram, tap <b>Start</b>. This updates by itself once you're connected.</>
+              : 'A message before your plan ends (with one-tap Renew), and a heads-up if your server has an outage.'}</small></div>
+          <div className="ca-tg-nudge-btns" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="ca-btn ca-glow" onClick={connect}>{waiting ? 'Waiting for Telegram…' : 'Connect Telegram'}</button>
+            <button type="button" className="ca-btn ca-ghost" onClick={notNow}>Not now</button>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <div className="ca-panel ca-tg">
       <h2 className="ca-h2">Telegram alerts</h2>

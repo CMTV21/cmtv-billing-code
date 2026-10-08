@@ -6,7 +6,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { AlertCircle, Gift } from 'lucide-react';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import api, { authAPI } from '../../api/api';
-import { AuthShell, Note, PasswordInput, RecaptchaLegal } from '../../components/cmtv/AuthShell';
+import { AuthShell, Note, PasswordInput, RecaptchaLegal, HUMAN_MSG, HumanCheckHelp, humanOr } from '../../components/cmtv/AuthShell';
 
 export default function CmtvRegisterPage() {
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ export default function CmtvRegisterPage() {
       setShowSuccessModal(true);
       setTimeout(() => navigate('/login?registered=true'), 5000);
     },
-    onError: (err) => setError(err.response?.data?.detail || "Couldn't create the account"),
+    onError: (err) => setError(humanOr(err.response?.data?.detail) || "Couldn't create the account"),   // CMTV 2026-10-08
   });
 
   const handleSubmit = async (e) => {
@@ -39,7 +39,7 @@ export default function CmtvRegisterPage() {
       try {
         recaptchaToken = await executeRecaptcha('register');
       } catch (err) {
-        setError('reCAPTCHA check failed. Please refresh the page and try again.');
+        setError(HUMAN_MSG); // CMTV 2026-10-08: clear message when reCAPTCHA is blocked
         return;
       }
     }
@@ -54,7 +54,7 @@ export default function CmtvRegisterPage() {
       {referralCode && (
         <Note kind="info"><Gift size={18} /><span>A friend invited you. Their referral code <b>{referralCode}</b> is already filled in below.</span></Note>
       )}
-      {error && <Note kind="err"><AlertCircle size={18} /><span>{error}</span></Note>}
+      {error && <Note kind="err"><AlertCircle size={18} /><span>{error}<HumanCheckHelp error={error} /></span></Note>}
 
       <form onSubmit={handleSubmit}>
         <div className="ab-field">

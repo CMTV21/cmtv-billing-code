@@ -5,7 +5,7 @@ import { authAPI } from '../api/api';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import api from '../api/api';
-import { AuthShell, Note, RecaptchaLegal } from '../components/cmtv/AuthShell';
+import { AuthShell, Note, RecaptchaLegal, HUMAN_MSG, HumanCheckHelp, humanOr } from '../components/cmtv/AuthShell';
 
 // CMTV local change 2026-09-24: "Forgot password" - asks the backend to email a reset link
 // CMTV local change 2026-09-26: CMTV look (AuthShell), same logic
@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
       try {
         recaptchaToken = await executeRecaptcha('forgot_password');
       } catch (err) {
-        setError('reCAPTCHA check failed. Please refresh the page and try again.');
+        setError(HUMAN_MSG); // CMTV 2026-10-08: clear message when reCAPTCHA is blocked
         return;
       }
     }
@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
       const response = await authAPI.forgotPassword({ email, recaptcha_token: recaptchaToken });
       setSuccessMessage(response.data.message);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Something went wrong. Please try again.');
+      setError(humanOr(err.response?.data?.detail) || 'Something went wrong. Please try again.');   // CMTV 2026-10-08
     }
     setSending(false);
   };
@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
       <p className="sub">Enter your email or username and we'll email you a link to choose a new one.</p>
 
       {successMessage && <Note kind="ok"><CheckCircle2 size={18} /><span>{successMessage} Don't forget to check your spam folder.</span></Note>}
-      {error && <Note kind="err"><AlertCircle size={18} /><span>{error}</span></Note>}
+      {error && <Note kind="err"><AlertCircle size={18} /><span>{error}<HumanCheckHelp error={error} /></span></Note>}
 
       <form onSubmit={handleSubmit}>
         <div className="ab-field">

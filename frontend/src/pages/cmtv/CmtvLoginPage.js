@@ -7,7 +7,7 @@ import { AlertCircle, CheckCircle2, Mail, Shield } from 'lucide-react';
 import { useGoogleReCaptcha } from 'react-google-recaptcha-v3';
 import api, { authAPI } from '../../api/api';
 import { useAuthStore } from '../../store/store';
-import { AuthShell, Note, PasswordInput, RecaptchaLegal } from '../../components/cmtv/AuthShell';
+import { AuthShell, Note, PasswordInput, RecaptchaLegal, HUMAN_MSG, HumanCheckHelp, humanOr } from '../../components/cmtv/AuthShell';
 
 // 2026-10-01: "Remember this device" for the admin 2FA step (backend: cmtv_trusted_devices.py). The key stays in this browser.
 const DEVICE_KEY = 'cmtv_2fa_device';
@@ -79,7 +79,7 @@ export default function CmtvLoginPage() {
     onError: (err) => {
       const status = err.response?.status;
       const detail = err.response?.data?.detail || 'Sign in failed';
-      setError(detail);
+      setError(humanOr(detail));   // CMTV 2026-10-08
       if (status === 403 && String(detail).toLowerCase().includes('not verified')) {
         setShowResendVerification(true);
       }
@@ -94,7 +94,7 @@ export default function CmtvLoginPage() {
       try {
         recaptchaToken = await executeRecaptcha('login');
       } catch (err) {
-        setError('reCAPTCHA check failed. Please refresh the page and try again.');
+        setError(HUMAN_MSG); // CMTV 2026-10-08: clear message when reCAPTCHA is blocked
         return;
       }
     }
@@ -129,7 +129,7 @@ export default function CmtvLoginPage() {
       <p className="sub">Good to see you again.</p>
 
       {successMessage && <Note kind="ok"><CheckCircle2 size={18} /><span>{successMessage}</span></Note>}
-      {error && <Note kind="err"><AlertCircle size={18} /><span>{error}</span></Note>}
+      {error && <Note kind="err"><AlertCircle size={18} /><span>{error}<HumanCheckHelp error={error} /></span></Note>}
 
       {showResendVerification && (
         <div className="ab-note warn">
