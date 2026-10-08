@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/api';
+import { ExtendSheet } from '../../components/cmtv/AdminTvExtend'; // 2026-10-08: tap a line to extend it
 
 const FILTERS = [['all', 'All'], ['active', 'Active'], ['soon', 'Ending soon'], ['ended', 'Ended'], ['trials', 'On a trial'], ['panel', 'Panel-only'], ['new', 'New this week']];
 const STATE = { active: ['Active', '#6ee7b7'], trial: ['Trial', '#7dd3fc'], ended: ['Ended', '#fca5a5'], none: ['No service', '#94a3b8'] };
@@ -17,9 +18,10 @@ export default function AdminCustomersPage() {
   const [debounced, setDebounced] = useState('');
   const [filter, setFilter] = useState('all');
   const [limit, setLimit] = useState(40);
+  const [extending, setExtending] = useState(null);   // 2026-10-08: service id being extended
   useEffect(() => { const t = setTimeout(() => setDebounced(q), 250); return () => clearTimeout(t); }, [q]);
   useEffect(() => { setLimit(40); }, [debounced, filter]);
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['cmtv-customers-list', debounced, filter, limit],
     queryFn: async () => (await api.get('/api/cmtv/admin/customers-list', { params: { q: debounced, filter, limit } })).data,
     keepPreviousData: true,
@@ -53,9 +55,10 @@ export default function AdminCustomersPage() {
             const dl = r.days_left;
             const soon = r.state === 'active' && dl != null && dl <= 14;
             return (
-              <button key={r.id} type="button" onClick={() => navigate(`/admin/customer/${r.id}`)}
-                style={{ textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer', background: '#141d33', border: '1px solid #27345a',
-                  borderLeft: `4px solid ${COLOR[r.server] || '#3a4a78'}`, borderRadius: 12, padding: '11px 13px', width: '100%' }}>
+              <div key={r.id} style={{ background: '#141d33', border: '1px solid #27345a', borderLeft: `4px solid ${COLOR[r.server] || '#3a4a78'}`, borderRadius: 12 }}>
+              <button type="button" onClick={() => navigate(`/admin/customer/${r.id}`)}
+                style={{ textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer', background: 'transparent', border: 0,
+                  borderRadius: 12, padding: '11px 13px 8px', width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                   <b style={{ fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
                     {r.panel_only ? (r.login || r.name) : (r.name || r.email)}
@@ -65,7 +68,8 @@ export default function AdminCustomersPage() {
                 <div style={{ fontSize: 13.5, opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r.panel_only ? <span style={{ color: '#fcd34d' }}>Panel-only · no email</span> : r.email}
                 </div>
-                {r.server && (
+                {r.credit > 0 && (r.lines || []).length > 0 && <div style={{ fontSize: 13, color: '#6ee7b7' }}>${r.credit.toFixed(0)} credit</div>}
+                {r.server && !(r.lines || []).length && (   /* 2026-10-08: TV customers show their lines below instead */
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 13, marginTop: 4, opacity: 0.9 }}>
                     <span style={{ color: COLOR[r.server] || '#c7d2ee', fontWeight: 700 }}>{r.server}</span>
                     {r.login && !r.panel_only && <code style={{ opacity: 0.8 }}>{r.login}</code>}
@@ -76,6 +80,25 @@ export default function AdminCustomersPage() {
                   </div>
                 )}
               </button>
+              {(r.lines || []).length > 0 && (   /* 2026-10-08: each TV line, tap to extend */
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '0 13px 11px' }}>
+                  {r.lines.map((l) => {
+                    const left = l.days_left;
+                    const when = l.ends == null ? 'no end date' : left < 0 ? `ended ${day(l.ends)}` : left <= 60 ? `ends in ${left} day${left === 1 ? '' : 's'}` : `ends ${day(l.ends)}`;
+                    return (
+                      <button key={l.service_id} type="button" disabled={!l.can_extend} title={l.why_not || 'Extend this line'}
+                        onClick={() => setExtending(l.service_id)}
+                        style={{ font: 'inherit', fontSize: 13, textAlign: 'left', cursor: l.can_extend ? 'pointer' : 'not-allowed', borderRadius: 10, padding: '6px 10px',
+                          border: `1px solid ${l.can_extend ? (COLOR[l.server] || '#27345a') : '#27345a'}`, background: '#0a1020', color: '#e9edf8', opacity: l.can_extend ? 1 : 0.6 }}>
+                        <b style={{ color: COLOR[l.server] || '#c7d2ee' }}>{l.server}</b> <code>{l.login}</code>{l.trial ? ' · trial' : ''}
+                        <span style={{ opacity: 0.8, color: left != null && left <= 14 ? '#fcd34d' : undefined }}> · {when}</span>
+                        {l.can_extend ? <b style={{ color: '#22e6f2' }}> · Extend</b> : <span style={{ opacity: 0.8 }}> · {l.why_not}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              </div>
             );
           })}
           {data.total > data.rows.length && (
@@ -86,6 +109,7 @@ export default function AdminCustomersPage() {
           )}
         </div>
       )}
+      {extending && <ExtendSheet serviceId={extending} onClose={() => setExtending(null)} onDone={() => refetch()} />}
     </div>
   );
 }

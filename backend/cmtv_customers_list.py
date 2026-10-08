@@ -33,7 +33,10 @@ def _dt(v):
     return None
 
 
-def _card(u, svcs, now):
+TV = ("xtream", "aether", "nxtdash", "onestream")
+
+
+def _card(u, svcs, now, panel_view=None):
     for s in svcs:
         s["expiry_date"] = _dt(s.get("expiry_date"))
     email = str(u.get("email") or "")
@@ -54,7 +57,27 @@ def _card(u, svcs, now):
     label = None
     if main:
         label = MODULE.get(main.get("cockpit_module")) or SERVER.get(main.get("panel_type"), main.get("panel_type") or "")
-    return {"id": str(u["_id"]), "name": u.get("name") or "", "email": "" if panel else email, "panel_only": panel,
+    # 2026-10-08 (owner: "search a customer, click the server they have and extend them"): every TV line on the card, live
+    # or ended in the last 60 days, with the panel's end date when it's later than billing's (renewed on the panel)
+    lines = []
+    for s in svcs:
+        if s.get("panel_type") not in TV or s.get("account_type") == "reseller" or s.get("status") in ("cancelled", "removed"):
+            continue
+        login = s.get("xtream_username") or s.get("username") or ""
+        iu = (panel_view or {}).get((login.lower(), s.get("panel_type")))
+        end, pend = s.get("expiry_date"), _dt((iu or {}).get("expiry_date"))
+        if pend and (not end or pend > end):
+            end = pend
+        if end and end < now - timedelta(days=60):
+            continue
+        lines.append({"service_id": str(s["_id"]), "server": "Imperium (old panel)" if s.get("panel_type") == "nxtdash" else SERVER.get(s.get("panel_type")),
+                      "login": login, "ends": end, "days_left": (end - now).days if end else None, "trial": bool(s.get("is_trial")),
+                      "devices": int(s.get("max_connections") or 0) or None,
+                      "can_extend": s.get("panel_type") in ("xtream", "aether") and bool(login),
+                      "why_not": "old Imperium record: needs moving to the new panel first" if s.get("panel_type") == "nxtdash" else
+                                 "" if s.get("panel_type") in ("xtream", "aether") else "this server can't be extended here"})
+    lines.sort(key=lambda x: (x["ends"] is None, x["ends"] or now))
+    return {"id": str(u["_id"]), "name": u.get("name") or "", "email": "" if panel else email, "panel_only": panel, "lines": lines,
             "login": (main or {}).get("xtream_username") or (main or {}).get("username") or u.get("panel_username") or "",
             "state": state, "server": label, "plan": (main or {}).get("product_name"), "ends": (main or {}).get("expiry_date"),
             "days_left": days, "services": len(svcs), "live_services": len(live), "created_at": u.get("created_at"),
@@ -81,9 +104,12 @@ def init_routes():
         by_user = {}
         async for s in db.services.find({"user_id": {"$in": [str(u["_id"]) for u in users]}, "status": {"$nin": ["failed", "duplicate"]}},
                                         {"user_id": 1, "status": 1, "expiry_date": 1, "is_trial": 1, "panel_type": 1, "cockpit_module": 1,
-                                         "product_name": 1, "username": 1, "xtream_username": 1}):
+                                         "product_name": 1, "username": 1, "xtream_username": 1, "account_type": 1, "max_connections": 1}):
             by_user.setdefault(str(s["user_id"]), []).append(s)
-        cards = [_card(u, by_user.get(str(u["_id"]), []), now) for u in users]
+        pv = {}   # 2026-10-08: the panels' view of each line (hourly panel sync)
+        async for iu in db.imported_users.find({"account_type": {"$ne": "reseller"}}, {"username": 1, "panel_type": 1, "expiry_date": 1}):
+            pv[(str(iu.get("username") or "").lower(), iu.get("panel_type"))] = iu
+        cards = [_card(u, by_user.get(str(u["_id"]), []), now, pv) for u in users]
         week = now - timedelta(days=7)
         test = {
             "all": lambda c: True,
