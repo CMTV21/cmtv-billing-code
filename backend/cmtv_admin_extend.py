@@ -73,6 +73,15 @@ def current_end(svc, iu):
     return b, "billing"
 
 
+def panel_devices(svc, iu):
+    """2026-10-08: the panel's device count wins (the package must match the real line); billing's when the panel has none."""
+    try:
+        n = int((iu or {}).get("max_connections") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n if n > 0 else int(svc.get("max_connections") or 1)
+
+
 async def _plan(svc, months):
     conns = int(svc.get("max_connections") or 1)
     return await D["db"].products.find_one({"panel_type": svc["panel_type"], "account_type": "subscriber", "is_trial": {"$ne": True},
@@ -85,6 +94,8 @@ def init_routes():
     @router.get("/{service_id}/options")
     async def options(service_id: str, current_user: dict = Depends(admin)):
         svc = await _line(service_id)
+        iu = await panel_view(svc)
+        svc = {**svc, "max_connections": panel_devices(svc, iu)}   # 2026-10-08: plans for the panel's device count
         out = []
         for m in MONTHS:
             p = await _plan(svc, m)
@@ -93,7 +104,6 @@ def init_routes():
         user = await D["db"].users.find_one({"_id": ObjectId(svc["user_id"])}, {"email": 1, "name": 1}) if ObjectId.is_valid(str(svc.get("user_id"))) else None
         email = str((user or {}).get("email") or "")
         # 2026-10-08: end date now + after each choice (renewals add time on top of what's left; an ended line starts today)
-        iu = await panel_view(svc)
         end, src = current_end(svc, iu)
         now = datetime.utcnow()
         base = end if end and end > now else now
@@ -118,6 +128,13 @@ def init_routes():
             raise HTTPException(400, "The amount is a number (0 for free).")
         if amount < 0:
             raise HTTPException(400, "The amount can't be negative.")
+        # 2026-10-08: use the panel's device count; billing's copy is brought in line first so the package, the provisioner
+        # and the credits in Finances all agree with the real line
+        conns = panel_devices(svc, await panel_view(svc))
+        if conns != int(svc.get("max_connections") or 1):
+            await db.services.update_one({"_id": svc["_id"]}, {"$set": {"max_connections": conns, "cmtv_devices_from_panel_at": datetime.utcnow()}})
+            logger.info(f"Admin extend: {svc.get('xtream_username')} devices {svc.get('max_connections')} -> {conns} (panel)")
+            svc = {**svc, "max_connections": conns}
         product = await _plan(svc, months)
         if not product:
             raise HTTPException(400, f"No {months}-month {SERVER[svc['panel_type']]} plan for {svc.get('max_connections') or 1} devices.")
