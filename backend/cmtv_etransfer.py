@@ -157,7 +157,10 @@ def _money(v) -> str:
 
 def _order_line(o, u) -> str:
     items = ", ".join(i.get("product_name", "") for i in o.get("items", []))
+    # CMTV local change 2026-10-08 (owner): the full order ID, tap to copy in Telegram. Customers are told "Security
+    # answer is your order id" and see all 24 characters, so this is what the owner types to deposit the e-Transfer.
     return (f"Order #{str(o['_id'])[:8]} · {u.get('name')} &lt;{u.get('email')}&gt;\n{htmlmod.escape(items)}\n"
+            f"🔑 Security answer (order ID, tap to copy): <code>{o['_id']}</code>\n"
             f"{SITE}/admin/orders")
 
 
