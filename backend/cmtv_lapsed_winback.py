@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from bson import ObjectId
 from fastapi import APIRouter, Depends
 
+import cmtv_lines as L
 import cmtv_trial_winback as TW
 
 logger = logging.getLogger(__name__)
@@ -53,16 +54,20 @@ async def config():
     return {**DEFAULTS, **{k: v for k, v in doc.items() if k != "_id"}}
 
 
-def _paid_tv(s):
+def _paid_tv(s, now=None):
     # older trial services have no is_trial flag, only a name like "24 HOUR CCTV TRIAL" (caught 2026-09-28 before any send)
-    if s.get("is_trial") or "trial" in str(s.get("product_name") or "").lower():
+    # CMTV local change 2026-10-08: a trial-named line that was paid for and extended counts as paid (shared rule,
+    # cmtv_lines); before, a customer whose only live line was one of these could get the come-back offer.
+    if L.is_trial_line(s, now):
         return False
     return s.get("account_type", "subscriber") != "reseller" and s.get("panel_type") not in (None, "", "manual") \
         and not s.get("cmtv_demo")
 
 
-async def _paid_product(s):
+async def _paid_product(s, now=None):
     """The service's product, if it still exists, must be a priced, non-trial plan."""
+    if L.trial_marked(s) and L.is_paid_line(s, now):
+        return True   # 2026-10-08: a trial product's line that was paid for and extended
     p = await D["db"].products.find_one({"_id": _oid(s.get("product_id"))}) if s.get("product_id") else None
     if not p:
         return True
@@ -90,7 +95,7 @@ async def candidates(cfg, now=None):
     lo = hi - timedelta(hours=CATCH_UP_HOURS)
     out, seen = [], set()
     async for s in db.services.find({"expiry_date": {"$gte": lo, "$lte": hi}, "status": {"$nin": ["duplicate", "failed"]}}).sort("expiry_date", -1):
-        if not _paid_tv(s) or not await _paid_product(s):
+        if not _paid_tv(s, now) or not await _paid_product(s, now):
             continue
         uid = str(s.get("user_id") or "")
         if not uid or uid in seen:
@@ -109,7 +114,7 @@ async def candidates(cfg, now=None):
             continue
         still = False
         async for o in db.services.find({"user_id": uid, "status": "active"}):
-            if _paid_tv(o) or (o.get("panel_type") == "manual" and not o.get("is_trial")):
+            if _paid_tv(o, now) or (o.get("panel_type") == "manual" and L.is_paid_line(o, now)):
                 exp = _dt(o.get("expiry_date"))
                 if exp is None or exp > now:
                     still = True

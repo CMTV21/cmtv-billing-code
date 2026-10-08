@@ -38,6 +38,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pymongo.errors import DuplicateKeyError
 
+import cmtv_lines as L
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/cmtv/campaigns", tags=["cmtv-campaigns"])
 legacy_router = APIRouter(tags=["cmtv-campaigns"])   # GET /api/unsubscribe for the older emails' links
@@ -223,7 +225,7 @@ def _test_account(u):
 
 
 def _trial(s):
-    return bool(s.get("is_trial")) or "trial" in str(s.get("product_name") or "").lower()
+    return L.trial_marked(s)   # CMTV local change 2026-10-08: shared rule in cmtv_lines
 
 
 def _reseller_svc(s):
@@ -237,18 +239,16 @@ def _live(s, now):
     return exp is None or exp > now
 
 
-TRIAL_MAX = timedelta(days=8)
+TRIAL_MAX = L.TRIAL_MAX
 
 
 def _counts(s, now):
     """A paid-looking service. Billing keeps the trial name/flag when a trial line is later paid for and extended
-    (e.g. "Imperium 48 hour Trial" running until 2027), so a "trial" longer than 8 days counts as paid."""
+    (e.g. "Imperium 48 hour Trial" running until 2027), so a "trial" longer than 8 days counts as paid.
+    CMTV local change 2026-10-08: the rule now lives in cmtv_lines (shared with the other modules)."""
     if s.get("cmtv_demo") or _reseller_svc(s):
         return False
-    if not _trial(s):
-        return True
-    exp, made = _dt(s.get("expiry_date")), _dt(s.get("created_at"))
-    return bool(exp and ((made and exp - made > TRIAL_MAX) or exp - now > TRIAL_MAX))
+    return L.is_paid_line(s, now)
 
 
 def server_of(s):

@@ -22,6 +22,8 @@ from zoneinfo import ZoneInfo
 from bson import ObjectId
 from fastapi import APIRouter, Depends
 
+import cmtv_lines as L
+
 log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/trial-nurture", tags=["cmtv-trial-nurture"])
 D = {}
@@ -197,6 +199,8 @@ async def run_once(now=None, dry_run=False):
         start = svc.get("start_date") or svc.get("created_at")
         if not isinstance(start, datetime):
             continue
+        if L.is_paid_line(svc, now):
+            continue   # CMTV local change 2026-10-08: a trial line that was paid for and extended (shared rule, cmtv_lines)
         sid, uid = str(svc["_id"]), str(svc.get("user_id") or "")
         logd = await db.cmtv_trial_nurture.find_one({"_id": sid}) or {}
         after, left = timing(svc)

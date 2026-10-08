@@ -16,6 +16,8 @@ from datetime import datetime
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 
+import cmtv_lines as L
+
 log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/survey", tags=["cmtv-survey"])
 D = {}
@@ -73,7 +75,11 @@ def server_of(s):
 
 async def servers_for(uid):
     out = set()
-    async for s in D["db"].services.find({"user_id": uid, "status": "active", "is_trial": {"$ne": True}, "account_type": {"$ne": "reseller"}}):
+    now = datetime.utcnow()
+    # CMTV local change 2026-10-08: trial-named lines that were paid for and extended count (shared rule, cmtv_lines)
+    async for s in D["db"].services.find({"user_id": uid, "status": "active", "account_type": {"$ne": "reseller"}}):
+        if not L.is_paid_line(s, now):
+            continue
         sv = server_of(s)
         if sv:
             out.add(sv)
@@ -116,10 +122,11 @@ async def eligible():
     """Paying customers: role user, real email, not demo, an active paid non-trial non-reseller service, not yet invited."""
     db = D["db"]
     invited = set(await db.cmtv_survey_invites.distinct("user_id", {"survey": SURVEY}))
-    uids = set()
-    async for s in db.services.find({"status": "active", "is_trial": {"$ne": True}, "account_type": {"$ne": "reseller"},
-                                     "cmtv_demo": {"$ne": True}}, {"user_id": 1, "product_name": 1}):
-        if "trial" not in str(s.get("product_name") or "").lower():
+    uids, now = set(), datetime.utcnow()
+    # CMTV local change 2026-10-08: trial-named lines that were paid for and extended count (shared rule, cmtv_lines)
+    async for s in db.services.find({"status": "active", "account_type": {"$ne": "reseller"}, "cmtv_demo": {"$ne": True}},
+                                    {"user_id": 1, "product_name": 1, "is_trial": 1, "expiry_date": 1, "created_at": 1}):
+        if L.is_paid_line(s, now):
             uids.add(str(s.get("user_id")))
     out = []
     for uid in sorted(uids - invited):

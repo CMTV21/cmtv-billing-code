@@ -24,6 +24,8 @@ from zoneinfo import ZoneInfo
 from bson import ObjectId
 from fastapi import APIRouter, Body, Depends, HTTPException
 
+import cmtv_lines as L
+
 log = logging.getLogger("server")
 router = APIRouter(prefix="/api/cmtv/reviews", tags=["cmtv-reviews"])
 D = {}
@@ -91,8 +93,11 @@ async def eligible_customers(now: datetime):
         u = await db.users.find_one({"_id": _oid(uid), "role": "user"})
         if not u or not u.get("email") or str(u["email"]).lower().endswith("@panel.local"):
             continue
-        if not await db.services.find_one({"user_id": uid, "status": "active", "is_trial": {"$ne": True},
-                                           "account_type": {"$ne": "reseller"}}):
+        # CMTV local change 2026-10-08: paid = shared rule (cmtv_lines): trial-named lines paid for and extended count,
+        # unflagged "... TRIAL" lines don't
+        if not [s async for s in db.services.find({"user_id": uid, "status": "active", "account_type": {"$ne": "reseller"}},
+                                                  {"is_trial": 1, "product_name": 1, "expiry_date": 1, "created_at": 1})
+                if L.is_paid_line(s, now)]:
             continue
         out.append(u)
     return out

@@ -10,9 +10,12 @@ from datetime import datetime, timedelta
 from bson import ObjectId
 from fastapi import APIRouter, Depends
 
+import cmtv_lines as L
+
 router = APIRouter(prefix="/api/cmtv/admin/customers-list", tags=["cmtv-customers-list"])
 D = {}
-SERVER = {"xtream": "CCTV", "aether": "Imperium", "nxtdash": "Amethyst", "onestream": "OneStream", "manual": "Add-on"}
+# CMTV local change 2026-10-08: nxtdash is the old Imperium panel (was labelled "Amethyst")
+SERVER = {"xtream": "CCTV", "aether": "Imperium", "nxtdash": "Imperium (old panel)", "onestream": "OneStream", "manual": "Add-on"}
 MODULE = {"nuviocloud": "Nuvio", "nuvio": "Stremio", "vpn": "CMTVpn", "audiobooks": "Audiobooks", "nuvio_reseller": "Nuvio reseller"}
 FILTERS = ["all", "active", "soon", "ended", "trials", "panel", "new"]
 
@@ -42,7 +45,8 @@ def _card(u, svcs, now, panel_view=None):
     email = str(u.get("email") or "")
     panel = email.lower().endswith("@panel.local")
     live = [s for s in svcs if s.get("status") == "active" and s.get("expiry_date") and s["expiry_date"] > now]
-    paid_live = [s for s in live if not s.get("is_trial")]
+    # CMTV local change 2026-10-08: shared trial rule (cmtv_lines): a trial line paid for and extended is not "Trial"
+    paid_live = [s for s in live if L.is_paid_line(s, now)]
     main = min(paid_live or live, key=lambda s: s["expiry_date"]) if (paid_live or live) else \
         (max(svcs, key=lambda s: s.get("expiry_date") or datetime.min) if svcs else None)
     days = (main["expiry_date"] - now).days if main and main.get("expiry_date") else None
@@ -71,7 +75,7 @@ def _card(u, svcs, now, panel_view=None):
         if end and end < now - timedelta(days=60):
             continue
         lines.append({"service_id": str(s["_id"]), "server": "Imperium (old panel)" if s.get("panel_type") == "nxtdash" else SERVER.get(s.get("panel_type")),
-                      "login": login, "ends": end, "days_left": (end - now).days if end else None, "trial": bool(s.get("is_trial")),
+                      "login": login, "ends": end, "days_left": (end - now).days if end else None, "trial": L.is_trial_line(s, now),
                       "devices": int(s.get("max_connections") or 0) or None,
                       "can_extend": s.get("panel_type") in ("xtream", "aether") and bool(login),
                       "why_not": "old Imperium record: needs moving to the new panel first" if s.get("panel_type") == "nxtdash" else
@@ -104,7 +108,8 @@ def init_routes():
         by_user = {}
         async for s in db.services.find({"user_id": {"$in": [str(u["_id"]) for u in users]}, "status": {"$nin": ["failed", "duplicate"]}},
                                         {"user_id": 1, "status": 1, "expiry_date": 1, "is_trial": 1, "panel_type": 1, "cockpit_module": 1,
-                                         "product_name": 1, "username": 1, "xtream_username": 1, "account_type": 1, "max_connections": 1}):
+                                         "product_name": 1, "username": 1, "xtream_username": 1, "account_type": 1, "max_connections": 1,
+                                         "created_at": 1}):
             by_user.setdefault(str(s["user_id"]), []).append(s)
         pv = {}   # 2026-10-08: the panels' view of each line (hourly panel sync)
         async for iu in db.imported_users.find({"account_type": {"$ne": "reseller"}}, {"username": 1, "panel_type": 1, "expiry_date": 1}):

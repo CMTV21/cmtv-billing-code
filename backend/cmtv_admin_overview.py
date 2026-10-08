@@ -12,6 +12,8 @@ from zoneinfo import ZoneInfo
 from bson import ObjectId
 from fastapi import APIRouter, Depends
 
+import cmtv_lines as L
+
 router = APIRouter(prefix="/api/cmtv/admin", tags=["cmtv-admin"])
 D = {}
 TZ = ZoneInfo("America/Toronto")
@@ -140,7 +142,8 @@ def init_routes():
         week_no_ar = 0
         async for s in services.find({"status": "active"}):
             p = products.get(str(s.get("product_id")))
-            is_trial = bool(s.get("is_trial") or (p or {}).get("is_trial"))
+            # CMTV local change 2026-10-08: a trial line paid for and extended counts as paid (shared rule, cmtv_lines)
+            is_trial = L.is_trial_line(s, now_utc, p)
             if s.get("account_type") == "reseller" or is_trial:
                 continue
             fam = _family(p, groups, s.get("product_name", ""), s.get("panel_type", ""), s.get("cockpit_module", ""))
