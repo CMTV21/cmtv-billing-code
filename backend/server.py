@@ -962,6 +962,13 @@ async def sync_services_expiry_from_imported_users(panel_type: Optional[str] = N
         await cmtv_upgrades.reconcile_all()
     except Exception as e:
         logger.warning(f"CMTV plan/device check failed: {e}")
+    # CMTV local change 2026-10-08: passwords + live lines billing has no record of (e.g. moved server, same login) stay in
+    # step with the panel (cmtv_line_sync.py; owner: "confirm all customer details match")
+    try:
+        import cmtv_line_sync
+        await cmtv_line_sync.reconcile(db, get_settings)
+    except Exception as e:
+        logger.warning(f"CMTV line sync failed: {e}")
     return {"checked": checked, "updated": updated + len(revived), "revived": len(revived)}
 
 
