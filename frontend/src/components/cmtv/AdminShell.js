@@ -28,6 +28,7 @@ const NAV = [
     { label: 'Business plan', to: '/admin/business-plan' }, { label: 'Referrals', to: '/admin/referrals' },
     { label: 'Reviews & feedback', to: '/admin/reviews' }, { label: 'Survey', to: '/admin/survey' },
     { label: 'Resellers', to: '/admin/resellers' }, { label: 'Notices & campaigns', to: '/admin/notices' },
+    { label: 'Campaign emails', to: '/admin/campaigns' },   // 2026-10-08
   ] },
   { group: 'Services', items: [
     { label: 'Products', to: '/admin/products' }, { label: 'Nuvio', to: '/admin/nuvio' }, { label: 'Stremio', to: '/admin/stremio' },

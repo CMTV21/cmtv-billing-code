@@ -1,0 +1,35 @@
+/* CMTV local addition 2026-10-08: Admin > Campaigns (pages/cmtv/AdminCampaignsPage.js). Uses the admin frame's colours. */
+.cmp-admin h1 { margin: 0 0 4px; }
+.cmp-admin .rs-sub, .cmp-sub { color: var(--muted, #9aa6c6); font-size: 13.5px; }
+.cmp-box { border: 1px solid var(--line, #27345a); background: var(--surface, #141d33); border-radius: 14px; padding: 14px 16px; margin: 14px 0; }
+.cmp-box > summary { cursor: pointer; font-weight: 700; }
+.cmp-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+.cmp-in { font: inherit; font-size: 14px; color: var(--text, #e9edf8); background: var(--deep, #0a1020); border: 1px solid var(--line, #27345a);
+  border-radius: 10px; padding: 8px 10px; width: 100%; box-sizing: border-box; margin-top: 4px; }
+.cmp-in.sm { width: auto; min-width: 200px; margin-top: 0; }
+.cmp-in:focus { outline: none; border-color: var(--cyan, #22e6f2); }
+.cmp-fs { border: 0; padding: 0; margin: 0; min-width: 0; }
+.cmp-fs label { display: block; margin: 10px 0; font-size: 13px; color: var(--muted, #9aa6c6); }
+.cmp-fs .cmp-row label { margin: 0; }
+.cmp-check { display: inline-flex !important; gap: 6px; align-items: center; font-size: 13.5px; color: var(--text, #e9edf8) !important; }
+.cmp-block { border: 1px dashed var(--line, #27345a); border-radius: 10px; padding: 8px 12px; margin: 8px 0; background: var(--deep, #0a1020); }
+.cmp-block .rv-btn { padding: 4px 10px; }
+.cmp-sub code, .cmp-admin code { background: var(--deep, #0a1020); border: 1px solid var(--line, #27345a); border-radius: 6px; padding: 1px 5px; margin: 0 2px; font-size: 12.5px; }
+.cmp-frame { max-width: 100%; border: 1px solid var(--line, #27345a); border-radius: 10px; overflow: hidden; background: #eef1f5; margin: 8px 0; transition: width .2s; }
+.cmp-frame iframe { width: 100%; height: 760px; border: 0; display: block; }
+.cmp-pre { white-space: pre-wrap; font-size: 12.5px; color: var(--muted, #9aa6c6); background: var(--deep, #0a1020); padding: 10px; border-radius: 8px; }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 8px 0; }
+.cmp-table th, .cmp-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--row-line, #202b4a); vertical-align: middle; }
+.cmp-table th { color: var(--muted, #9aa6c6); font-weight: 600; }
+.cmp-list tr.on td { background: var(--surface-2, #1a2542); }
+.cmp-acts { white-space: nowrap; text-align: right; }
+.cmp-acts .rv-btn { padding: 4px 10px; margin-left: 4px; }
+.cmp-link { background: none; border: 0; color: var(--cyan, #22e6f2); font: inherit; font-weight: 700; cursor: pointer; padding: 0; text-align: left; }
+.cmp-st { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; border: 1px solid var(--line, #27345a); }
+.cmp-st.scheduled, .cmp-st.sending { border-color: var(--cyan, #22e6f2); color: var(--cyan, #22e6f2); }
+.cmp-st.paused { border-color: #fbbf24; color: #fbbf24; }
+.cmp-st.sent { border-color: #34d399; color: #34d399; }
+.cmp-dry { margin: 8px 0; }
+.cmp-confirm { border: 1px solid #fbbf24; border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.cmp-warn { color: #fbbf24; }
+@media (max-width: 640px) { .cmp-list th:nth-child(2), .cmp-list td:nth-child(2), .cmp-list th:nth-child(4), .cmp-list td:nth-child(4) { display: none; } .cmp-in.sm { min-width: 0; width: 100%; } }

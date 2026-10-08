@@ -39,6 +39,7 @@ import AdminDuplicatesPage from './pages/cmtv/AdminDuplicatesPage'; // CMTV loca
 import AdminResellersPage from './pages/cmtv/AdminResellersPage'; // CMTV local change 2026-09-28: Admin > Resellers
 import ResellerToolsPage from './pages/cmtv/ResellerToolsPage'; // CMTV local change 2026-09-28: /reseller tools for resellers
 import AdminNoticesPage from './pages/cmtv/AdminNoticesPage'; // CMTV local change 2026-09-28: Admin > Notices
+import AdminCampaignsPage from './pages/cmtv/AdminCampaignsPage'; // CMTV local change 2026-10-08: Admin > Campaigns
 import SurveyPage from './pages/cmtv/SurveyPage'; // CMTV local change 2026-09-29: customer survey (/survey?t=)
 import AdminSurveyPage from './pages/cmtv/AdminSurveyPage'; // CMTV local change 2026-09-29: Admin > Survey
 import LinkEmailPage from './pages/LinkEmailPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-28: replaced by CmtvLinkEmailPage
@@ -525,6 +526,10 @@ function App() {
             <Route
               path="/admin/notices"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminNoticesPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
+            />
+            <Route
+              path="/admin/campaigns"
+              element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminCampaignsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}
             />
             <Route
               path="/admin/resellers"

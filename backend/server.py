@@ -283,6 +283,12 @@ import cmtv_survey_followup
 cmtv_survey_followup.D["get_current_admin_user"] = get_current_admin_user
 cmtv_survey_followup.init_routes()
 app.include_router(cmtv_survey_followup.router)
+# CMTV local change 2026-10-08: campaign emails (Admin > Campaigns) + a working unsubscribe page for every marketing email (cmtv_campaigns.py)
+import cmtv_campaigns
+cmtv_campaigns.D["get_current_admin_user"] = get_current_admin_user
+cmtv_campaigns.init_routes()
+app.include_router(cmtv_campaigns.router)
+app.include_router(cmtv_campaigns.legacy_router)   # GET /api/unsubscribe: the older emails' link (only POST existed)
 # CMTV local change 2026-10-05: reach panel-only customers: personal links + Admin > Reach customers (cmtv_reach.py)
 import cmtv_reach
 cmtv_reach.D["get_current_admin_user"] = get_current_admin_user
@@ -1117,6 +1123,8 @@ async def startup_event():
     await cmtv_reviews.startup()
     cmtv_survey.init(db=db, get_email_service=get_configured_email_service, credit_service=credit_service)  # CMTV 2026-09-29: survey
     cmtv_survey_followup.init(db=db, get_email_service=get_configured_email_service)   # CMTV 2026-10-05: survey replies
+    cmtv_campaigns.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service)  # CMTV 2026-10-08: campaigns
+    await cmtv_campaigns.startup()
     cmtv_reach.init(db=db, get_settings=get_settings)   # CMTV 2026-10-05: reach panel-only customers
     await cmtv_reach.startup()
     import cmtv_renew_email   # CMTV 2026-10-05: renewal reminder with real options
