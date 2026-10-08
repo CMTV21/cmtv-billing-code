@@ -162,6 +162,83 @@ function orderPill(o) {
   return <span className="pill p-mute">{o.status}</span>;
 }
 
+// CMTV local change 2026-10-08 (owner: "allow me to assign users to existing customers such as randyp"): a panel-only
+// account (no real email) can be moved into the customer's real account: search, check what moves, confirm.
+function MergeCard({ customerId }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState([]);
+  const [pick, setPick] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (pick || q.trim().length < 2) { setHits([]); return undefined; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.get(`/api/cmtv/admin/customers/search?q=${enc(q.trim())}`);
+        setHits((r.data || []).filter((h) => h.id !== customerId && !String(h.email || '').endsWith('@panel.local')));
+      } catch { setHits([]); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, pick, customerId]);
+  const choose = async (h) => {
+    setPick(h); setPreview(null);
+    try { setPreview((await api.get(`/api/cmtv/admin/customers/${customerId}/merge-preview?into=${enc(h.id)}`)).data); }
+    catch (e) { toast.error(errText(e, "Couldn't check that")); setPick(null); }
+  };
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/api/cmtv/admin/customers/${customerId}/merge-into`, { into: pick.id });
+      toast.success(`Moved to ${pick.name || pick.email}`);
+      qc.invalidateQueries({ queryKey: ['cust-profile'] });
+      navigate(`/admin/customer/${r.data.into}`);
+    } catch (e) { toast.error(errText(e, "Couldn't move it")); }
+    setBusy(false);
+  };
+  return (
+    <section className="card" style={{ marginBottom: 14 }}>
+      <h2>Move to an existing customer</h2>
+      <p className="note" style={{ marginBottom: 8 }}>
+        This account was made by the panel sync and has no real email. If the customer already has an account, move this
+        one into it: the lines, payments, orders and notes go with it, and this placeholder is retired (not deleted).
+      </p>
+      {!pick && (
+        <>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Their name, email or another login"
+            aria-label="Find the customer's account" style={{ width: '100%', minWidth: 0, padding: '8px 10px', borderRadius: 8,
+              border: '1px solid rgba(255,255,255,.15)', background: 'transparent', color: 'inherit' }} />
+          <ul className="list">{hits.map((h) => (
+            <li key={h.id}><button type="button" className="link" onClick={() => choose(h)}>
+              {h.name || '(no name)'} · {h.email}{h.match ? ` · ${h.match}` : ''}
+            </button></li>
+          ))}</ul>
+          {q.trim().length >= 2 && !hits.length && <p className="note">No customer with a real email matches yet.</p>}
+        </>
+      )}
+      {pick && (
+        <div>
+          <p>Move into <b>{pick.name || '(no name)'}</b> ({pick.email})?</p>
+          {!preview ? <p className="note">Checking…</p> : (
+            <>
+              <ul className="list">
+                {preview.lines.map((l, i) => <li key={i}><b>{l.login}</b> <small>{l.plan} · {l.status}{l.ends ? ` · ends ${day(l.ends)}` : ''}</small></li>)}
+                <li><small>{preview.orders} order(s), {preview.payments} recorded payment(s), {preview.tickets} ticket(s) move too</small></li>
+              </ul>
+              {preview.problems.map((p, i) => <p key={i} className="bad">{p}</p>)}
+              <button type="button" className="btn" disabled={busy || preview.problems.length > 0} onClick={go}>
+                {busy ? 'Moving…' : `Move ${preview.lines.length} line${preview.lines.length === 1 ? '' : 's'} to ${pick.name || pick.email}`}
+              </button>{' '}
+            </>
+          )}
+          <button type="button" className="link" onClick={() => { setPick(null); setPreview(null); }}>Cancel</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function AdminCustomerPage() {
   const { id } = useParams();
   const qc = useQueryClient();
@@ -211,6 +288,8 @@ export default function AdminCustomerPage() {
           <span className={`pill ${c.email_verified ? 'p-good' : 'p-mute'}`}>{c.email_verified ? 'email verified' : 'not verified'}</span>
         </div>
       </section>
+
+      {!c.real_email && c.role !== 'merged' && <MergeCard customerId={c.id} />}
 
       <section className="kpis" aria-label="Totals">
         <div className="card kpi"><label>Lifetime spend</label><div className="big">{money(t.paid_total)}</div>

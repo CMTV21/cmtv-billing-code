@@ -88,6 +88,26 @@ async def move_everything(from_id: str, to_id: str) -> dict:
     return moved
 
 
+async def join(me: dict, other: dict, via: str = "claim", by: str = None) -> dict:
+    """Join placeholder `me` into account `other`: every reference moves over, `me` is retired as role "merged" (never
+    deleted; a copy in cmtv_account_merges). CMTV local change 2026-10-08: shared by the customer's own join (claim) and
+    the admin's "Move to an existing customer" on the profile (cmtv_customer, via "admin")."""
+    db = D["db"]
+    me_id, keep_id = str(me["_id"]), str(other["_id"])
+    moved = await move_everything(me_id, keep_id)
+    now = datetime.utcnow()
+    await db.cmtv_account_merges.insert_one({"keep": keep_id, "retired": me_id, "retired_doc": me, "moved": moved,
+                                             "at": now, "via": via, "by": by})
+    await db.users.update_one({"_id": me["_id"]}, {
+        "$set": {"email": f"merged-{me_id}@panel.local", "role": "merged",
+                 "password": D["hash_password"](secrets.token_urlsafe(24)), "merged_into": keep_id, "merged_at": now,
+                 "merged_original_email": me.get("email"), "merged_original_panel_username": me.get("panel_username")},
+        "$unset": {"panel_username": ""}})
+    if me.get("panel_username") and not other.get("panel_username"):
+        await db.users.update_one({"_id": other["_id"]}, {"$set": {"panel_username": me["panel_username"]}})
+    return moved
+
+
 async def _ops(text):
     try:
         import cmtv_notify
@@ -185,17 +205,7 @@ def init_routes():
                 raise HTTPException(400, "That isn't the password for that account. Try again, or use \"Forgot password\" on the sign-in page.")
             # join the placeholder into the existing account
             me_id, keep_id = str(me["_id"]), str(other["_id"])
-            moved = await move_everything(me_id, keep_id)
-            now = datetime.utcnow()
-            await db.cmtv_account_merges.insert_one({"keep": keep_id, "retired": me_id, "retired_doc": me, "moved": moved,
-                                                     "at": now, "via": "claim"})
-            await db.users.update_one({"_id": me["_id"]}, {
-                "$set": {"email": f"merged-{me_id}@panel.local", "role": "merged",
-                         "password": D["hash_password"](secrets.token_urlsafe(24)), "merged_into": keep_id, "merged_at": now,
-                         "merged_original_email": me.get("email"), "merged_original_panel_username": me.get("panel_username")},
-                "$unset": {"panel_username": ""}})
-            if me.get("panel_username") and not other.get("panel_username"):
-                await db.users.update_one({"_id": other["_id"]}, {"$set": {"panel_username": me["panel_username"]}})
+            await join(me, other, via="claim")
             other = await db.users.find_one({"_id": other["_id"]})
             rewarded = await give_reward(me_id, keep_id)   # 2026-10-02
             await _ops(("💵 " if rewarded else "") + f"🔗 Customer joined their accounts: TV line {me.get('panel_username')} is now on {other.get('email')} "

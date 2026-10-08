@@ -134,17 +134,18 @@ export function AdminCustomerReferrals({ customerId }) {
         <Stat label="Credit balance" value={money(data.credit_balance)} sub={data.referral_code ? `code ${data.referral_code}` : ''} />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-5">
-        <form className="space-y-2" onSubmit={async (e) => {
+      <div className="grid 2xl:grid-cols-2 gap-5">
+        <form className="space-y-2 min-w-0" onSubmit={async (e) => {
           e.preventDefault();
           if (await run(() => api.post(`/api/cmtv/referral/admin/user/${customerId}/past`, past), 'Past referral added')) setPast({ name: '', date: '', note: '' });
         }}>
           <p className="font-semibold text-sm text-gray-900 dark:text-white">Add a past referral</p>
-          <input className={`${input} w-full`} placeholder="Who they referred (name)" value={past.name}
+          <input className={`${input} w-full min-w-0`} placeholder="Who they referred (name)" value={past.name}
             onChange={(e) => setPast({ ...past, name: e.target.value })} required maxLength={120} />
-          <div className="flex gap-2">
-            <input className={`${input} flex-1`} type="date" value={past.date} onChange={(e) => setPast({ ...past, date: e.target.value })} />
-            <input className={`${input} flex-1`} placeholder="Note (optional)" value={past.note} maxLength={300}
+          {/* CMTV local change 2026-10-08: inputs shrink and wrap instead of spilling into the next column */}
+          <div className="flex flex-wrap gap-2">
+            <input className={`${input} flex-1 min-w-[9rem]`} type="date" value={past.date} onChange={(e) => setPast({ ...past, date: e.target.value })} />
+            <input className={`${input} flex-1 min-w-[8rem]`} placeholder="Note (optional)" value={past.note} maxLength={300}
               onChange={(e) => setPast({ ...past, note: e.target.value })} />
           </div>
           <button disabled={busy} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
@@ -152,16 +153,16 @@ export function AdminCustomerReferrals({ customerId }) {
           </button>
         </form>
 
-        <form className="space-y-2" onSubmit={async (e) => {
+        <form className="space-y-2 min-w-0" onSubmit={async (e) => {
           e.preventDefault();
           if (await run(() => api.post(`/api/cmtv/referral/admin/user/${customerId}/credit`, { amount: Number(credit.amount), reason: credit.reason }),
             Number(credit.amount) > 0 ? 'Credit added' : 'Credit removed')) setCredit({ amount: '', reason: '' });
         }}>
           <p className="font-semibold text-sm text-gray-900 dark:text-white">Add or remove credit</p>
-          <div className="flex gap-2">
-            <input className={`${input} w-28`} type="number" step="0.01" placeholder="15 or -15" value={credit.amount}
+          <div className="flex flex-wrap gap-2">
+            <input className={`${input} w-28 shrink-0`} type="number" step="0.01" placeholder="15 or -15" value={credit.amount}
               onChange={(e) => setCredit({ ...credit, amount: e.target.value })} required />
-            <input className={`${input} flex-1`} placeholder="Reason (the customer sees this)" value={credit.reason} maxLength={200}
+            <input className={`${input} flex-1 min-w-[10rem]`} placeholder="Reason (the customer sees this)" value={credit.reason} maxLength={200}
               onChange={(e) => setCredit({ ...credit, reason: e.target.value })} required />
           </div>
           <button disabled={busy} className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
@@ -170,7 +171,7 @@ export function AdminCustomerReferrals({ customerId }) {
         </form>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-5 mt-6">
+      <div className="grid 2xl:grid-cols-2 gap-5 mt-6">
         <div>
           <p className="font-semibold text-sm text-gray-900 dark:text-white mb-2">Referrals ({data.referrals.length + data.past.length})</p>
           {data.referrals.length + data.past.length === 0 && <p className="text-sm text-gray-500 dark:text-gray-400">None yet</p>}

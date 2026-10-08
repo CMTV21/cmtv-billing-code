@@ -10,7 +10,7 @@ import re
 from datetime import datetime
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 router = APIRouter(prefix="/api/cmtv/admin/customers", tags=["cmtv-customer"])
 D = {}
@@ -163,7 +163,7 @@ def init_routes():
         return {
             "customer": {"id": uid, "name": user.get("name"), "email": email, "username": user.get("panel_username"),
                          "created_at": _iso(user.get("created_at")), "created_via": user.get("created_via"),
-                         "email_verified": bool(user.get("email_verified")), "real_email": "@" in email and not email.endswith("@panel.local"),
+                         "email_verified": bool(user.get("email_verified")), "real_email": "@" in email and not email.endswith("@panel.local"), "role": user.get("role"),
                          "credit_balance": float(user.get("credit_balance") or 0), "referral_code": user.get("referral_code"),
                          "referred_by": referred_by},
             "totals": {"paid_total": round(paid_total, 2), "paid_orders": paid_count, "first_paid": _iso(first_paid),
@@ -191,3 +191,55 @@ def init_routes():
         r = await D["db"].cmtv_customer_notes.update_one({"_id": _oid(note_id), "user_id": customer_id},
                                                          {"$set": {"deleted": True, "deleted_at": datetime.utcnow()}})
         return {"success": bool(r.matched_count)}
+
+    # CMTV local change 2026-10-08 (owner: "allow me to assign users to existing customers such as randyp"): move a
+    # panel-only placeholder account (<line>@panel.local, made by the panel sync) into the customer's real account. Same
+    # join the customer can do themselves (cmtv_claim.join): every reference moves, the placeholder is retired, not deleted.
+    async def _merge_check(customer_id, into_id):
+        me = await D["users"].find_one({"_id": _oid(customer_id)})
+        other = await D["users"].find_one({"_id": _oid(into_id)}) if _oid(into_id) else None
+        problems = []
+        import cmtv_claim
+        if not cmtv_claim.is_placeholder(me):
+            problems.append("Only a panel-only account (no real email) can be moved into another customer.")
+        if not other or other.get("role") != "user" or other.get("cmtv_demo"):
+            problems.append("Pick a customer account to move it into.")
+        elif str(other["_id"]) == str((me or {}).get("_id")):
+            problems.append("That's the same account.")
+        elif str(other.get("email") or "").lower().endswith("@panel.local"):
+            problems.append("That account has no real email either: pick the customer's real account.")
+        if me and float(me.get("credit_balance") or 0):
+            problems.append(f"This account has ${float(me['credit_balance']):.2f} credit: move it first (Referrals & credit).")
+        return me, other, problems
+
+    @router.get("/{customer_id}/merge-preview")
+    async def merge_preview(customer_id: str, into: str = "", current_user: dict = Depends(admin)):
+        me, other, problems = await _merge_check(customer_id, into)
+        uid = str((me or {}).get("_id") or "")
+        lines = [{"login": s.get("xtream_username") or s.get("username"), "plan": s.get("product_name"), "status": s.get("status"),
+                  "ends": _iso(s.get("expiry_date"))}
+                 async for s in D["services"].find({"user_id": uid, "status": {"$nin": ["duplicate", "failed", "removed"]}})] if uid else []
+        db = D["db"]
+        return {"problems": problems, "lines": lines,
+                "into": {"id": str(other["_id"]), "name": other.get("name"), "email": other.get("email")} if other else None,
+                "orders": await D["orders"].count_documents({"user_id": uid}) if uid else 0,
+                "payments": await db.fin_transactions.count_documents({"user_id": uid, "deleted": {"$ne": True}}) if uid else 0,
+                "tickets": await db.tickets.count_documents({"user_id": uid}) if uid else 0}
+
+    @router.post("/{customer_id}/merge-into")
+    async def merge_into(customer_id: str, body: dict = Body(...), current_user: dict = Depends(admin)):
+        me, other, problems = await _merge_check(customer_id, str(body.get("into") or ""))
+        if problems:
+            raise HTTPException(400, problems[0])
+        import cmtv_claim
+        logins = [s.get("xtream_username") or s.get("username")
+                  async for s in D["services"].find({"user_id": str(me["_id"]), "status": {"$nin": ["duplicate", "failed", "removed"]}})]
+        moved = await cmtv_claim.join(me, other, via="admin", by=current_user.get("email") or current_user.get("sub"))
+        what = ", ".join(x for x in logins if x) or "no lines"
+        await D["db"].cmtv_customer_notes.insert_one({
+            "user_id": str(other["_id"]), "created_at": datetime.utcnow(), "by": current_user.get("sub"), "by_name": "Merge",
+            "text": f"Moved in from the panel-only account {me.get('email')}: {what}. (Admin merge; the old account is retired, "
+                    f"a copy kept in cmtv_account_merges.)"})
+        await cmtv_claim._ops(f"🔗 Accounts merged by admin: {what} ({me.get('email')}) is now on {other.get('email')} "
+                              f"({other.get('name') or ''}).")
+        return {"success": True, "into": str(other["_id"]), "moved": sum(moved.values())}
