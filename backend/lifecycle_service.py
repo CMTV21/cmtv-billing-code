@@ -213,7 +213,16 @@ class ServiceLifecycleManager:
             
             if recent_warning:
                 continue
-            
+
+            # CMTV local change 2026-10-08 (owner: too many emails per trial): no "expires" email / owner alert for a real
+            # trial; the trial check-in and the come-back offer cover it. Trial lines paid for and extended still get it.
+            try:
+                import cmtv_lines
+                if cmtv_lines.is_trial_line(service):
+                    continue
+            except Exception:
+                pass
+
             try:
                 from bson import ObjectId
                 uid = service.get("user_id", "")

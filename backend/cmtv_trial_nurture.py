@@ -31,6 +31,7 @@ SITE = "https://billing.cmtv.info"
 TZ = ZoneInfo("America/Toronto")
 SEND_HOURS = range(9, 21)
 DOWNLOADER = "5883394"
+SHORT_TRIAL = timedelta(hours=60)   # 2026-10-08: no "ending" message for trials this short (24 / 48 h TV trials)
 
 
 def init(**deps):
@@ -205,11 +206,22 @@ async def run_once(now=None, dry_run=False):
         logd = await db.cmtv_trial_nurture.find_one({"_id": sid}) or {}
         after, left = timing(svc)
         stage = None
-        if not logd.get("ending_at") and svc["expiry_date"] - now <= left:
+        # CMTV local change 2026-10-08 (owner: "we don't need to notify them their trial ends soon, they just got the
+        # trial"): short TV trials (24 / 48 h) get only the check-in; the come-back offer follows after. 7-day trials
+        # keep their "ending" message.
+        short = svc["expiry_date"] - start <= SHORT_TRIAL
+        if not short and not logd.get("ending_at") and svc["expiry_date"] - now <= left:
             stage = "ending"
         elif not logd.get("checkin_at") and not logd.get("ending_at") and now - start >= after:
             stage = "checkin"
         if not stage:
+            continue
+        # one message of each kind per customer: two trials at once (CCTV + Imperium) get one check-in, not two
+        if await db.cmtv_trial_nurture.find_one({"_id": {"$ne": sid}, "user_id": uid, f"{stage}_at": {"$gte": now - timedelta(days=7)},
+                                                 f"{stage}_skipped": {"$exists": False}}):
+            if not dry_run:
+                await db.cmtv_trial_nurture.update_one({"_id": sid}, {"$set": {f"{stage}_at": now, "user_id": uid,
+                                                       f"{stage}_skipped": "already messaged about another trial"}}, upsert=True)
             continue
         u = await db.users.find_one({"_id": _oid(uid)})
         if not u or u.get("role") != "user" or await _paid_since(uid, start):
