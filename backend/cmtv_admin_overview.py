@@ -245,11 +245,23 @@ def init_routes():
 
         # ---- recent orders ----
         recent = []
-        async for o in orders.find({"status": {"$ne": "cancelled"}}).sort("created_at", -1).limit(8):
+        async for o in orders.find({"status": {"$ne": "cancelled"}, "total": {"$gt": 0}}).sort("created_at", -1).limit(8):   # CMTV 2026-10-08: no $0 trials
             c = await who(o.get("user_id"))
             recent.append({"id": str(o["_id"]), "customer": c["name"], "user_id": o.get("user_id"), "items": ", ".join(i.get("product_name", "") for i in o.get("items") or []),
                            "method": _label(o), "total": float(o.get("total") or 0), "status": o.get("status"),
                            "provisioning": o.get("provisioning_status"), "created_at": o["created_at"].isoformat() + "Z" if isinstance(o.get("created_at"), datetime) else None})
+        # CMTV local change 2026-10-08 (owner): payments recorded by hand in Finances (Record payment, Needs recording,
+        # line extends) show here too, newest first with the billing orders
+        async for r in cmtv_finance.D["tx"].find({"source": "manual", "deleted": {"$ne": True}, "amount": {"$gt": 0}}).sort("created_at", -1).limit(8):
+            t = r.get("created_at")
+            uid = r.get("user_id") if r.get("user_id") not in (None, "", "None") else None
+            recent.append({"id": f"fin:{r['_id']}", "customer": r.get("customer") or "Unknown", "user_id": uid,
+                           "items": f"{r.get('server') or 'Payment'}" + (f": {r['notes']}" if r.get("notes") else ""),
+                           "method": r.get("method") or "Other", "total": float(r.get("amount") or 0), "status": "recorded",
+                           "provisioning": None, "manual": True,
+                           "created_at": t.isoformat() + "Z" if isinstance(t, datetime) else None})
+        recent.sort(key=lambda x: x["created_at"] or "", reverse=True)
+        recent = recent[:8]
 
         return {
             "now": now.isoformat(), "month": month_start.strftime("%B"),

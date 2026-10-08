@@ -113,6 +113,8 @@ function orderPill(o) {
   if (o.status === 'paid' && ['failed', 'partial'].includes(o.provisioning)) return <span className="pill p-crit">Not set up</span>;
   if (o.status === 'paid') return <span className="pill p-good">Paid</span>;
   if (o.status === 'pending') return <span className="pill p-warn">Waiting payment</span>;
+  // CMTV local change 2026-10-08: a payment recorded by hand in Finances
+  if (o.status === 'recorded') return <span className="pill p-good" title="Recorded by hand in Finances">Recorded</span>;
   return <span className="pill p-mute">{o.status}</span>;
 }
 
