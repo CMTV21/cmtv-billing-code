@@ -48,6 +48,9 @@ export default function AdminPayDetailsPage() {
         <div style={{ marginTop: 10 }}><label className="note" htmlFor="pd-wlink">Wise "get paid" link (behind your Wise QR code: Share / Copy link)</label>
           <input id="pd-wlink" style={inputStyle} placeholder="https://wise.com/pay/..." value={d.wise_link || ''} onChange={set('wise_link')} />
           <p className="note" style={{ marginTop: 4 }}>Customers get a "Pay in the Wise app" button and a QR code made from it.</p></div>
+        <div style={{ marginTop: 10 }}><label className="note" htmlFor="pd-winvite">Wise invite link (Wise app: Invite friends)</label>
+          <input id="pd-winvite" style={inputStyle} placeholder="https://wise.com/invite/..." value={d.wise_invite || ''} onChange={set('wise_invite')} />
+          <p className="note" style={{ marginTop: 4 }}>Shown to Wise payers as "No Wise account? Open one free with our link". Leave empty to hide.</p></div>
         <p className="note" style={{ marginTop: 12 }}>Bank details for people without Wise: copy them from Wise (Home &gt; your CAD / USD / EUR /
           GBP balance &gt; Account details). One per line as <b>Label: value</b> so customers get a copy button for each, e.g.
           "Account holder: CMTV". Leave a currency empty to hide it.</p>

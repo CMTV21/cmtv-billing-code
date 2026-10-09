@@ -92,6 +92,10 @@ export default function PayPage() {
                 </div>
               </div>
             )}
+            {v.wise.invite && (   /* 2026-10-09: the owner's Wise invite link */
+              <p style={{ fontSize: 14 }}>No Wise account? <a href={v.wise.invite} target="_blank" rel="noopener noreferrer"><b>Open one free
+                with our link</b></a>, then come back to this page to pay.</p>
+            )}
             {Object.keys(v.wise.bank || {}).length > 0 && (
               <>
                 <h2 style={{ fontSize: 18, marginTop: 18 }}>No Wise account? Pay from your own bank</h2>

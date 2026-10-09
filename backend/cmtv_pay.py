@@ -31,7 +31,7 @@ SITE = "https://billing.cmtv.info"
 WISE = "https://api.wise.com"
 BUSINESS_PROFILE = "144918505"   # the CMTV business profile on Wise (checked 2026-10-09)
 CURRENCIES = ("CAD", "USD", "EUR", "GBP")
-DEFAULTS = {"emt_email": "cmtvpayments@pm.me", "wise_tag": "", "wise_email": "", "wise_name": "CMTV", "wise_link": "",
+DEFAULTS = {"emt_email": "cmtvpayments@pm.me", "wise_tag": "", "wise_email": "", "wise_name": "CMTV", "wise_link": "", "wise_invite": "",
             "wise_bank": {c: "" for c in CURRENCIES}, "wise_profile_id": BUSINESS_PROFILE}
 LEEWAY = 0.97
 HEX = re.compile(r"[0-9a-fA-F]{6,24}")
@@ -75,6 +75,7 @@ async def view(order, dt=None):
     if out["method"] == "wise":
         out["wise"] = {"tag": dt["wise_tag"], "email": dt["wise_email"], "name": dt["wise_name"], "reference": ref_code(oid),
                        "link": dt["wise_link"],   # 2026-10-09: the Wise "get paid" link (button + QR on the pay page)
+                       "invite": dt["wise_invite"],   # 2026-10-09: the owner's Wise invite link, for people without Wise
                        "amount": out["total"], "bank": {c: v for c, v in dt["wise_bank"].items() if v}, "ready": _wise_ready(dt)}
     try:
         import cmtv_hours
@@ -118,6 +119,8 @@ def _email(v, name):
             rows += row("or Wise email", html.escape(w["email"]))
         if w.get("link"):
             rows += row("or tap", f'<a href="{html.escape(w["link"])}" style="color:#22e6f2;">Pay in the Wise app</a>')
+        if w.get("invite"):
+            rows += row("No Wise account?", f'<a href="{html.escape(w["invite"])}" style="color:#22e6f2;">Open one free with our link</a>')
         subject = f"Pay for your CMTV order: Wise {amount}"
         body = (f'<p style="{P}">Hi {first},</p>' + p("Thanks for your order! Pay with Wise using exactly these details:") + box(rows))
         if w["bank"]:
@@ -408,12 +411,14 @@ def init_routes():
         clean = lambda v, n=200: " ".join(str(v or "").split())[:n]
         doc = {"emt_email": clean(body.get("emt_email"), 120).lower(), "wise_tag": clean(body.get("wise_tag"), 60),
                "wise_email": clean(body.get("wise_email"), 120).lower(), "wise_name": clean(body.get("wise_name"), 80) or "CMTV",
-               "wise_link": clean(body.get("wise_link"), 300),
+               "wise_link": clean(body.get("wise_link"), 300), "wise_invite": clean(body.get("wise_invite"), 300),
                "wise_bank": {c: str((body.get("wise_bank") or {}).get(c) or "").strip()[:600] for c in CURRENCIES},
                "updated_at": datetime.utcnow(), "updated_by": current_user.get("email")}
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", doc["emt_email"]):
             raise HTTPException(400, "Enter the e-Transfer email address")
         if doc["wise_link"] and not re.match(r"^https://([a-z0-9-]+\.)*wise\.com/", doc["wise_link"], re.I):
             raise HTTPException(400, "The Wise link should start with https://wise.com/")
+        if doc["wise_invite"] and not re.match(r"^https://([a-z0-9-]+\.)*wise\.com/", doc["wise_invite"], re.I):
+            raise HTTPException(400, "The Wise invite link should start with https://wise.com/")
         await D["db"].cmtv_config.update_one({"_id": "pay_details"}, {"$set": doc}, upsert=True)
         return await details()
