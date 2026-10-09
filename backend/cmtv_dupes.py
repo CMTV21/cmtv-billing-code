@@ -11,6 +11,12 @@
 5. No referral reward when the referred account and the referrer share an IP or device (checked at sign-up and again
    before the reward at the first paid order); held referrals are logged in cmtv_referral_holds + a silent Ops note.
 6. Admin > Customers > Possible duplicates: GET /api/cmtv/dupes/admin/groups.
+7. 2026-10-09 (gamebattles kept making trial accounts): bans (cmtv_bans {kind: ip|device|user, value}). Banning an account
+   bans it plus every IP and device it was seen on (last 365 days); a banned IP / device can't sign up or take a free trial,
+   and a banned account can't take a trial. The ban follows the person: each time a banned account signs in or is seen
+   from a new IP or device, that one is banned too (auto-added IPs expire after 30 days). Paid orders and signing in still work (a ban never blocks money).
+   Admins can't ban an allowed IP (allow_ips), and shared connections (mobile data, CGNAT) can hit innocent people,
+   so the refusal message points to support and every refusal is counted on the ban + an Ops note.
 """
 import asyncio
 import logging
@@ -29,12 +35,15 @@ BLOCKLIST_URL = ("https://raw.githubusercontent.com/disposable-email-domains/dis
                  "main/disposable_email_blocklist.conf")
 TRIAL_DAYS = 90
 KEEP_DAYS = 365
+AUTO_IP_DAYS = 30
 _DEV_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 _domains = {"set": set(), "loaded": None}
 
 MSG_THROWAWAY = "Please use a permanent email address. Temporary inbox services can't be used for a CMTV account."
 MSG_SAME_INBOX = ("An account already exists for this email address (Gmail ignores dots and anything after a +). "
                   "Sign in, or use Forgot password.")
+MSG_BANNED = ("New accounts and free trials aren't available from this device or internet connection. "
+              "If that isn't right, message us at @Cmtv_support_bot and we'll sort it out.")
 MSG_TRIAL = ("A free trial of this service has already been used from this home or device. "
              "If that isn't right, message us at @Cmtv_support_bot and we'll sort it out.")
 
@@ -128,6 +137,7 @@ async def record(user_id, kind: str, request: Request, extra: dict = None):
             return
         await D["db"].cmtv_fingerprints.insert_one({"user_id": str(user_id), "kind": kind, "ip": ip, "device": dev,
                                                      "at": datetime.utcnow(), **(extra or {})})
+        await _follow_ban(user_id, ip, dev)
     except Exception as e:
         log.warning(f"dupes: record failed ({type(e).__name__})")
 
@@ -148,6 +158,7 @@ async def check_trial(user_id: str, product: dict, request: Request):
     """Raise 400 if this trial was used from the same IP or device by another account in the last 90 days."""
     if not product or not product.get("is_trial"):
         return
+    await check_banned(request, user_id, f"free trial: {product.get('name') or 'trial'}")
     ip, dev = client_ip(request), device_id(request)
     cfg = await _cfg()
     if cfg.get("trial_check") is False:
@@ -249,6 +260,113 @@ async def hold_referral(referred_user_id: str, reason: str, stage: str):
         pass
 
 
+# ------------------------------------------------------------------ #7 bans
+async def _add_ban(kind: str, value: str, reason: str, source_user_id: str = "", by: str = "") -> bool:
+    """True when it's new. IPs added automatically expire after AUTO_IP_DAYS (TTL on expires_at): home IPs change and
+    mobile-data IPs are shared, so an old one would end up blocking someone else."""
+    if not value:
+        return False
+    doc = {"kind": kind, "value": value, "reason": reason, "user_id": str(source_user_id or ""), "by": by,
+           "hits": 0, "at": datetime.utcnow()}
+    if kind == "ip" and by == "auto":
+        doc["expires_at"] = datetime.utcnow() + timedelta(days=AUTO_IP_DAYS)
+    r = await D["db"].cmtv_bans.update_one({"kind": kind, "value": value}, {"$setOnInsert": doc}, upsert=True)
+    return r.upserted_id is not None
+
+
+async def _follow_ban(user_id, ip: str, dev: str):
+    """A banned account seen from a new IP / device: ban that too."""
+    if not await D["db"].cmtv_bans.find_one({"kind": "user", "value": str(user_id)}, {"_id": 1}):
+        return
+    allow = set((await _cfg()).get("allow_ips") or [])
+    if ip and ip not in allow:
+        await _add_ban("ip", ip, "seen on a banned account", user_id, "auto")
+    await _add_ban("device", dev, "seen on a banned account", user_id, "auto")
+
+
+async def ban_user(user_id: str, reason: str = "", by: str = "") -> dict:
+    """Ban an account and every IP / device it was seen on."""
+    allow = set((await _cfg()).get("allow_ips") or [])
+    ips, devs = await _prints(user_id)
+    n = {"ip": 0, "device": 0, "skipped_allowed_ips": len(ips & allow)}
+    await _add_ban("user", str(user_id), reason, user_id, by)
+    for ip in ips - allow:
+        n["ip"] += await _add_ban("ip", ip, reason, user_id, by)
+    for dev in devs:
+        n["device"] += await _add_ban("device", dev, reason, user_id, by)
+    log.info(f"dupes: account {user_id} banned by {by}: {n}")
+    return n
+
+
+async def check_banned(request: Request, user_id: str = "", what: str = "sign-up"):
+    """Raise 403 when this account, IP or device is banned. what: 'sign-up' or the trial's name."""
+    ip, dev = client_ip(request), device_id(request)
+    ors = []
+    if ip and ip not in set((await _cfg()).get("allow_ips") or []):
+        ors.append({"kind": "ip", "value": ip})
+    if dev:
+        ors.append({"kind": "device", "value": dev})
+    if user_id:
+        ors.append({"kind": "user", "value": str(user_id)})
+    if not ors:
+        return
+    db = D["db"]
+    hit = await db.cmtv_bans.find_one({"$or": ors})
+    if not hit:
+        return
+    await db.cmtv_bans.update_one({"_id": hit["_id"]}, {"$inc": {"hits": 1}, "$set": {"last_hit_at": datetime.utcnow(), "last_hit": what}})
+    if user_id and hit["kind"] == "device":   # an account used on a banned device is the same person: the ban follows it
+        await _add_ban("user", str(user_id), "used on a banned device", hit.get("user_id"), "auto")   # (not for a shared IP)
+    log.info(f"dupes: {what} refused, banned {hit['kind']} (user {user_id or '-'})")
+    try:
+        import cmtv_notify
+        from html import escape
+        await cmtv_notify.ops(f"⛔ <b>Banned visitor refused</b>: {escape(what)} (banned {hit['kind']}). "
+                              f"Admin &gt; Customers &gt; Possible duplicates.", kind="billing", silent=True)
+    except Exception:
+        pass
+    raise HTTPException(403, MSG_BANNED)
+
+
+async def list_bans():
+    db = D["db"]
+    rows = [r async for r in db.cmtv_bans.find().sort("at", -1).limit(500)]
+    ids = {r.get("user_id") for r in rows if r.get("user_id")} | {r["value"] for r in rows if r["kind"] == "user"}
+    users = {str(u["_id"]): u async for u in db.users.find({"_id": {"$in": [ObjectId(i) for i in ids if ObjectId.is_valid(i)]}},
+                                                          {"name": 1, "email": 1})}
+    out = []
+    for r in rows:
+        u = users.get(r["value"] if r["kind"] == "user" else r.get("user_id") or "") or {}
+        out.append({"id": str(r["_id"]), "kind": r["kind"], "value": r["value"], "reason": r.get("reason") or "",
+                    "user_id": r["value"] if r["kind"] == "user" else r.get("user_id") or "",
+                    "name": u.get("name") or "", "email": u.get("email") or "", "by": r.get("by") or "",
+                    "hits": r.get("hits", 0), "at": _o(r.get("at")), "last_hit_at": _o(r.get("last_hit_at")),
+                    "expires_at": _o(r.get("expires_at"))})
+    return out
+
+
+async def _find_user(who: str):
+    """An account id, an exact email, or a name / email containing the text (only when exactly one matches)."""
+    db = D["db"]
+    if ObjectId.is_valid(who):
+        u = await db.users.find_one({"_id": ObjectId(who)}, {"name": 1, "email": 1, "role": 1})
+        if u:
+            return u
+    u = await db.users.find_one({"email": {"$regex": f"^{re.escape(who)}$", "$options": "i"}}, {"name": 1, "email": 1, "role": 1})
+    if u:
+        return u
+    rx = {"$regex": re.escape(who), "$options": "i"}
+    found = [u async for u in db.users.find({"$or": [{"email": rx}, {"name": rx}], "role": "user"},
+                                            {"name": 1, "email": 1, "role": 1}).limit(11)]
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise HTTPException(404, f"No customer account matches '{who}'.")
+    names = ", ".join(f"{u.get('name') or ''} <{u.get('email')}>" for u in found[:10])
+    raise HTTPException(400, f"{len(found)}{'+' if len(found) > 10 else ''} accounts match '{who}': {names}. "
+                             "Use the full email address.")
+
+
 # ------------------------------------------------------------------ #6 admin list
 def _o(v):
     return v.isoformat() + "Z" if isinstance(v, datetime) else v
@@ -305,6 +423,7 @@ async def groups():
     dom = await db.cmtv_config.find_one({"_id": "disposable_domains"}, {"updated_at": 1, "domains": {"$slice": 0}}) or {}
     return {"groups": res, "trial_refusals": refusals, "referral_holds": holds,
             "blocklist": {"updated_at": _o(dom.get("updated_at")), "count": len(_domains["set"])},
+            "bans": await list_bans(),
             "fingerprints_since": _o(await _first_print())}
 
 
@@ -329,6 +448,49 @@ def init_routes():
         await D["db"].cmtv_config.update_one({"_id": "dupes"}, {op: {"allow_ips": ip}}, upsert=True)
         return {"ok": True}
 
+    @router.post("/admin/ban")
+    async def ban(data: dict = Body(...), current_user: dict = Depends(admin)):
+        """{who: account id / email / name} bans the account + its IPs and devices; {user_ids: [...]} several accounts
+        (a duplicates group); {ip: "1.2.3.4"} one connection. Optional reason."""
+        reason = str(data.get("reason") or "").strip()[:200] or "repeat free trials"
+        by = current_user.get("email") or str(current_user.get("sub") or "")
+        ip = str(data.get("ip") or "").strip()[:64]
+        if ip:
+            if ip in set((await _cfg()).get("allow_ips") or []):
+                raise HTTPException(400, "That IP is on the allowed list. Remove it from there first.")
+            await _add_ban("ip", ip, reason, "", by)
+            return {"ok": True, "ip": 1, "device": 0, "accounts": []}
+        ids = [str(i) for i in (data.get("user_ids") or []) if ObjectId.is_valid(str(i))]
+        who = str(data.get("who") or "").strip()
+        if who:
+            ids.append(str((await _find_user(who))["_id"]))
+        if not ids:
+            raise HTTPException(400, "Give an account (email, name or id) or an IP.")
+        tot, accounts = {"ip": 0, "device": 0, "skipped_allowed_ips": 0}, []
+        for uid in dict.fromkeys(ids):
+            u = await D["db"].users.find_one({"_id": ObjectId(uid)}, {"name": 1, "email": 1, "role": 1})
+            if not u:
+                continue
+            if u.get("role") not in ("user", None):
+                raise HTTPException(400, f"{u.get('email')} is a staff account and can't be banned.")
+            for k, v in (await ban_user(uid, reason, by)).items():
+                tot[k] += v
+            accounts.append({"id": uid, "name": u.get("name") or "", "email": u.get("email") or ""})
+        return {"ok": True, **tot, "accounts": accounts}
+
+    @router.post("/admin/unban")
+    async def unban(data: dict = Body(...), current_user: dict = Depends(admin)):
+        """{id: ban id} lifts one ban; {user_id} lifts an account's ban and every IP / device banned because of it."""
+        db = D["db"]
+        if data.get("user_id"):
+            r = await db.cmtv_bans.delete_many({"$or": [{"kind": "user", "value": str(data["user_id"])},
+                                                        {"user_id": str(data["user_id"])}]})
+        elif ObjectId.is_valid(str(data.get("id") or "")):
+            r = await db.cmtv_bans.delete_one({"_id": ObjectId(str(data["id"]))})
+        else:
+            raise HTTPException(400, "Which ban?")
+        return {"ok": True, "removed": r.deleted_count}
+
 
 # ------------------------------------------------------------------ startup
 async def _loop():
@@ -347,4 +509,6 @@ async def startup():
     await db.cmtv_fingerprints.create_index("user_id")
     await db.cmtv_trial_marks.create_index([("product_id", 1), ("at", -1)])
     await db.cmtv_trial_marks.create_index("at", expireAfterSeconds=KEEP_DAYS * 86400)
+    await db.cmtv_bans.create_index([("kind", 1), ("value", 1)], unique=True)
+    await db.cmtv_bans.create_index("expires_at", expireAfterSeconds=0)
     asyncio.create_task(_loop())
