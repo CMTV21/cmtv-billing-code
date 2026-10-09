@@ -112,14 +112,16 @@ export default function PayPage() {
                 ))}
               </>
             )}
-            <p style={{ fontSize: 14, color: '#8391b5' }}>Wise transfers usually arrive in minutes; bank transfers can take 1-2 business days.
+            <p style={{ fontSize: 14, color: '#8391b5' }}>Wise transfers usually arrive in minutes
+              {Object.keys(v.wise.bank || {}).length > 0 ? '; bank transfers can take 1-2 business days' : ''}.
               This page updates by itself when it's paid. We've also emailed you these details.</p>
           </>
         ) : (
           <p>This order is waiting for payment. If you're not sure how to pay, <Link to="/tickets">message us</Link>.</p>
         )}
 
-        <p style={{ marginTop: 18, fontSize: 14 }}>Order number <code>{v.order_id}</code> · <Link to="/orders">My orders</Link>
+        {/* 2026-10-09 (owner): the short order number, same as the reference/message above */}
+        <p style={{ marginTop: 18, fontSize: 14 }}>Order number <code>{String(v.order_id).slice(0, 10).toUpperCase()}</code> · <Link to="/orders">My orders</Link>
           {' '}· Questions? <Link to="/tickets">Contact us</Link></p>
       </article>
     </div>
