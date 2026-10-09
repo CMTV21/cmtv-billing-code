@@ -29,6 +29,8 @@ import RedeemPage from './pages/cmtv/RedeemPage'; // CMTV local change 2026-10-0
 import AdminGiftsPage from './pages/cmtv/AdminGiftsPage'; // CMTV local change 2026-10-05: Admin > Gift cards
 import HiPage from './pages/cmtv/HiPage'; // CMTV local change 2026-10-05: personal link for panel-only customers
 import SportsPage from './pages/cmtv/SportsPage'; // CMTV local change 2026-10-05: What's on tonight
+import PayPage from './pages/cmtv/PayPage'; // CMTV local change 2026-10-09: Pay for your order (exact e-Transfer / Wise details)
+import AdminPayDetailsPage from './pages/cmtv/AdminPayDetailsPage'; // CMTV local change 2026-10-09: Admin > Payment details
 import TopAudiobooksPage from './pages/cmtv/TopAudiobooksPage'; // CMTV local change 2026-10-06: NYT bestsellers
 import AdminReachPage from './pages/cmtv/AdminReachPage'; // CMTV local change 2026-10-05: Admin > Reach customers
 import AdminBusinessPlanPage from './pages/cmtv/AdminBusinessPlanPage'; // CMTV local change 2026-10-05: Admin > Business plan
@@ -250,6 +252,7 @@ function App() {
             <Route path="/redeem" element={<CmtvAccountFrame><RedeemPage /></CmtvAccountFrame>} />
             <Route path="/hi/:token" element={<CmtvAccountFrame><HiPage /></CmtvAccountFrame>} />
             <Route path="/sports" element={<CmtvAccountFrame><SportsPage /></CmtvAccountFrame>} />
+            <Route path="/pay/:orderId" element={<ProtectedRoute><CmtvAccountFrame><PayPage /></CmtvAccountFrame></ProtectedRoute>} />
             <Route path="/audiobooks/top" element={<CmtvAccountFrame><TopAudiobooksPage /></CmtvAccountFrame>} />
             <Route path="/privacy" element={<CmtvAccountFrame><PrivacyPage /></CmtvAccountFrame>} />
             <Route path="/review" element={<CmtvAccountFrame><ReviewPage /></CmtvAccountFrame>} />
@@ -561,6 +564,7 @@ function App() {
             />
             <Route path="/admin/customer" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminCustomerPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
             <Route path="/admin/customer/:id" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminCustomerPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/pay-details" element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminPayDetailsPage /></CmtvAdminFrame></AdminRoute></ProtectedRoute>} />
             <Route
               path="/admin/stremio"
               element={<ProtectedRoute><AdminRoute><CmtvAdminFrame><AdminAddonsPage key="nuvio" module="nuvio" /></CmtvAdminFrame></AdminRoute></ProtectedRoute>}

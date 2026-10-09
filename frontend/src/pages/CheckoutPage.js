@@ -205,8 +205,14 @@ export default function CheckoutPage() {
       
       if (['manual', 'emt', 'zelle', 'cashapp', 'venmo', 'wise'].includes(paymentMethod) && Number(response.data.total) > 0) { // CMTV 2026-09-25: not for $0 orders
         clearCart();
-        navigate('/orders');
-        toast.success(paymentMethod === 'manual' ? 'Order placed! Please wait for admin to confirm payment.' : `Order placed! Please send your ${paymentMethod.toUpperCase()} payment now. Include your Order ID.`);
+        // CMTV local change 2026-10-09: e-Transfer / Wise go to "Pay for your order" with every exact detail (cmtv_pay)
+        if (['emt', 'wise'].includes(paymentMethod)) {
+          navigate(`/pay/${orderId}`);
+          toast.success('Order placed! Here are the exact details to pay.');
+        } else {
+          navigate('/orders');
+          toast.success(paymentMethod === 'manual' ? 'Order placed! Please wait for admin to confirm payment.' : `Order placed! Please send your ${paymentMethod.toUpperCase()} payment now. Include your Order ID.`);
+        }
       }
       
       // Free trial / fully paid with credits
@@ -1352,7 +1358,9 @@ export default function CheckoutPage() {
                         Interac e-Transfer Instructions
                       </h4>
                       <div className="text-sm text-emerald-800 dark:text-emerald-300 whitespace-pre-line">
-                        {settings?.emt?.instructions || 'Please contact support for e-Transfer payment details.'}
+                        {/* CMTV local change 2026-10-09: the exact details come on the next page + by email (cmtv_pay) */}
+                        Place your order and the next page gives you every exact detail: the email to send to, the amount, and the
+                        answer and message to use (with copy buttons). We email them to you too.
                       </div>
                       <div className="mt-3 pt-3 border-t border-emerald-200 dark:border-emerald-700">
                         <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">
@@ -1451,7 +1459,9 @@ export default function CheckoutPage() {
                         Wise Payment Instructions
                       </h4>
                       <div className="text-sm text-green-800 dark:text-green-300 whitespace-pre-line">
-                        {settings?.wise?.instructions || 'Please contact support for Wise payment details.'}
+                        {/* CMTV local change 2026-10-09: the exact details come on the next page + by email (cmtv_pay) */}
+                        Place your order and the next page gives you every exact detail: our Wisetag, or bank details in CAD, USD,
+                        EUR or GBP if you don't use Wise, and your reference. Your order is set up automatically when the payment arrives.
                       </div>
                       <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
                         <p className="text-sm font-medium text-green-900 dark:text-green-200">

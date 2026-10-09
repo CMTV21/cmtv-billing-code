@@ -184,6 +184,12 @@ import cmtv_hours
 cmtv_hours.D["get_current_admin_user"] = get_current_admin_user
 cmtv_hours.init_routes()
 app.include_router(cmtv_hours.router)
+# CMTV local change 2026-10-09: "Pay for your order" page (exact e-Transfer / Wise details) + Wise payment matching (cmtv_pay.py)
+import cmtv_pay
+cmtv_pay.D["get_current_user"] = get_current_user
+cmtv_pay.D["get_current_admin_user"] = get_current_admin_user
+cmtv_pay.init_routes()
+app.include_router(cmtv_pay.router)
 # CMTV local change 2026-10-05: gift cards (cmtv_gifts.py): bought at checkout, redeemed as account credit
 import cmtv_gifts
 cmtv_gifts.D["get_current_user"] = get_current_user
@@ -1120,6 +1126,16 @@ async def startup_event():
     cmtv_etransfer.init(orders=orders_collection, users=users_collection, etransfers=db.cmtv_etransfers,
                         oid=str_to_objectid, provision=provision_order_services, get_settings=get_settings)
     await cmtv_etransfer.startup()
+
+    # CMTV local change 2026-10-09: a matched Wise payment takes the same steps as Admin > Orders > Mark paid
+    async def _cmtv_pay_mark_paid(order_id):
+        bt = BackgroundTasks()
+        await mark_order_paid(order_id, bt, current_user={"sub": "wise", "email": "wise-auto", "role": "admin"},
+                              data={"payment_method": "wise"})
+        await bt()
+    cmtv_pay.init(db=db, orders=orders_collection, users=users_collection, get_settings=get_settings,
+                  get_email_service=get_configured_email_service, mark_paid=_cmtv_pay_mark_paid)
+    cmtv_pay.start()
     cmtv_kb_email.init(db=db, get_email_service=get_configured_email_service)  # CMTV local change 2026-09-28
     cmtv_telegram_alerts.init(db=db)  # CMTV local change 2026-09-28: Telegram alerts
     await cmtv_telegram_alerts.startup()
@@ -4348,9 +4364,9 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
     await send_sms_notification("new_order", f"Customer: {user.get('name', 'Unknown')}\nEmail: {user.get('email', 'N/A')}\nTotal: ${final_total:.2f}\n\nItems:\n{order_items_text}")
     
     # CMTV local change 2026-10-05: e-Transfer order email (how to pay, order id for the message, when it'll be set up)
-    if payment_method == "emt" and final_total > 0:
-        background_tasks.add_task(cmtv_hours.send_emt_pending, order_id, user, final_total,
-                                  settings.get("emt", {}).get("instructions", ""))
+    # CMTV local change 2026-10-09: one email with every exact detail for e-Transfer AND Wise orders (cmtv_pay)
+    if payment_method in ("emt", "wise") and final_total > 0:
+        background_tasks.add_task(cmtv_pay.send_pending, order_id, user, final_total, payment_method)
 
     # If fully paid with credits, mark order as paid and provision service
     if final_total == 0:

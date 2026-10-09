@@ -23,6 +23,7 @@ const NAV = [
     { label: 'Finances', to: '/admin/finances' }, { label: 'Analytics', to: '/admin/analytics' },
     { label: 'Invoices', to: '/admin/invoices', perm: 'orders' }, { label: 'Refunds', to: '/admin/refunds' },
     { label: 'Coupons', to: '/admin/coupons' }, { label: 'Gift cards', to: '/admin/gifts' },
+    { label: 'Payment details', to: '/admin/pay-details' },   // 2026-10-09: e-Transfer / Wise details customers see
   ] },
   { group: 'Growth', items: [
     { label: 'Business plan', to: '/admin/business-plan' }, { label: 'Referrals', to: '/admin/referrals' },
