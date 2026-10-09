@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { QRCodeSVG } from 'qrcode.react';   // 2026-10-09: QR of the owner's Wise "get paid" link
 import api from '../../api/api';
 import '../../components/cmtv/cmtv-kb.css';
 
@@ -80,6 +81,18 @@ export default function PayPage() {
               {v.wise.tag && <Row label="Wise users: send to" value={v.wise.tag} />}
               {v.wise.email && <Row label="Or the Wise email" value={v.wise.email} />}
             </div>
+            {v.wise.link && (
+              <div style={{ ...card, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', padding: 16 }}>
+                <div style={{ background: '#fff', padding: 8, borderRadius: 10, flex: 'none' }}>
+                  <QRCodeSVG value={v.wise.link} size={132} />
+                </div>
+                <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                  <p style={{ margin: '0 0 10px' }}>Have Wise? Scan this with your phone, or tap the button, then enter the amount
+                    <b> {v.wise.amount.toFixed(2)}</b> and the reference <b>{v.wise.reference}</b>.</p>
+                  <a className="kb-btn glow" href={v.wise.link} target="_blank" rel="noopener noreferrer">Pay in the Wise app</a>
+                </div>
+              </div>
+            )}
             {Object.keys(v.wise.bank || {}).length > 0 && (
               <>
                 <h2 style={{ fontSize: 18, marginTop: 18 }}>No Wise account? Pay from your own bank</h2>

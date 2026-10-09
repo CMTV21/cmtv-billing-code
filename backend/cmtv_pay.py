@@ -8,7 +8,7 @@ owner pastes from Wise}, wise_profile_id (the CMTV business profile). Admin > Pa
   GET  /api/cmtv/pay/admin/details      admin: the details;  POST same path: save them
 Order email: send_pending(order_id, user, total, method) for e-Transfer and Wise orders (one email, every detail + a button to
 the /pay page). Replaces cmtv_hours.send_emt_pending at order time (server.py create_order).
-Wise watcher (every 5 minutes): reads the business profile's balance statements with the token in Admin > Settings > Payment
+Wise watcher (every minute since 2026-10-09; was 5 minutes): reads the business profile's balance statements with the token in Admin > Settings > Payment
 gateways > Wise (read-only is enough). An incoming payment received after the watcher first ran, whose reference has a pending
 order's number (its first 6-24 characters) and whose amount covers the order (CAD, or another currency at Wise's rate with 3%
 leeway) -> the same steps as Admin > Orders > Mark paid (payment method Wise: paid email, alerts, setup) + Ops Billing note.
@@ -31,7 +31,7 @@ SITE = "https://billing.cmtv.info"
 WISE = "https://api.wise.com"
 BUSINESS_PROFILE = "144918505"   # the CMTV business profile on Wise (checked 2026-10-09)
 CURRENCIES = ("CAD", "USD", "EUR", "GBP")
-DEFAULTS = {"emt_email": "cmtvpayments@pm.me", "wise_tag": "", "wise_email": "", "wise_name": "CMTV",
+DEFAULTS = {"emt_email": "cmtvpayments@pm.me", "wise_tag": "", "wise_email": "", "wise_name": "CMTV", "wise_link": "",
             "wise_bank": {c: "" for c in CURRENCIES}, "wise_profile_id": BUSINESS_PROFILE}
 LEEWAY = 0.97
 HEX = re.compile(r"[0-9a-fA-F]{6,24}")
@@ -59,7 +59,7 @@ async def details():
 
 
 def _wise_ready(dt):
-    return bool(dt["wise_tag"] or dt["wise_email"] or any(dt["wise_bank"].values()))
+    return bool(dt["wise_tag"] or dt["wise_email"] or dt["wise_link"] or any(dt["wise_bank"].values()))
 
 
 async def view(order, dt=None):
@@ -73,6 +73,7 @@ async def view(order, dt=None):
         out["emt"] = {"send_to": dt["emt_email"], "amount": out["total"], "question": EMT_QUESTION, "answer": oid, "message": oid}
     if out["method"] == "wise":
         out["wise"] = {"tag": dt["wise_tag"], "email": dt["wise_email"], "name": dt["wise_name"], "reference": ref_code(oid),
+                       "link": dt["wise_link"],   # 2026-10-09: the Wise "get paid" link (button + QR on the pay page)
                        "amount": out["total"], "bank": {c: v for c, v in dt["wise_bank"].items() if v}, "ready": _wise_ready(dt)}
     try:
         import cmtv_hours
@@ -114,6 +115,8 @@ def _email(v, name):
             rows += row("Wise users: send to", html.escape(w["tag"]))
         if w["email"]:
             rows += row("or Wise email", html.escape(w["email"]))
+        if w.get("link"):
+            rows += row("or tap", f'<a href="{html.escape(w["link"])}" style="color:#22e6f2;">Pay in the Wise app</a>')
         subject = f"Pay for your CMTV order: Wise {amount}"
         body = (f'<p style="{P}">Hi {first},</p>' + p("Thanks for your order! Pay with Wise using exactly these details:") + box(rows))
         if w["bank"]:
@@ -293,7 +296,7 @@ async def _loop():
                 last_alert = datetime.utcnow()
                 await _ops(f"⚠️ <b>Wise check failing</b>: {html.escape(str(e))[:200]}. Wise payments aren't being matched; check the "
                            "token in Admin > Settings > Payment gateways > Wise.", "critical")
-        await asyncio.sleep(300)
+        await asyncio.sleep(60)   # 2026-10-09 (owner): every minute (was 5); 5 small read-only calls
 
 
 def start():
@@ -322,9 +325,12 @@ def init_routes():
         clean = lambda v, n=200: " ".join(str(v or "").split())[:n]
         doc = {"emt_email": clean(body.get("emt_email"), 120).lower(), "wise_tag": clean(body.get("wise_tag"), 60),
                "wise_email": clean(body.get("wise_email"), 120).lower(), "wise_name": clean(body.get("wise_name"), 80) or "CMTV",
+               "wise_link": clean(body.get("wise_link"), 300),
                "wise_bank": {c: str((body.get("wise_bank") or {}).get(c) or "").strip()[:600] for c in CURRENCIES},
                "updated_at": datetime.utcnow(), "updated_by": current_user.get("email")}
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", doc["emt_email"]):
             raise HTTPException(400, "Enter the e-Transfer email address")
+        if doc["wise_link"] and not re.match(r"^https://([a-z0-9-]+\.)*wise\.com/", doc["wise_link"], re.I):
+            raise HTTPException(400, "The Wise link should start with https://wise.com/")
         await D["db"].cmtv_config.update_one({"_id": "pay_details"}, {"$set": doc}, upsert=True)
         return await details()

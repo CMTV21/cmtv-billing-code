@@ -45,6 +45,9 @@ export default function AdminPayDetailsPage() {
           <div><label className="note" htmlFor="pd-wemail">Wise email (optional)</label>
             <input id="pd-wemail" style={inputStyle} value={d.wise_email} onChange={set('wise_email')} /></div>
         </div>
+        <div style={{ marginTop: 10 }}><label className="note" htmlFor="pd-wlink">Wise "get paid" link (behind your Wise QR code: Share / Copy link)</label>
+          <input id="pd-wlink" style={inputStyle} placeholder="https://wise.com/pay/..." value={d.wise_link || ''} onChange={set('wise_link')} />
+          <p className="note" style={{ marginTop: 4 }}>Customers get a "Pay in the Wise app" button and a QR code made from it.</p></div>
         <p className="note" style={{ marginTop: 12 }}>Bank details for people without Wise: copy them from Wise (Home &gt; your CAD / USD / EUR /
           GBP balance &gt; Account details). One per line as <b>Label: value</b> so customers get a copy button for each, e.g.
           "Account holder: CMTV". Leave a currency empty to hide it.</p>
@@ -55,7 +58,7 @@ export default function AdminPayDetailsPage() {
               placeholder={c === 'EUR' ? 'Account holder: CMTV\nIBAN: ...\nSwift/BIC: ...' : 'Account holder: CMTV\nAccount number: ...'} />
           </div>
         ))}
-        <p className="note" style={{ marginTop: 10 }}>Wise payments are matched automatically every 5 minutes (reference = the order's first 10
+        <p className="note" style={{ marginTop: 10 }}>Wise payments are matched automatically every minute (reference = the order's first 10
           characters, amount covers the order): the order is marked paid and set up. Anything unclear comes to Ops Billing.</p>
       </section>
 
