@@ -17,6 +17,10 @@
    from a new IP or device, that one is banned too (auto-added IPs expire after 30 days). Paid orders and signing in still work (a ban never blocks money).
    Admins can't ban an allowed IP (allow_ips), and shared connections (mobile data, CGNAT) can hit innocent people,
    so the refusal message points to support and every refusal is counted on the ban + an Ops note.
+   Reverting: cmtv_config dupes.bans = false (the switch on the admin page) turns every ban check off at once without a
+   deploy, keeping the list. Every ban / unban is logged with the bans it touched (cmtv_ban_log) and can be undone from
+   the page. Nothing existing is changed by this feature (bans live only in cmtv_bans / cmtv_ban_log), so rolling the
+   code back to before 2026-10-09 is safe: those two collections are then simply unused.
 """
 import asyncio
 import logging
@@ -261,7 +265,7 @@ async def hold_referral(referred_user_id: str, reason: str, stage: str):
 
 
 # ------------------------------------------------------------------ #7 bans
-async def _add_ban(kind: str, value: str, reason: str, source_user_id: str = "", by: str = "") -> bool:
+async def _add_ban(kind: str, value: str, reason: str, source_user_id: str = "", by: str = "", added: list = None) -> bool:
     """True when it's new. IPs added automatically expire after AUTO_IP_DAYS (TTL on expires_at): home IPs change and
     mobile-data IPs are shared, so an old one would end up blocking someone else."""
     if not value:
@@ -271,12 +275,22 @@ async def _add_ban(kind: str, value: str, reason: str, source_user_id: str = "",
     if kind == "ip" and by == "auto":
         doc["expires_at"] = datetime.utcnow() + timedelta(days=AUTO_IP_DAYS)
     r = await D["db"].cmtv_bans.update_one({"kind": kind, "value": value}, {"$setOnInsert": doc}, upsert=True)
+    if r.upserted_id is not None and added is not None:
+        added.append({"kind": kind, "value": value})
     return r.upserted_id is not None
+
+
+async def bans_on() -> bool:
+    return (await _cfg()).get("bans") is not False
+
+
+async def _log(action: str, by: str, **extra):
+    await D["db"].cmtv_ban_log.insert_one({"action": action, "by": by, "at": datetime.utcnow(), **extra})
 
 
 async def _follow_ban(user_id, ip: str, dev: str):
     """A banned account seen from a new IP / device: ban that too."""
-    if not await D["db"].cmtv_bans.find_one({"kind": "user", "value": str(user_id)}, {"_id": 1}):
+    if not await bans_on() or not await D["db"].cmtv_bans.find_one({"kind": "user", "value": str(user_id)}, {"_id": 1}):
         return
     allow = set((await _cfg()).get("allow_ips") or [])
     if ip and ip not in allow:
@@ -284,25 +298,28 @@ async def _follow_ban(user_id, ip: str, dev: str):
     await _add_ban("device", dev, "seen on a banned account", user_id, "auto")
 
 
-async def ban_user(user_id: str, reason: str = "", by: str = "") -> dict:
-    """Ban an account and every IP / device it was seen on."""
+async def ban_user(user_id: str, reason: str = "", by: str = "", added: list = None) -> dict:
+    """Ban an account and every IP / device it was seen on. added collects the bans that are new (for the log)."""
     allow = set((await _cfg()).get("allow_ips") or [])
     ips, devs = await _prints(user_id)
     n = {"ip": 0, "device": 0, "skipped_allowed_ips": len(ips & allow)}
-    await _add_ban("user", str(user_id), reason, user_id, by)
+    await _add_ban("user", str(user_id), reason, user_id, by, added)
     for ip in ips - allow:
-        n["ip"] += await _add_ban("ip", ip, reason, user_id, by)
+        n["ip"] += await _add_ban("ip", ip, reason, user_id, by, added)
     for dev in devs:
-        n["device"] += await _add_ban("device", dev, reason, user_id, by)
+        n["device"] += await _add_ban("device", dev, reason, user_id, by, added)
     log.info(f"dupes: account {user_id} banned by {by}: {n}")
     return n
 
 
 async def check_banned(request: Request, user_id: str = "", what: str = "sign-up"):
     """Raise 403 when this account, IP or device is banned. what: 'sign-up' or the trial's name."""
+    cfg = await _cfg()
+    if cfg.get("bans") is False:   # the off switch
+        return
     ip, dev = client_ip(request), device_id(request)
     ors = []
-    if ip and ip not in set((await _cfg()).get("allow_ips") or []):
+    if ip and ip not in set(cfg.get("allow_ips") or []):
         ors.append({"kind": "ip", "value": ip})
     if dev:
         ors.append({"kind": "device", "value": dev})
@@ -343,6 +360,47 @@ async def list_bans():
                     "hits": r.get("hits", 0), "at": _o(r.get("at")), "last_hit_at": _o(r.get("last_hit_at")),
                     "expires_at": _o(r.get("expires_at"))})
     return out
+
+
+async def ban_log(limit: int = 20):
+    out = []
+    async for r in D["db"].cmtv_ban_log.find().sort("at", -1).limit(limit):
+        out.append({"id": str(r["_id"]), "action": r["action"], "by": r.get("by") or "", "at": _o(r.get("at")),
+                    "accounts": r.get("accounts") or [], "ip": r.get("ip") or "", "on": r.get("on"),
+                    "count": len(r.get("bans") or []), "undone_at": _o(r.get("undone_at")), "undone_by": r.get("undone_by") or ""})
+    return out
+
+
+async def undo(log_id: str, by: str) -> dict:
+    """Put the bans back how they were before one logged action."""
+    db = D["db"]
+    e = await db.cmtv_ban_log.find_one({"_id": ObjectId(log_id)})
+    if not e:
+        raise HTTPException(404, "That change isn't in the log.")
+    if e.get("undone_at"):
+        raise HTTPException(400, "That change was already undone.")
+    n = 0
+    if e["action"] == "ban":
+        # what this ban added, plus anything banned automatically because of these accounts since
+        ors = [{"kind": b["kind"], "value": b["value"]} for b in e.get("bans") or []]
+        ors += [{"user_id": a["id"], "by": "auto"} for a in e.get("accounts") or []]
+        if ors:
+            n = (await db.cmtv_bans.delete_many({"$or": ors})).deleted_count
+    elif e["action"] == "unban":
+        now = datetime.utcnow()
+        for b in e.get("bans") or []:
+            if b.get("expires_at") and b["expires_at"] < now:
+                continue
+            b = {k: v for k, v in b.items() if k != "_id"}
+            r = await db.cmtv_bans.update_one({"kind": b["kind"], "value": b["value"]}, {"$setOnInsert": b}, upsert=True)
+            n += r.upserted_id is not None
+    elif e["action"] == "switch":
+        await db.cmtv_config.update_one({"_id": "dupes"}, {"$set": {"bans": not e.get("on")}}, upsert=True)
+    else:
+        raise HTTPException(400, "That change can't be undone.")
+    await db.cmtv_ban_log.update_one({"_id": e["_id"]}, {"$set": {"undone_at": datetime.utcnow(), "undone_by": by}})
+    log.info(f"dupes: {e['action']} {log_id} undone by {by} ({n} bans)")
+    return {"ok": True, "changed": n}
 
 
 async def _find_user(who: str):
@@ -423,7 +481,7 @@ async def groups():
     dom = await db.cmtv_config.find_one({"_id": "disposable_domains"}, {"updated_at": 1, "domains": {"$slice": 0}}) or {}
     return {"groups": res, "trial_refusals": refusals, "referral_holds": holds,
             "blocklist": {"updated_at": _o(dom.get("updated_at")), "count": len(_domains["set"])},
-            "bans": await list_bans(),
+            "bans": await list_bans(), "bans_on": await bans_on(), "ban_log": await ban_log(),
             "fingerprints_since": _o(await _first_print())}
 
 
@@ -458,38 +516,67 @@ def init_routes():
         if ip:
             if ip in set((await _cfg()).get("allow_ips") or []):
                 raise HTTPException(400, "That IP is on the allowed list. Remove it from there first.")
-            await _add_ban("ip", ip, reason, "", by)
-            return {"ok": True, "ip": 1, "device": 0, "accounts": []}
+            added = []
+            await _add_ban("ip", ip, reason, "", by, added)
+            if added:
+                await _log("ban", by, ip=ip, reason=reason, bans=added, accounts=[])
+            return {"ok": True, "ip": len(added), "device": 0, "accounts": []}
         ids = [str(i) for i in (data.get("user_ids") or []) if ObjectId.is_valid(str(i))]
         who = str(data.get("who") or "").strip()
         if who:
             ids.append(str((await _find_user(who))["_id"]))
         if not ids:
             raise HTTPException(400, "Give an account (email, name or id) or an IP.")
-        tot, accounts = {"ip": 0, "device": 0, "skipped_allowed_ips": 0}, []
+        tot, accounts, added = {"ip": 0, "device": 0, "skipped_allowed_ips": 0}, [], []
         for uid in dict.fromkeys(ids):
             u = await D["db"].users.find_one({"_id": ObjectId(uid)}, {"name": 1, "email": 1, "role": 1})
             if not u:
                 continue
             if u.get("role") not in ("user", None):
                 raise HTTPException(400, f"{u.get('email')} is a staff account and can't be banned.")
-            for k, v in (await ban_user(uid, reason, by)).items():
+            for k, v in (await ban_user(uid, reason, by, added)).items():
                 tot[k] += v
             accounts.append({"id": uid, "name": u.get("name") or "", "email": u.get("email") or ""})
+        if added:
+            await _log("ban", by, reason=reason, bans=added, accounts=accounts)
         return {"ok": True, **tot, "accounts": accounts}
 
     @router.post("/admin/unban")
     async def unban(data: dict = Body(...), current_user: dict = Depends(admin)):
-        """{id: ban id} lifts one ban; {user_id} lifts an account's ban and every IP / device banned because of it."""
+        """{id: ban id} lifts one ban; {user_id} lifts an account's ban and every IP / device banned because of it.
+        The removed bans are kept in the log so the unban can be undone."""
         db = D["db"]
         if data.get("user_id"):
-            r = await db.cmtv_bans.delete_many({"$or": [{"kind": "user", "value": str(data["user_id"])},
-                                                        {"user_id": str(data["user_id"])}]})
+            q = {"$or": [{"kind": "user", "value": str(data["user_id"])}, {"user_id": str(data["user_id"])}]}
         elif ObjectId.is_valid(str(data.get("id") or "")):
-            r = await db.cmtv_bans.delete_one({"_id": ObjectId(str(data["id"]))})
+            q = {"_id": ObjectId(str(data["id"]))}
         else:
             raise HTTPException(400, "Which ban?")
-        return {"ok": True, "removed": r.deleted_count}
+        gone = [b async for b in db.cmtv_bans.find(q)]
+        if gone:
+            await db.cmtv_bans.delete_many({"_id": {"$in": [b["_id"] for b in gone]}})
+            ids = {b["value"] if b["kind"] == "user" else b.get("user_id") for b in gone} - {"", None}
+            users = {str(u["_id"]): u async for u in db.users.find(
+                {"_id": {"$in": [ObjectId(i) for i in ids if ObjectId.is_valid(i)]}}, {"name": 1, "email": 1})}
+            await _log("unban", current_user.get("email") or "", bans=gone,
+                       ip=next((b["value"] for b in gone if b["kind"] == "ip" and len(gone) == 1), ""),
+                       accounts=[{"id": i, "name": (users.get(i) or {}).get("name") or "", "email": (users.get(i) or {}).get("email") or ""}
+                                 for i in ids])
+        return {"ok": True, "removed": len(gone)}
+
+    @router.post("/admin/bans-switch")
+    async def bans_switch(data: dict = Body(...), current_user: dict = Depends(admin)):
+        """{on: false} turns every ban check off (the list is kept); {on: true} turns them back on."""
+        on = bool(data.get("on"))
+        await D["db"].cmtv_config.update_one({"_id": "dupes"}, {"$set": {"bans": on}}, upsert=True)
+        await _log("switch", current_user.get("email") or "", on=on)
+        return {"ok": True, "on": on}
+
+    @router.post("/admin/ban-undo")
+    async def ban_undo(data: dict = Body(...), current_user: dict = Depends(admin)):
+        if not ObjectId.is_valid(str(data.get("id") or "")):
+            raise HTTPException(400, "Which change?")
+        return await undo(str(data["id"]), current_user.get("email") or "")
 
 
 # ------------------------------------------------------------------ startup
@@ -511,4 +598,5 @@ async def startup():
     await db.cmtv_trial_marks.create_index("at", expireAfterSeconds=KEEP_DAYS * 86400)
     await db.cmtv_bans.create_index([("kind", 1), ("value", 1)], unique=True)
     await db.cmtv_bans.create_index("expires_at", expireAfterSeconds=0)
+    await db.cmtv_ban_log.create_index("at")
     asyncio.create_task(_loop())

@@ -2,6 +2,7 @@
 // accounts that share a device, an internet connection or a Gmail inbox (dots / +tags), with their trials and spend,
 // plus the trials and referral rewards the duplicate checks refused or held. Read-only apart from "allow this IP".
 // 2026-10-09: bans (an account + its IPs and devices, or one IP) to stop repeat trial accounts; see cmtv_dupes.py #7.
+// An on/off switch for all bans, and every ban / unban / switch can be undone from "Recent ban changes".
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -51,6 +52,20 @@ export default function AdminDuplicatesPage() {
       banM.mutate({ user_ids: g.people.map((p) => p.id) });
     }
   };
+  const switchM = useMutation({
+    mutationFn: async (on) => (await api.post('/api/cmtv/dupes/admin/bans-switch', { on })).data,
+    onSuccess: done, onError: (e) => setNote({ ok: false, text: errText(e) }),
+  });
+  const undoM = useMutation({
+    mutationFn: async (id) => (await api.post('/api/cmtv/dupes/admin/ban-undo', { id })).data,
+    onSuccess: done, onError: (e) => setNote({ ok: false, text: errText(e) }),
+  });
+  const bansOn = data?.bans_on !== false;
+  const logText = (e) => {
+    const who = e.accounts.map((a) => a.name || a.email).join(', ') || e.ip;
+    if (e.action === 'switch') return `Turned all bans ${e.on ? 'on' : 'off'}`;
+    return `${e.action === 'ban' ? 'Banned' : 'Unbanned'} ${who || 'an entry'} (${e.count} entr${e.count === 1 ? 'y' : 'ies'})`;
+  };
   const bannedUsers = new Set(bans.filter((b) => b.kind === 'user').map((b) => b.value));
   return (
     <div className="rv-admin">
@@ -79,8 +94,14 @@ export default function AdminDuplicatesPage() {
               <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="repeat free trials" /></label>
           </div>
           {note && <span style={{ color: note.ok ? '#34d399' : '#fca5a5', marginTop: 6 }}>{note.text}</span>}
+          {!bansOn && <span style={{ color: '#fbbf24', marginTop: 6 }}>All bans are switched OFF: nobody is being refused. The list below is kept.</span>}
         </div>
-        <button className="rv-btn glow" type="submit" disabled={!who.trim() || banM.isPending}>{banM.isPending ? 'Banning…' : 'Ban'}</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button className="rv-btn glow" type="submit" disabled={!who.trim() || banM.isPending}>{banM.isPending ? 'Banning…' : 'Ban'}</button>
+          <button type="button" className="rv-btn" disabled={switchM.isPending || !data}
+            onClick={() => (bansOn ? window.confirm('Switch every ban off? Nobody will be refused until you switch them back on. The list is kept.') : true) && switchM.mutate(!bansOn)}>
+            {bansOn ? 'Switch all bans off' : 'Switch bans back on'}</button>
+        </div>
       </form>
       <div className="rv-invites">
         <div>
@@ -136,6 +157,23 @@ export default function AdminDuplicatesPage() {
                     onClick={() => window.confirm('Lift this account\'s ban and every IP and device banned because of it?') && unbanM.mutate({ user_id: b.value })}>Unban all</button>}
                   <button type="button" className="rv-btn" disabled={unbanM.isPending} onClick={() => unbanM.mutate({ id: b.id })}>Unban</button>
                 </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {data?.ban_log?.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800 }}>Recent ban changes</h2>
+          <div className="rv-list">
+            {data.ban_log.map((e) => (
+              <div key={e.id} className="rv-item rv-item-head">
+                <b>{logText(e)}</b>
+                <span className="rv-empty">{when(e.at)} · by {e.by || 'admin'}{e.undone_at ? ` · undone ${when(e.undone_at)} by ${e.undone_by || 'admin'}` : ''}</span>
+                {!e.undone_at && (
+                  <button type="button" className="rv-btn" style={{ marginLeft: 'auto' }} disabled={undoM.isPending}
+                    onClick={() => window.confirm(`Undo "${logText(e)}"?`) && undoM.mutate(e.id)}>Undo</button>
+                )}
               </div>
             ))}
           </div>
