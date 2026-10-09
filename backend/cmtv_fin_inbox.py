@@ -167,7 +167,7 @@ async def scan_etransfers(now=None):
         when = t.get("received_at") or now
         doc = {"kind": "etransfer", "status": "open", "created_at": now, "date": when.replace(hour=0, minute=0, second=0, microsecond=0),
                "amount": float(t.get("amount") or 0), "amount_from": "e-Transfer", "method": "e-Transfer",
-               "sender": t.get("name"), "customer": t.get("name"), "etransfer_ref": base, "server": None, "credits": None,
+               "sender": t.get("name"), "sender_email": t.get("reply_to") or None, "customer": t.get("name"), "etransfer_ref": base, "server": None, "credits": None,
                "months": None, "connections": None, "message": t.get("message"), "new_user": False}
         if await _pair(doc, insert=True):
             continue
@@ -184,20 +184,75 @@ async def _pair(doc, insert=False):
     if doc["kind"] == "etransfer":
         async for p in db.cmtv_fin_inbox.find({"status": "open", "kind": {"$in": ["panel_renewal", "panel_new"]},
                                                "etransfer_ref": {"$exists": False}, "date": win}):
-            if names_match(doc["sender"], p.get("customer")):
+            if names_match(doc["sender"], p.get("customer")) or await _known_payer(doc["sender"], p):
                 await db.cmtv_fin_inbox.update_one({"_id": p["_id"]}, {"$set": {
                     "amount": doc["amount"], "amount_from": "e-Transfer", "method": "e-Transfer", "sender": doc["sender"],
-                    "etransfer_ref": doc["etransfer_ref"], "message": doc.get("message")}})
+                    "sender_email": doc.get("sender_email"), "etransfer_ref": doc["etransfer_ref"], "message": doc.get("message")}})
                 return True
         return False
     async for e in db.cmtv_fin_inbox.find({"status": "open", "kind": "etransfer", "date": win}):
-        if names_match(e.get("sender"), doc.get("customer")):
-            await db.cmtv_fin_inbox.update_one({"_id": doc["_id"]}, {"$set": {
-                "amount": e["amount"], "amount_from": "e-Transfer", "method": "e-Transfer", "sender": e.get("sender"),
-                "etransfer_ref": e.get("etransfer_ref"), "message": e.get("message")}})
-            await db.cmtv_fin_inbox.update_one({"_id": e["_id"]}, {"$set": {"status": "merged", "merged_into": doc["_id"]}})
+        if names_match(e.get("sender"), doc.get("customer")) or await _known_payer(e.get("sender"), doc):
+            await _join(doc, e)
             return True
     return False
+
+
+# CMTV local change 2026-10-08 (owner: add the customer's email when their e-Transfer comes in). Panel-only accounts are
+# named after their login, so the sender's name never matched them: the owner can pair an e-Transfer with a line by hand,
+# billing remembers that payer name on the account (cmtv_payer_names) and pairs the next one by itself, and Record can add
+# the e-Transfer's email (Interac Reply-To) to a panel-only account.
+async def _join(panel, e):
+    """Put e-Transfer suggestion `e` onto panel suggestion `panel`; `e` becomes merged."""
+    db = _db()
+    await db.cmtv_fin_inbox.update_one({"_id": panel["_id"]}, {"$set": {
+        "amount": e["amount"], "amount_from": "e-Transfer", "method": "e-Transfer", "sender": e.get("sender"),
+        "sender_email": e.get("sender_email"), "etransfer_ref": e.get("etransfer_ref"), "message": e.get("message")}})
+    await db.cmtv_fin_inbox.update_one({"_id": e["_id"]}, {"$set": {"status": "merged", "merged_into": panel["_id"]}})
+
+
+def _norm(name):
+    return " ".join(_words(name))
+
+
+async def _known_payer(sender, panel):
+    """True if this sender name already paid for this line's account before (learned when the owner recorded it)."""
+    uid = panel.get("user_id")
+    if not sender or not uid or not ObjectId.is_valid(str(uid)):
+        return False
+    u = await _db().users.find_one({"_id": ObjectId(uid)}, {"cmtv_payer_names": 1})
+    return _norm(sender) in (u or {}).get("cmtv_payer_names", [])
+
+
+def _panel_only(u):
+    return bool(u) and u.get("role") == "user" and str(u.get("email") or "").lower().endswith("@panel.local")
+
+
+async def learn_and_add_email(d, add_email, by):
+    """After Record: remember the payer name; optionally put the e-Transfer email on a panel-only account.
+    Returns a short message for the admin (or None)."""
+    db = _db()
+    uid = d.get("user_id")
+    u = await db.users.find_one({"_id": ObjectId(uid)}) if uid and ObjectId.is_valid(str(uid)) else None
+    if not u:
+        return None
+    if d.get("sender"):
+        await db.users.update_one({"_id": u["_id"]}, {"$addToSet": {"cmtv_payer_names": _norm(d["sender"])}})
+    email = str(d.get("sender_email") or "").strip().lower()
+    if not (add_email and email and "@" in email and _panel_only(u)):
+        return None
+    other = await db.users.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}})
+    if other:
+        return (f"{email} already has an account ({other.get('name') or email}): open this customer's profile and use "
+                "Move to an existing customer.")
+    upd = {"email": email, "email_verified": False, "cmtv_placeholder_email": u.get("email"), "cmtv_email_added_at": datetime.utcnow(),
+           "cmtv_email_added_from": "e-Transfer", "cmtv_email_added_by": by}
+    if d.get("sender") and (not u.get("name") or str(u.get("name")).lower() == str(u.get("panel_username") or d.get("username") or "").lower()):
+        upd["name"] = " ".join(w.capitalize() for w in str(d["sender"]).split())
+    await db.users.update_one({"_id": u["_id"]}, {"$set": upd})
+    await db.cmtv_customer_notes.insert_one({"user_id": str(u["_id"]), "created_at": datetime.utcnow(), "by": by, "by_name": "Finances",
+                                             "text": f"Email {email} added from their e-Transfer ({d.get('sender')}). Was {u.get('email')}.",
+                                             "deleted": False})
+    return f"Added {email} to {upd.get('name') or u.get('name') or 'the account'}."
 
 
 def _label(d):
@@ -237,7 +292,23 @@ def add_routes(router, admin):
     async def api_inbox(user=Depends(admin)):
         open_ = await db().cmtv_fin_inbox.find({"status": "open"}).sort("date", -1).to_list(500)
         done = await db().cmtv_fin_inbox.find({"status": {"$in": ["recorded", "dismissed"]}}).sort("handled_at", -1).to_list(15)
-        return {"open": [_out(d) for d in open_], "recent": [_out(d) for d in done]}
+        out = [_out(d) for d in open_]
+        for d in out:   # 2026-10-08: is the line's account panel-only (no real email yet)?
+            uid = d.get("user_id")
+            u = await db().users.find_one({"_id": ObjectId(uid)}, {"email": 1, "role": 1}) if uid and ObjectId.is_valid(str(uid)) else None
+            d["panel_only"] = _panel_only(u)
+        return {"open": out, "recent": [_out(d) for d in done]}
+
+    @router.post("/inbox/{item_id}/pair")
+    async def api_pair(item_id: str, data: dict, user=Depends(admin)):
+        """2026-10-08: the owner says which open e-Transfer paid for this panel line."""
+        p = await db().cmtv_fin_inbox.find_one({"_id": ObjectId(item_id), "status": "open"}) if ObjectId.is_valid(item_id) else None
+        eid = str((data or {}).get("etransfer_id") or "")
+        e = await db().cmtv_fin_inbox.find_one({"_id": ObjectId(eid), "status": "open", "kind": "etransfer"}) if ObjectId.is_valid(eid) else None
+        if not p or p["kind"] == "etransfer" or p.get("etransfer_ref") or not e:
+            raise HTTPException(status_code=404, detail="Already handled")
+        await _join(p, e)
+        return {"ok": True}
 
     @router.post("/inbox/{item_id}/record")
     async def api_record(item_id: str, data: dict, user=Depends(admin)):
@@ -248,6 +319,10 @@ def add_routes(router, admin):
                                                      "user_id": d.get("user_id"), "etransfer_ref": d.get("etransfer_ref")})
         await db().cmtv_fin_inbox.update_one({"_id": d["_id"], "status": "open"}, {"$set": {
             "status": "recorded", "tx_id": ObjectId(row["id"]), "handled_at": datetime.utcnow(), "handled_by": user.get("email")}})
+        try:   # 2026-10-08: remember the payer name; add their e-Transfer email to a panel-only account when asked
+            row["email_note"] = await learn_and_add_email(d, bool((data or {}).get("add_email")), user.get("email"))
+        except Exception as e:
+            logger.warning(f"finance inbox: email/payer update failed: {e}")
         return row
 
     @router.post("/inbox/{item_id}/dismiss")

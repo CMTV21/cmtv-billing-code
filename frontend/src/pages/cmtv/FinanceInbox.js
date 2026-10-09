@@ -12,7 +12,7 @@ const day = (d) => (d ? new Date(d).toLocaleDateString('en-CA', { year: 'numeric
 const errText = (e, f) => e?.response?.data?.detail || f;
 
 function headline(it) {
-  if (it.kind === 'etransfer') return <>e-Transfer <b>{money(it.amount)}</b> from <b>{it.sender}</b> · no order matched</>;
+  if (it.kind === 'etransfer') return <>e-Transfer <b>{money(it.amount)}</b> from <b>{it.sender}</b>{it.sender_email ? <span className="sub"> ({it.sender_email})</span> : null} · no order matched</>;
   const plan = `${it.server} · ${it.connections || '?'} connection${it.connections === 1 ? '' : 's'} · ${it.months} month${it.months === 1 ? '' : 's'}`;
   return (
     <>
@@ -22,7 +22,7 @@ function headline(it) {
   );
 }
 
-function Item({ it, cfg, onDone }) {
+function Item({ it, cfg, onDone, etransfers = [] }) {
   const [f, setF] = useState({
     date: String(it.date).slice(0, 10), server: it.server || 'CCTV', customer: it.customer || '',
     amount: it.amount ?? '', method: it.method || 'e-Transfer', credits: it.credits ?? '', new_user: !!it.new_user,
@@ -31,13 +31,25 @@ function Item({ it, cfg, onDone }) {
   });
   const [busy, setBusy] = useState('');
   const [why, setWhy] = useState(null);
+  // CMTV local change 2026-10-08: pair an e-Transfer with this line by hand; add its email to a panel-only account
+  const [payId, setPayId] = useState('');
+  const [addEmail, setAddEmail] = useState(true);
+  const canAdd = it.kind !== 'etransfer' && it.panel_only && !!it.sender_email;
+  const pair = async () => {
+    setBusy('pair');
+    try { await api.post(`/api/cmtv/finance/inbox/${it.id}/pair`, { etransfer_id: payId }); toast.success('Paired'); onDone(); }
+    catch (e) { toast.error(errText(e, "Couldn't pair it")); }
+    setBusy('');
+  };
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const record = async () => {
     if (f.amount === '' || f.amount === null) { toast.error('Enter the amount received'); return; }
     setBusy('record');
     try {
-      await api.post(`/api/cmtv/finance/inbox/${it.id}/record`, { ...f, amount: Number(f.amount), credits: Number(f.credits) || 0 });
+      const { data: r } = await api.post(`/api/cmtv/finance/inbox/${it.id}/record`,
+        { ...f, amount: Number(f.amount), credits: Number(f.credits) || 0, add_email: canAdd && addEmail });
       toast.success('Recorded in the ledger');
+      if (r?.email_note) toast(r.email_note);
       onDone();
     } catch (e) { toast.error(errText(e, "Couldn't record it")); }
     setBusy('');
@@ -61,6 +73,22 @@ function Item({ it, cfg, onDone }) {
             : 'Enter what they paid.'}
         {it.kind !== 'etransfer' && it.credits_known === false && ' Credits for this plan aren\'t in the credits table: enter them.'}
       </p>
+      {it.kind !== 'etransfer' && !it.etransfer_ref && etransfers.length > 0 && (
+        <p className="hint" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          Paid by one of these e-Transfers?
+          <select aria-label="Which e-Transfer paid for this line" value={payId} onChange={(e) => setPayId(e.target.value)} style={{ minWidth: 0 }}>
+            <option value="">Choose…</option>
+            {etransfers.map((e) => <option key={e.id} value={e.id}>{money(e.amount)} from {e.sender}{e.sender_email ? ` (${e.sender_email})` : ''} · {day(e.date)}</option>)}
+          </select>
+          <button type="button" className="btn small" disabled={!payId || !!busy} onClick={pair}>{busy === 'pair' ? 'Pairing...' : 'Pair'}</button>
+        </p>
+      )}
+      {canAdd && (
+        <label htmlFor={`fi-${it.id}-addmail`} className="hint" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input id={`fi-${it.id}-addmail`} type="checkbox" checked={addEmail} onChange={(e) => setAddEmail(e.target.checked)} />
+          Add <b>{it.sender_email}</b> to this customer's account (it has no email yet: renewal reminders and receipts will reach them)
+        </label>
+      )}
       <div className="form">
         <label htmlFor={id('date')}>Date<input id={id('date')} type="date" value={f.date} onChange={set('date')} /></label>
         <label htmlFor={id('server')}>Server<select id={id('server')} value={f.server} onChange={set('server')}>{(cfg?.servers || []).map((s) => <option key={s}>{s}</option>)}</select></label>
@@ -121,7 +149,7 @@ export default function FinanceInbox({ cfg, onChanged }) {
       </div>
       {isLoading ? <div className="spinner" /> : !data?.open?.length
         ? <div className="panel"><p className="empty" style={{ margin: 0 }}>Nothing to record right now.</p></div>
-        : data.open.map((it) => <Item key={it.id} it={it} cfg={cfg} onDone={done} />)}
+        : data.open.map((it) => <Item key={it.id} it={it} cfg={cfg} onDone={done} etransfers={data.open.filter((x) => x.kind === 'etransfer')} />)}
       {data?.recent?.length > 0 && (
         <div className="panel">
           <h2>Recently handled</h2>
