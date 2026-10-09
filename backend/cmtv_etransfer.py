@@ -99,6 +99,9 @@ def parse(raw: str) -> dict:
         "order_refs": order_refs,
         "kind": kind,
         "dkim_interac": bool(re.search(r"dkim=pass[^;]*header\.d=payments\.interac\.ca", auth)),
+        # CMTV local change 2026-10-09: Wise Autodeposit sends "... has been automatically deposited" by itself, so it is
+        # NOT the owner confirming the money (first-time customers still wait for the owner)
+        "auto": "automatically deposited" in low,
     }
 
 
@@ -194,7 +197,8 @@ async def handle(facts: dict) -> dict:
         order_id = str(o["_id"])
         deposited = facts.get("kind") == "deposited"
         returning = await returning_customer(o["user_id"], o["created_at"])
-        next_step = ("It's in your bank: mark the order paid in Admin > Orders." if deposited
+        next_step = ("It's already in Wise (Autodeposit): mark the order paid in Admin > Orders." if facts.get("auto")
+                     else "It's in your bank: mark the order paid in Admin > Orders." if deposited
                      else "Deposit it in your bank, then mark the order paid in Admin > Orders.")
         if o.get("provisioning"):
             # already set up (on trust when the "sent you money" email came, or by hand)
@@ -203,7 +207,7 @@ async def handle(facts: dict) -> dict:
             await _notify(f"{head}\n\n💰 <b>{'Deposited' if deposited else 'Received'}</b>, service already set up\n"
                           f"{_order_line(o, u)}\n\n{next_step}")
             result = "already_set_up"
-        elif returning or (deposited and facts.get("dkim_interac")):
+        elif returning or (deposited and facts.get("dkim_interac") and not facts.get("auto")):
             reason = "returning customer" if returning else "money deposited, Interac signature checked"
             now = datetime.utcnow()
             await D["orders"].update_one({"_id": o["_id"]}, {"$set": {"cmtv_emt": {
@@ -222,7 +226,7 @@ async def handle(facts: dict) -> dict:
                 "reference": key, "sender": facts["name"], "amount": facts["amount"], "matched_by": how,
                 "received_at": datetime.utcnow(), "trusted": False}}})
             await _notify(f"{head}\n\n👀 <b>Matches a first-time customer</b> (by {how}). Check it and mark paid:\n"
-                          f"{_order_line(o, u)}")
+                          f"{_order_line(o, u)}" + (f"\n\n{next_step}" if facts.get("auto") else ""))
             result = "review_new_customer"
     elif len(matches) > 1:
         lines = "\n\n".join(_order_line(o, u) for o, u, _ in matches[:5])

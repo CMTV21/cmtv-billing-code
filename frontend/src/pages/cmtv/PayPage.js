@@ -60,9 +60,8 @@ export default function PayPage() {
             <div style={card}>
               <Row label="Send to" value={v.emt.send_to} />
               <Row label="Amount" value={v.emt.amount.toFixed(2)} note="Canadian dollars" />
-              <Row label="Security question" value={v.emt.question} note="Only if your bank asks for one" />
-              <Row label="Answer" value={v.emt.answer} mono />
-              <Row label="Message" value={v.emt.message} mono note="Same as the answer: your order number" />
+              {/* 2026-10-09: Autodeposit (Wise): no security question */}
+              <Row label="Message" value={v.emt.message} mono note="Your order number: so we can match your payment" />
             </div>
             <p style={{ fontSize: 14, color: '#8391b5' }}>
               {h ? (h.open_now

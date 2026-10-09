@@ -104,10 +104,10 @@ def _email(v, name):
         subject = f"Pay for your CMTV order: e-Transfer {amount}"
         body = (f'<p style="{P}">Hi {first},</p>' + p("Thanks for your order! Send an Interac e-Transfer with exactly these details:")
                 + box(row("Send to", html.escape(e["send_to"])) + row("Amount", amount)
-                      + row("Security question", html.escape(e["question"])) + row("Answer", html.escape(e["answer"]), True)
                       + row("Message", html.escape(e["message"]), True))
-                + p("If your bank doesn't ask for a security question, skip it. The answer and the message are both your order number."))
-        pre = f"Send {amount} by e-Transfer to {e['send_to']}. Answer and message: {e['answer']}."
+                + p("No security question needed: it's deposited automatically. Put your order number in the message so we can "
+                    "match it."))   # 2026-10-09: Wise Autodeposit
+        pre = f"Send {amount} by e-Transfer to {e['send_to']}. Message: {e['message']}."
     else:
         w = v["wise"]
         rows = row("Amount", amount) + row("Reference", html.escape(w["reference"]), True)
@@ -211,6 +211,84 @@ async def match(tx_text, amount, currency, now=None):
     return o, f"{amount:.2f} {currency}" + ("" if currency == "CAD" else f" (about ${cad:.2f} CAD)")
 
 
+def _tx_time(tx):
+    try:
+        return datetime.fromisoformat(str(tx.get("date") or "").replace("Z", "")[:19])
+    except ValueError:
+        return None
+
+
+async def _interac_email(amount, when):
+    """The Interac notification billing got for this e-Transfer (cmtv_etransfers, same amount, within the hour before)."""
+    if not when:
+        return None
+    return await D["db"].cmtv_etransfers.find_one({"amount": {"$gte": amount - 0.005, "$lte": amount + 0.005},
+                                                   "received_at": {"$gte": when - timedelta(minutes=60), "$lte": when + timedelta(minutes=15)}},
+                                                  sort=[("received_at", -1)])
+
+
+async def _returning(order):
+    return await D["orders"].count_documents({"user_id": order.get("user_id"), "status": "paid", "total": {"$gt": 0},
+                                              "_id": {"$ne": order["_id"]}, "created_at": {"$lt": order.get("created_at") or datetime.utcnow()}}) > 0
+
+
+async def handle_etransfer(tx, now):
+    """CMTV local change 2026-10-09: an Interac e-Transfer deposited into Wise by Autodeposit (a CAD deposit through our
+    account details). Owner's rule, same as before Wise: a RETURNING customer's order is marked paid and set up; a
+    first-time customer's waits for the owner (the Interac email already sent the "check it and mark paid" note)."""
+    db = D["db"]
+    det = tx.get("details") or {}
+    ref = str(tx.get("referenceNumber") or "")
+    amount = float((tx.get("amount") or {}).get("value") or 0)
+    text = " ".join(str(x) for x in (det.get("paymentReference"), det.get("description")) if x)
+    sender = det.get("senderName") or ""
+    when = _tx_time(tx)
+    mail = await _interac_email(amount, when)
+    has_code = bool(HEX.search(det.get("paymentReference") or ""))
+    if not mail and not has_code and when and now - when < timedelta(minutes=10):
+        return "wait"   # the Interac email usually arrives first: give it a few minutes before deciding
+    try:
+        await db.cmtv_wise_payments.insert_one({"_id": ref, "amount": amount, "currency": "CAD", "sender": sender, "reference": text,
+                                                "date": tx.get("date"), "seen_at": now, "result": "checking", "via": "interac"})
+    except DuplicateKeyError:
+        return "seen"
+    o, why = (await match(text, amount, "CAD", now)) if has_code else (None, "no order number in the reference")
+    if not o and mail and mail.get("order_id"):
+        o = await D["orders"].find_one({"_id": _oid(mail["order_id"]), "status": "pending"})
+        why = f"{amount:.2f} CAD (matched by the Interac email)" if o else why
+    if not o:
+        result = "etransfer_no_order"
+        await db.cmtv_wise_payments.update_one({"_id": ref}, {"$set": {"result": result, "why": why}})
+        if not mail:   # the Interac email path (Needs recording) didn't see it either
+            await _ops(f"💸 <b>e-Transfer in Wise to check</b>: ${amount:.2f} CAD from {html.escape(sender or 'unknown')}\n"
+                       f"Message: {html.escape(det.get('paymentReference') or '(none)')}\nNo order matched: mark it paid in Admin > Orders, "
+                       "or record it in Finances.")
+        return result
+    oid = str(o["_id"])
+    if not await _returning(o):
+        await db.cmtv_wise_payments.update_one({"_id": ref}, {"$set": {"result": "etransfer_first_time", "order_id": oid, "why": why}})
+        await D["orders"].update_one({"_id": o["_id"]}, {"$set": {"cmtv_emt.in_wise_at": now, "cmtv_emt.wise_reference": ref}})
+        if not mail:
+            u = await D["users"].find_one({"_id": _oid(o.get("user_id"))}, {"name": 1, "email": 1}) or {}
+            await _ops(f"👀 <b>e-Transfer ${amount:.2f} is in Wise</b> from {html.escape(sender or 'unknown')}: first-time customer, "
+                       f"order #{oid[:8]} · {html.escape(u.get('name') or '')} &lt;{html.escape(u.get('email') or '')}&gt;.\n"
+                       "Check it and mark paid in Admin > Orders.")
+        return "etransfer_first_time"
+    await D["orders"].update_one({"_id": o["_id"]}, {"$set": {"cmtv_emt.in_wise_at": now, "cmtv_emt.wise_reference": ref}})
+    try:
+        await D["mark_paid"](oid, "emt")
+        result = "paid"
+    except Exception as e:
+        result = "mark_paid_failed"
+        log.error(f"CMTV pay: e-Transfer {ref} in Wise matched order {oid} but marking it paid failed: {e}")
+    await db.cmtv_wise_payments.update_one({"_id": ref}, {"$set": {"result": result, "order_id": oid, "why": why}})
+    await _ops((f"✅ <b>e-Transfer in Wise, marked paid</b>: {html.escape(why)} from {html.escape(sender or 'unknown')}, returning customer, "
+                f"order #{oid[:8]}.") if result == "paid" else
+               f"⚠️ <b>e-Transfer in Wise matched but not marked paid</b>: order #{oid[:8]}. Mark it paid in Admin > Orders.",
+               "billing" if result == "paid" else "critical")
+    return result
+
+
 async def handle(tx, now=None):
     """One incoming Wise payment (a statement transaction). Returns the result string."""
     db = D["db"]
@@ -219,6 +297,8 @@ async def handle(tx, now=None):
     ref = str(tx.get("referenceNumber") or "")
     amount = float((tx.get("amount") or {}).get("value") or 0)
     cur = str((tx.get("amount") or {}).get("currency") or "")
+    if cur == "CAD" and (det.get("recipientAccountDetailsId") not in (None, "", "None") or det.get("recipientAccountNumber")):
+        return await handle_etransfer(tx, now)   # 2026-10-09: came in through our Canadian account details = Interac / bank
     text = " ".join(str(x) for x in (det.get("paymentReference"), det.get("description")) if x)
     sender = det.get("senderName") or ""
     try:
@@ -271,13 +351,15 @@ async def check_wise(now=None):
     for b in balances:
         st = await _wise(f"/v1/profiles/{pid}/balance-statements/{b['id']}/statement.json",
                          {"currency": b.get("currency"), "intervalStart": start.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                          "intervalEnd": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "type": "COMPACT"})
+                          "intervalEnd": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "type": "FLAT"})   # FLAT: has recipientAccountDetailsId
         for tx in (st or {}).get("transactions") or []:
             if str(tx.get("type") or "").upper() != "CREDIT" or float((tx.get("amount") or {}).get("value") or 0) <= 0:
                 continue
             if (tx.get("details") or {}).get("type") in ("CONVERSION", "BALANCE_CASHBACK", "BALANCE_INTEREST"):
                 continue   # money moved between our own balances, cashback, interest
-            out.append(await handle(tx, now))
+            r = await handle(tx, now)
+            if r != "wait":
+                out.append(r)
     return out
 
 

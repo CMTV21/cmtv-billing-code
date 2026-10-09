@@ -1128,10 +1128,10 @@ async def startup_event():
     await cmtv_etransfer.startup()
 
     # CMTV local change 2026-10-09: a matched Wise payment takes the same steps as Admin > Orders > Mark paid
-    async def _cmtv_pay_mark_paid(order_id):
+    async def _cmtv_pay_mark_paid(order_id, method="wise"):   # 2026-10-09: "emt" for e-Transfers deposited into Wise
         bt = BackgroundTasks()
         await mark_order_paid(order_id, bt, current_user={"sub": "wise", "email": "wise-auto", "role": "admin"},
-                              data={"payment_method": "wise"})
+                              data={"payment_method": method})
         await bt()
     cmtv_pay.init(db=db, orders=orders_collection, users=users_collection, get_settings=get_settings,
                   get_email_service=get_configured_email_service, mark_paid=_cmtv_pay_mark_paid)
