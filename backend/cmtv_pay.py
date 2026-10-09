@@ -70,7 +70,8 @@ async def view(order, dt=None):
            "total": round(float(order.get("total") or 0), 2), "currency": "CAD",
            "items": [i.get("product_name") for i in order.get("items") or []]}
     if out["method"] == "emt":
-        out["emt"] = {"send_to": dt["emt_email"], "amount": out["total"], "question": EMT_QUESTION, "answer": oid, "message": oid}
+        # 2026-10-09 (owner: "shorten the ref numbers"): the short 10-character order number, same as Wise
+        out["emt"] = {"send_to": dt["emt_email"], "amount": out["total"], "message": ref_code(oid)}
     if out["method"] == "wise":
         out["wise"] = {"tag": dt["wise_tag"], "email": dt["wise_email"], "name": dt["wise_name"], "reference": ref_code(oid),
                        "link": dt["wise_link"],   # 2026-10-09: the Wise "get paid" link (button + QR on the pay page)
