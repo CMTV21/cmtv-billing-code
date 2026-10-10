@@ -1277,7 +1277,8 @@ export default function CheckoutPage() {
                             <DollarSign className="w-5 h-5 text-green-600" />
                             <div>
                               <p className="font-semibold text-gray-900 dark:text-white">Wise</p>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">International bank transfer via Wise</p>
+                              {/* CMTV local change 2026-10-10: no bank details any more (owner); a customer picked Wise expecting a bank transfer */}
+                              <p className="text-sm text-gray-600 dark:text-gray-400">Pay in the Wise app (free Wise account needed)</p>
                             </div>
                           </div>
                         </label>
@@ -1460,8 +1461,9 @@ export default function CheckoutPage() {
                       </h4>
                       <div className="text-sm text-green-800 dark:text-green-300 whitespace-pre-line">
                         {/* CMTV local change 2026-10-09: the exact details come on the next page + by email (cmtv_pay) */}
-                        Place your order and the next page gives you every exact detail: our Wisetag, or bank details in CAD, USD,
-                        EUR or GBP if you don't use Wise, and your reference. Your order is set up automatically when the payment arrives.
+                        {/* CMTV local change 2026-10-10: no bank details offered (owner's decision 2026-10-09) */}
+                        Place your order and the next page gives you every exact detail: our Wisetag and Wise link, and your short
+                        order number. You need a Wise account (free to open). Your order is set up automatically when the payment arrives.
                       </div>
                       <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
                         <p className="text-sm font-medium text-green-900 dark:text-green-200">
