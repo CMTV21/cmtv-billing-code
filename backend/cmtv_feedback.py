@@ -42,6 +42,24 @@ async def review_state(uid):
     return {"can": True, "already": False}
 
 
+async def ticket_review_link(uid: str):
+    """CMTV local change 2026-10-10 (owner): star row in the ticket-closed email. Full one-time review link for a
+    paying customer who hasn't reviewed yet (reuses an open invite, like the dashboard button), else None."""
+    try:
+        db = D["db"]
+        if not uid or not (await review_state(uid))["can"]:
+            return None
+        now = datetime.utcnow()
+        inv = await db.cmtv_review_invites.find_one({"user_id": uid, "used_at": {"$exists": False}, "expires_at": {"$gt": now}})
+        token = inv["_id"] if inv else secrets.token_urlsafe(18)
+        if not inv:
+            await db.cmtv_review_invites.insert_one({"_id": token, "user_id": uid, "created_at": now,
+                                                    "expires_at": now + timedelta(days=60), "moment": "ticket_closed"})
+        return f"https://billing.cmtv.info/review?t={token}"
+    except Exception:
+        return None
+
+
 def init_routes():
     current, admin = D["get_current_user"], D["get_current_admin_user"]
 

@@ -11,7 +11,8 @@ export default function ReviewPage() {
   const token = params.get('t') || '';
   const [info, setInfo] = useState(null);
   const [error, setError] = useState('');
-  const [rating, setRating] = useState(0);
+  // CMTV 2026-10-10: ?r=1..5 = the star tapped in the ticket-closed email
+  const [rating, setRating] = useState(() => { const r = parseInt(params.get('r'), 10); return r >= 1 && r <= 5 ? r : 0; });
   const [hover, setHover] = useState(0);
   const [text, setText] = useState('');
   const [name, setName] = useState('');

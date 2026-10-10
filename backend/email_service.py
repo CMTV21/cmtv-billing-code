@@ -996,6 +996,20 @@ class EmailService:
             logger.error(f"send_password_changed: EXCEPTION in send_email: {e}")
             return False
 
+    @staticmethod
+    def _cmtv_rating_block(link: str) -> str:
+        """CMTV local change 2026-10-10: five tappable stars (email-safe table) for the ticket-closed email."""
+        stars = "".join(
+            f'<td align="center" style="padding:0 4px;"><a href="{link}&amp;r={n}" title="{n} star{"s" if n > 1 else ""}" '
+            f'style="font-size:34px; line-height:40px; color:#f5b301; text-decoration:none; font-family:Arial, Helvetica, sans-serif;">&#9733;</a></td>'
+            for n in range(1, 6))
+        return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fffbea; '
+                'border:1px solid #f5e3a3; border-radius:8px; margin-bottom:28px;"><tr><td align="center" style="padding:18px 16px;">'
+                '<p style="margin:0 0 6px; font-size:16px; font-weight:bold; color:#0a0e1a; font-family:Arial, Helvetica, sans-serif;">How did we do?</p>'
+                '<p style="margin:0 0 8px; font-size:13px; color:#6b7280; font-family:Arial, Helvetica, sans-serif;">Tap a star: it takes 30 seconds.</p>'
+                f'<table role="presentation" cellpadding="0" cellspacing="0"><tr>{stars}</tr></table>'
+                '</td></tr></table>')
+
     async def send_ticket_closed(
         self,
         customer_email: str,
@@ -1015,14 +1029,27 @@ class EmailService:
         site = self.backend_url
         values = {"customer_name": escape(name), "ticket_id": escape(ref), "ticket_subject": escape(ticket_subject or "your request"),
                   "ticket_link": f"{site}/tickets"}
+        # CMTV local change 2026-10-10 (owner): "How did we do?" star row (paying customers who haven't reviewed yet);
+        # each star opens /review with that rating picked. Template tag {{rating_block}}, else put above the button.
+        review_link = None
+        try:
+            import cmtv_feedback
+            review_link = await cmtv_feedback.ticket_review_link(customer_id)
+        except Exception as e:
+            logger.warning(f"send_ticket_closed: no review link: {e}")
+        values["rating_block"] = self._cmtv_rating_block(review_link) if review_link else ""
         plain = (f"Hi {name},\n\nYour support ticket #{ref} (\"{ticket_subject}\") has been closed.\n\n"
-                 f"Still need help? Open a new ticket at {site}/tickets or message @Cmtv_support_bot on Telegram.\n\n"
+                 + (f"How did we do? Rate us (30 seconds): {review_link}\n\n" if review_link else "")
+                 +                  f"Still need help? Open a new ticket at {site}/tickets or message @Cmtv_support_bot on Telegram.\n\n"
                  "The CMTV Support Team")
         template = None
         if self.db is not None:
             template = await self.db.email_templates.find_one({"template_type": "ticket_closed", "is_active": True})
         if template:
             subject, content = template.get("subject") or "Your support ticket #{{ticket_id}} is closed", template["html_content"]
+            if values["rating_block"] and "{{rating_block}}" not in content:   # CMTV 2026-10-10
+                content = (content.replace("<!-- CTA -->", "{{rating_block}}\n      <!-- CTA -->", 1) if "<!-- CTA -->" in content
+                           else content + "{{rating_block}}")
             for k, v in values.items():
                 content = content.replace("{{" + k + "}}", v)
                 subject = subject.replace("{{" + k + "}}", v)
@@ -1032,7 +1059,8 @@ class EmailService:
             html = self._wrap_email(
                 f"<p>Hi {values['customer_name']},</p><p>Your support ticket <strong>#{values['ticket_id']}</strong> "
                 f"(\"{values['ticket_subject']}\") has been closed.</p><p>Still need help? "
-                f"<a href=\"{values['ticket_link']}\">Open a new ticket</a> or message @Cmtv_support_bot on Telegram.</p>",
+                f"<a href=\"{values['ticket_link']}\">Open a new ticket</a> or message @Cmtv_support_bot on Telegram.</p>"
+                + values["rating_block"],
                 "", customer_email, "transactional")
         try:
             return await self.send_email(
