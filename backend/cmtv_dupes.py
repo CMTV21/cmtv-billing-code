@@ -11,8 +11,10 @@
 5. No referral reward when the referred account and the referrer share an IP or device (checked at sign-up and again
    before the reward at the first paid order); held referrals are logged in cmtv_referral_holds + a silent Ops note.
 6. Admin > Customers > Possible duplicates: GET /api/cmtv/dupes/admin/groups.
+7. (2026-10-10, owner) Suspected duplicates -> Critical alert + hold on new sign-ups / free trials (see "holds" below).
 """
 import asyncio
+import html
 import logging
 import re
 from datetime import datetime, timedelta
@@ -152,11 +154,21 @@ async def check_trial(user_id: str, product: dict, request: Request):
     cfg = await _cfg()
     if cfg.get("trial_check") is False:
         return
+    await check_hold(request, user_id, "free trial")   # 2026-10-10: on hold -> no trial
+    allow = set(cfg.get("allow_ips") or [])
     ors = []
-    if ip and ip not in set(cfg.get("allow_ips") or []):
+    if ip and ip not in allow:
         ors.append({"ip": ip})
     if dev:
         ors.append({"device": dev})
+    # 2026-10-10 (gamebattles: refused twice, then a VPN + a private window got the trial on the same account): also
+    # every connection and browser THIS account used in the last 90 days
+    async for f in D["db"].cmtv_fingerprints.find({"user_id": str(user_id), "at": {"$gte": datetime.utcnow() - timedelta(days=TRIAL_DAYS)}},
+                                                 {"ip": 1, "device": 1}):
+        if f.get("ip") and f["ip"] not in allow and {"ip": f["ip"]} not in ors:
+            ors.append({"ip": f["ip"]})
+        if f.get("device") and {"device": f["device"]} not in ors:
+            ors.append({"device": f["device"]})
     if not ors:
         return
     hit = await D["db"].cmtv_trial_marks.find_one({
@@ -164,18 +176,20 @@ async def check_trial(user_id: str, product: dict, request: Request):
         "at": {"$gte": datetime.utcnow() - timedelta(days=TRIAL_DAYS)}, "$or": ors})
     if not hit:
         hit = await _trial_by_seen_account(user_id, product, ors)
+    if not hit:   # 2026-10-10: refused before for this trial = refused again, from anywhere
+        r = await D["db"].cmtv_trial_refusals.find_one({"user_id": str(user_id), "product_id": str(product["_id"])})
+        if r:
+            hit = {"user_id": r.get("other_user_id"), "device": r.get("device"), "ip": r.get("ip")}
     if hit:
-        how = "device" if dev and hit.get("device") == dev else "internet connection"
+        _devs = {o["device"] for o in ors if "device" in o}
+        how = "device" if hit.get("device") and hit.get("device") in _devs else "internet connection"
         await D["db"].cmtv_trial_refusals.insert_one({"user_id": str(user_id), "product_id": str(product["_id"]),
                                                       "product_name": product.get("name"), "other_user_id": hit["user_id"],
                                                       "match": how, "ip": ip, "device": dev, "at": datetime.utcnow()})
         log.info(f"dupes: trial {product.get('name')} refused for {user_id}: same {how} as {hit['user_id']}")
-        try:
-            import cmtv_notify
-            await cmtv_notify.ops(f"🚫 <b>Trial refused</b>: {product.get('name')}, same {how} as another account that had it "
-                                  f"in the last {TRIAL_DAYS} days. Admin &gt; Customers &gt; Possible duplicates.", kind="billing", silent=True)
-        except Exception:
-            pass
+        # 2026-10-10 (owner): was a silent Billing note; now a Critical alert + hold (once per account)
+        await suspect(user_id, request, [hit.get("user_id")], "browser" if how == "device" else how,
+                      f"free trial re-used: {product.get('name')}")
         raise HTTPException(400, MSG_TRIAL)
 
 
@@ -303,7 +317,7 @@ async def groups():
                 async for r in db.cmtv_trial_refusals.find().sort("at", -1).limit(20)]
     holds = [{k: _o(v) for k, v in r.items() if k != "_id"} async for r in db.cmtv_referral_holds.find().sort("at", -1).limit(20)]
     dom = await db.cmtv_config.find_one({"_id": "disposable_domains"}, {"updated_at": 1, "domains": {"$slice": 0}}) or {}
-    return {"groups": res, "trial_refusals": refusals, "referral_holds": holds,
+    return {"groups": res, "trial_refusals": refusals, "referral_holds": holds, "blocks": await blocks_list(),
             "blocklist": {"updated_at": _o(dom.get("updated_at")), "count": len(_domains["set"])},
             "fingerprints_since": _o(await _first_print())}
 
@@ -319,6 +333,20 @@ def init_routes():
     @router.get("/admin/groups")
     async def admin_groups(current_user: dict = Depends(admin)):
         return await groups()
+
+    @router.post("/admin/blocks/{bid}")   # 2026-10-10: lift a hold (clear) or keep it (reviewed)
+    async def block_action(bid: str, data: dict = Body(...), current_user: dict = Depends(admin)):
+        action, oid = data.get("action"), _o_id(bid)
+        if not oid or action not in ("clear", "keep"):
+            raise HTTPException(400, "Unknown action")
+        now, by = datetime.utcnow(), current_user.get("sub")
+        upd = {"reviewed": True, "decided_at": now, "decided_by": by, "decision": action}
+        if action == "clear":
+            upd["status"] = "cleared"
+        r = await D["db"].cmtv_dupe_blocks.update_one({"_id": oid}, {"$set": upd})
+        if not r.matched_count:
+            raise HTTPException(404, "Not found")
+        return {"ok": True}
 
     @router.post("/admin/allow-ip")
     async def allow_ip(data: dict = Body(...), current_user: dict = Depends(admin)):
@@ -347,4 +375,147 @@ async def startup():
     await db.cmtv_fingerprints.create_index("user_id")
     await db.cmtv_trial_marks.create_index([("product_id", 1), ("at", -1)])
     await db.cmtv_trial_marks.create_index("at", expireAfterSeconds=KEEP_DAYS * 86400)
+    await db.cmtv_dupe_blocks.create_index([("status", 1), ("created_at", -1)])   # 2026-10-10
     asyncio.create_task(_loop())
+
+
+# ------------------------------------------------------------------ holds (CMTV local change 2026-10-10, owner)
+# A suspected duplicate (a new account on the same browser, or on the same internet connection in the last 90 days, as
+# another customer account; or a free trial re-used) sends ONE Critical alert and puts that connection + browser (and the
+# account) on hold: no new sign-ups and no free trials from them until the admin lifts it in Admin > Possible duplicates.
+# Signing in and paying are never blocked (households share connections). IPv6 holds cover the whole /64 (home
+# connections rotate the rest). Holds don't expire. cmtv_dupe_blocks {user_id, other_user_ids, match, what, ip_keys,
+# devices, status blocked|cleared, reviewed, hits, created_at, decided_at, decided_by}.
+MSG_HOLD = ("We need to check something before we can set this up. Message us at @Cmtv_support_bot "
+            "and we'll sort it out quickly.")
+IP_MATCH_DAYS = 90
+
+
+def ip_key(ip: str) -> str:
+    ip = (ip or "").strip()
+    if ":" in ip:
+        try:
+            import ipaddress
+            return str(ipaddress.ip_network(ip + "/64", strict=False))
+        except ValueError:
+            return ip
+    return ip
+
+
+async def held(request: Request, user_id=None):
+    """The active hold matching this visitor's connection or browser (or this account), else None."""
+    allow = set((await _cfg()).get("allow_ips") or [])
+    ip, dev = client_ip(request), device_id(request)
+    ors = []
+    if ip and ip not in allow:
+        ors.append({"ip_keys": ip_key(ip)})
+    if dev:
+        ors.append({"devices": dev})
+    if user_id:
+        ors.append({"user_id": str(user_id)})
+    if not ors:
+        return None
+    return await D["db"].cmtv_dupe_blocks.find_one({"status": "blocked", "$or": ors})
+
+
+async def check_hold(request: Request, user_id=None, what: str = "sign-up"):
+    """Raise 403 (MSG_HOLD) if this visitor or account is on hold."""
+    if (await _cfg()).get("holds") is False:
+        return
+    b = await held(request, user_id)
+    if b:
+        await D["db"].cmtv_dupe_blocks.update_one({"_id": b["_id"]}, {"$inc": {"hits": 1},
+                                                                    "$set": {"last_hit": datetime.utcnow(), "last_hit_what": what}})
+        log.info(f"dupes: {what} refused (on hold {b['_id']})")
+        raise HTTPException(403, MSG_HOLD)
+
+
+async def _who(uid):
+    u = await D["db"].users.find_one({"_id": _o_id(uid)}, {"name": 1, "email": 1}) or {}
+    return f"{html.escape(u.get('name') or '(no name)')} ({html.escape(u.get('email') or '?')})"
+
+
+def _o_id(v):
+    try:
+        return ObjectId(str(v))
+    except Exception:
+        return None
+
+
+async def suspect(user_id, request: Request, others, how: str, what: str):
+    """Put this connection + browser + account on hold and send ONE Critical alert. Never raises."""
+    try:
+        db = D["db"]
+        if (await _cfg()).get("holds") is False:
+            return
+        if await db.cmtv_dupe_blocks.find_one({"status": "blocked", "user_id": str(user_id)}):
+            return   # already on hold: one alert per account
+        allow = set((await _cfg()).get("allow_ips") or [])
+        ip, dev = client_ip(request), device_id(request)
+        others = sorted({str(o) for o in others if o and str(o) != str(user_id)})
+        doc = {"user_id": str(user_id), "other_user_ids": others, "match": how, "what": what,
+               "ip_keys": [ip_key(ip)] if ip and ip not in allow else [], "devices": [dev] if dev else [],
+               "status": "blocked", "reviewed": False, "hits": 0, "created_at": datetime.utcnow()}
+        await db.cmtv_dupe_blocks.insert_one(doc)
+        lines = [f"• {await _who(o)}" for o in others[:4]]
+        olist = "\n".join(lines) + (f"\n• +{len(others) - 4} more" if len(others) > 4 else "")
+        import cmtv_notify
+        await cmtv_notify.ops(
+            f"🚨 <b>Suspected duplicate account</b> ({html.escape(what)})\n\n{await _who(user_id)}\n"
+            f"Same {html.escape(how)} as:\n{olist}\n\n"
+            "New sign-ups and free trials from this connection and browser are ON HOLD until you check it: "
+            "Admin › Possible duplicates.", kind="critical")
+    except Exception as e:
+        log.warning(f"dupes: suspect failed ({type(e).__name__}: {e})")
+
+
+async def signup_check(user_id, request: Request):
+    """After a website sign-up: another customer account seen on the same browser (365 days) or the same connection
+    (90 days) -> suspect. Never raises."""
+    try:
+        db = D["db"]
+        allow = set((await _cfg()).get("allow_ips") or [])
+        ip, dev = client_ip(request), device_id(request)
+        ors = []
+        if dev:
+            ors.append({"device": dev})
+        if ip and ip not in allow:
+            ors.append({"ip": ip, "at": {"$gte": datetime.utcnow() - timedelta(days=IP_MATCH_DAYS)}})
+        if not ors:
+            return
+        seen = {}
+        async for f in db.cmtv_fingerprints.find({"user_id": {"$ne": str(user_id)}, "$or": ors}, {"user_id": 1, "device": 1}):
+            if dev and f.get("device") == dev:
+                seen[str(f["user_id"])] = "browser"
+            else:
+                seen.setdefault(str(f["user_id"]), "internet connection")
+        if not seen:
+            return
+        customers = {str(u["_id"]) async for u in db.users.find(
+            {"_id": {"$in": [i for i in map(_o_id, seen) if i]}, "role": "user"}, {"_id": 1})}
+        others = [i for i in seen if i in customers]
+        if not others:
+            return
+        how = "browser" if any(seen[i] == "browser" for i in others) else "internet connection"
+        await suspect(user_id, request, others, how, "new sign-up")
+    except Exception as e:
+        log.warning(f"dupes: signup_check failed ({type(e).__name__}: {e})")
+
+
+async def waiting_count() -> int:
+    return await D["db"].cmtv_dupe_blocks.count_documents({"status": "blocked", "reviewed": {"$ne": True}})
+
+
+async def blocks_list():
+    out = []
+    async for b in D["db"].cmtv_dupe_blocks.find({"$or": [{"status": "blocked"}, {
+            "decided_at": {"$gte": datetime.utcnow() - timedelta(days=30)}}]}).sort("created_at", -1).limit(40):
+        ids = [b["user_id"]] + list(b.get("other_user_ids") or [])
+        users = {str(u["_id"]): u async for u in D["db"].users.find({"_id": {"$in": [i for i in map(_o_id, ids) if i]}},
+                                                                     {"name": 1, "email": 1})}
+        person = lambda i: {"id": i, "name": (users.get(i) or {}).get("name") or "", "email": (users.get(i) or {}).get("email") or ""}
+        out.append({"id": str(b["_id"]), "status": b.get("status"), "reviewed": bool(b.get("reviewed")),
+                    "match": b.get("match"), "what": b.get("what"), "hits": b.get("hits", 0),
+                    "created_at": _o(b.get("created_at")), "decided_at": _o(b.get("decided_at")),
+                    "person": person(b["user_id"]), "others": [person(i) for i in b.get("other_user_ids") or []]})
+    return out

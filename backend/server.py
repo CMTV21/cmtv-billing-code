@@ -1790,6 +1790,7 @@ async def register(user_data: UserCreate, request: Request):
     existing_user = await email_in_use(user_data.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
+    await cmtv_dupes.check_hold(request, None, "sign-up")   # CMTV 2026-10-10: suspected duplicates are on hold
     await cmtv_dupes.check_email(user_data.email)   # CMTV 2026-10-04: throwaway inbox / same Gmail inbox
     # CMTV local change 2026-10-04: a referral code that doesn't exist used to be ignored silently (people typed coupon
     # codes like NFL15 there and never knew). Now they're told, before the account is made.
@@ -1827,6 +1828,7 @@ async def register(user_data: UserCreate, request: Request):
     # CMTV local change 2026-10-04: remember where the account was made; hold the referral reward when the new account
     # shares the referrer's internet connection or device (the "friend" is probably the referrer)
     await cmtv_dupes.record(user_id, "signup", request)
+    await cmtv_dupes.signup_check(user_id, request)   # CMTV 2026-10-10: same browser/connection -> Critical alert + hold
     if user_data.referral_code:
         _held = await cmtv_dupes.referral_same_home(user_id)
         if _held:
@@ -8652,10 +8654,13 @@ async def suspend_service(service_id: str, current_user: dict = Depends(get_curr
             raise HTTPException(status_code=500, detail="Gold Panel not configured")
         result = await _gold_set_status_for(gd, service, False)
     elif panel_type == "xtream":
-        xtream_service = get_xtream_service(settings.get("xtream", {}))
+        # CMTV local change 2026-10-10: use the line's own panel (settings.xtream holds a list of panels, so the
+        # old lookup always said "not configured"); the panel calls are blocking, so run them in the threadpool
+        xtream_panel = _xtream_panel(settings, service.get("panel_index"))
+        xtream_service = get_xtream_service(xtream_panel) if xtream_panel else None
         if not xtream_service:
-            raise HTTPException(status_code=500, detail="XtreamUI service not configured")
-        result = xtream_service.suspend_account(username=line_user, password=service.get("xtream_password", ""))
+            raise HTTPException(status_code=500, detail="XtreamUI panel not configured")
+        result = await run_in_threadpool(xtream_service.suspend_account, username=line_user, password=service.get("xtream_password", ""))
     else:
         raise HTTPException(status_code=400, detail=f"Suspend via API not supported for panel type '{panel_type}'")
 
@@ -8687,10 +8692,13 @@ async def unsuspend_service(service_id: str, current_user: dict = Depends(get_cu
             raise HTTPException(status_code=500, detail="Gold Panel not configured")
         result = await _gold_set_status_for(gd, service, True)
     elif panel_type == "xtream":
-        xtream_service = get_xtream_service(settings.get("xtream", {}))
+        # CMTV local change 2026-10-10: use the line's own panel (settings.xtream holds a list of panels, so the
+        # old lookup always said "not configured"); the panel calls are blocking, so run them in the threadpool
+        xtream_panel = _xtream_panel(settings, service.get("panel_index"))
+        xtream_service = get_xtream_service(xtream_panel) if xtream_panel else None
         if not xtream_service:
-            raise HTTPException(status_code=500, detail="XtreamUI service not configured")
-        result = xtream_service.unsuspend_account(username=line_user, password=service.get("xtream_password", ""))
+            raise HTTPException(status_code=500, detail="XtreamUI panel not configured")
+        result = await run_in_threadpool(xtream_service.unsuspend_account, username=line_user, password=service.get("xtream_password", ""))
     else:
         raise HTTPException(status_code=400, detail=f"Unsuspend via API not supported for panel type '{panel_type}'")
 
@@ -8722,10 +8730,13 @@ async def cancel_service(service_id: str, current_user: dict = Depends(get_curre
             raise HTTPException(status_code=500, detail="Gold Panel not configured")
         result = await _gold_set_status_for(gd, service, False)
     elif panel_type == "xtream":
-        xtream_service = get_xtream_service(settings.get("xtream", {}))
+        # CMTV local change 2026-10-10: use the line's own panel (settings.xtream holds a list of panels, so the
+        # old lookup always said "not configured"); the panel calls are blocking, so run them in the threadpool
+        xtream_panel = _xtream_panel(settings, service.get("panel_index"))
+        xtream_service = get_xtream_service(xtream_panel) if xtream_panel else None
         if not xtream_service:
-            raise HTTPException(status_code=500, detail="XtreamUI service not configured")
-        result = xtream_service.terminate_account(username=line_user, password=service.get("xtream_password", ""))
+            raise HTTPException(status_code=500, detail="XtreamUI panel not configured")
+        result = await run_in_threadpool(xtream_service.terminate_account, username=line_user, password=service.get("xtream_password", ""))
     else:
         raise HTTPException(status_code=400, detail=f"Cancel via API not supported for panel type '{panel_type}'")
 

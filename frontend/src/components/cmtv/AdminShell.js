@@ -38,7 +38,7 @@ const NAV = [
     { label: 'Knowledge base', to: '/admin/knowledge-base' },
   ] },
   { group: 'System', items: [
-    { label: 'Possible duplicates', to: '/admin/duplicates' }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
+    { label: 'Possible duplicates', to: '/admin/duplicates', count: 'dupes', crit: true }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
     { label: 'Mass email', to: '/admin/mass-email' }, { label: 'Email templates', to: '/admin/email-templates' },
     { label: 'Staff', to: '/admin/staff' }, { label: 'Settings', to: '/admin/settings' },
   ] },
@@ -75,6 +75,7 @@ function AdminSidebar() {
     pending: ov?.needs?.pending_payment?.length || 0,
     tickets: ov?.needs?.tickets_waiting?.length || 0,
     stuck: stuck?.requests?.length || 0,
+    dupes: ov?.needs?.dupe_blocks || 0,   // 2026-10-10: suspected duplicates on hold
   };
   useEffect(() => { setOpen(false); }, [pathname]);
   const [openGroups, setOpenGroups] = useState(readOpen);   // 2026-10-06: folding groups

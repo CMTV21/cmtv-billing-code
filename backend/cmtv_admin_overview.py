@@ -71,6 +71,14 @@ def _label(order):
         return str(order.get("payment_method") or "")
 
 
+async def _dupe_waiting():
+    try:
+        import cmtv_dupes
+        return await cmtv_dupes.waiting_count()
+    except Exception:
+        return 0
+
+
 def init_routes():
     admin = D["get_current_admin_user"]
 
@@ -274,7 +282,8 @@ def init_routes():
             "recurring_month": round(recurring, 2), "auto_renew_on": auto_on,
             "customers": {"new30": new30, "prev30": prev30, "referred30": referred30, "new_paying30": new_paying30},
             "needs": {"not_set_up": not_set_up, "pending_payment": pending, "tickets_waiting": waiting,
-                      "ending_week_no_autorenew": week_no_ar, "email_failed": email_failed},
+                      "ending_week_no_autorenew": week_no_ar, "email_failed": email_failed,
+                      "dupe_blocks": await _dupe_waiting()},   # CMTV 2026-10-10: suspected duplicates on hold, not reviewed
             "expiring": expiring[:40], "expiring_count": len(expiring), "recent_orders": recent, "trials": trials,
         }
 
