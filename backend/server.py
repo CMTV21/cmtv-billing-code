@@ -381,6 +381,18 @@ cmtv_promise.D["get_current_user"] = get_current_user
 cmtv_promise.init_routes()
 app.include_router(cmtv_promise.router)
 
+# CMTV local change 2026-10-11: say WHY an order was refused (a held customer's "button doesn't work" showed only a bare
+# 400 in the log). Logs the reason for 4xx answers to POST /api/orders, then answers exactly as FastAPI normally does.
+from starlette.exceptions import HTTPException as _CmtvStarletteHTTPException
+from fastapi.exception_handlers import http_exception_handler as _cmtv_default_http_handler
+
+
+@app.exception_handler(_CmtvStarletteHTTPException)
+async def _cmtv_log_order_refusals(request: Request, exc: _CmtvStarletteHTTPException):
+    if request.method == "POST" and request.url.path.rstrip("/") == "/api/orders" and 400 <= exc.status_code < 500:
+        logger.warning(f"Order refused ({exc.status_code}) from {request.headers.get('x-real-ip', '')}: {exc.detail}")
+    return await _cmtv_default_http_handler(request, exc)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
