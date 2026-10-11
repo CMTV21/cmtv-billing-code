@@ -486,7 +486,31 @@ def init_routes():
     @router.post("/checkout-plan")
     async def checkout_plan(data: dict, current_user: dict = Depends(get_user)):
         """For the checkout PayPal button: the plan to subscribe to for this (pending, single-item) order"""
-        order = await D["orders"].find_one({"_id": _oid(data.get("order_id")), "user_id": current_user["sub"]})
+        return await _checkout_plan(data.get("order_id"), current_user["sub"])
+
+    # CMTV local change 2026-10-11 (a customer's PayPal pop-up never opened): the same subscription, created by billing,
+    # approved on PayPal in the same tab. Back on /pay/<order>?autorenew=return the page calls /checkout-approved.
+    @router.post("/checkout-start")
+    async def checkout_start(data: dict, current_user: dict = Depends(get_user)):
+        import os
+        p = await _checkout_plan(data.get("order_id"), current_user["sub"])
+        oid = p["custom_id"].split(":", 1)[1]
+        site = (os.getenv("SITE_URL") or "https://billing.cmtv.info").rstrip("/")
+        brand = ((await D["get_settings"]()).get("branding", {}) or {}).get("site_name") or "CMTV"
+        status, body = await pp_request("POST", "/v1/billing/subscriptions", json={
+            "plan_id": p["plan_id"], "custom_id": p["custom_id"],
+            "application_context": {"brand_name": brand[:127], "user_action": "SUBSCRIBE_NOW", "shipping_preference": "NO_SHIPPING",
+                                    "return_url": f"{site}/pay/{oid}?autorenew=return",
+                                    "cancel_url": f"{site}/pay/{oid}?payment=cancelled"},
+        })
+        link = next((l["href"] for l in body.get("links", []) if l.get("rel") == "approve"), None) if status in (200, 201) else None
+        if not link:
+            raise HTTPException(status_code=502, detail="PayPal couldn't start auto-renew. Untick it to pay once instead.")
+        await D["orders"].update_one({"_id": _oid(oid)}, {"$set": {"cmtv_autorenew_pending": body.get("id")}})
+        return {"approve_url": link, "subscription_id": body.get("id"), "price": p["price"]}
+
+    async def _checkout_plan(order_id, user_id):
+        order = await D["orders"].find_one({"_id": _oid(order_id), "user_id": user_id})
         if not order or order.get("status") != "pending" or len(order.get("items") or []) != 1:
             raise HTTPException(status_code=400, detail="This order can't be set to renew automatically")
         product = await D["products"].find_one({"_id": _oid(order["items"][0].get("product_id"))})

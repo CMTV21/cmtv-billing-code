@@ -54,6 +54,19 @@ export default function PayPage() {
     const d = qc.getQueryData(['cmtv-pay', orderId]);
     if (d && d.status === 'pending' && d.method === 'paypal') { autoCard.current = true; goPayPal('card'); }
   });
+  // 2026-10-11: back from PayPal after approving auto-renew (?autorenew=return&subscription_id=I-...): confirm it once
+  const [arState, setArState] = useState('');
+  const arDone = React.useRef(false);
+  React.useEffect(() => {
+    if (arDone.current || params.get('autorenew') !== 'return') return;
+    arDone.current = true;
+    const sid = params.get('subscription_id');
+    if (!sid) { setArState('error'); return; }
+    setArState('checking');
+    api.post('/api/cmtv/autorenew/checkout-approved', { order_id: orderId, subscription_id: sid })
+      .then(() => { setArState('ok'); qc.invalidateQueries({ queryKey: ['cmtv-pay', orderId] }); })
+      .catch(() => setArState('error'));
+  });
   const switchTo = async (m) => {
     setGoing(m);
     try { qc.setQueryData(['cmtv-pay', orderId], (await api.post(`/api/cmtv/pay/order/${orderId}/method`, { method: m })).data); }
@@ -63,7 +76,7 @@ export default function PayPage() {
   const { data: v, error, isLoading } = useQuery({
     queryKey: ['cmtv-pay', orderId],
     queryFn: async () => (await api.get(`/api/cmtv/pay/order/${orderId}`)).data,
-    refetchInterval: (q) => (q.state.data?.status === 'pending' ? 30000 : false),   // shows "paid" by itself (Wise is automatic)
+    refetchInterval: (q) => (q.state.data?.status === 'pending' ? (params.get('autorenew') === 'return' ? 10000 : 30000) : false),   // shows "paid" by itself (Wise is automatic)
   });
   if (isLoading) return <div className="cmtv-kb"><article className="kb-article"><p className="kb-lede">Loading your order…</p></article></div>;
   if (error || !v) return <div className="cmtv-kb"><article className="kb-article"><p className="kb-lede">We couldn't find that order.</p>
@@ -75,6 +88,11 @@ export default function PayPage() {
       <article className="kb-article" style={{ marginTop: 12, maxWidth: 640 }}>
         <h1 style={{ marginBottom: 4 }}>{paid ? 'Payment received ✅' : 'Pay for your order'}</h1>
         <p className="kb-lede" style={{ marginBottom: 6 }}>{(v.items || []).join(', ')} · <b>{money(v.total)}</b></p>
+        {arState === 'checking' && <p>Confirming your auto-renew with PayPal…</p>}
+        {arState === 'ok' && !paid && <p style={{ color: '#34d399' }}>✅ Auto-renew is on. PayPal is finishing your first payment: this page
+          updates by itself in a minute or two, and your service is set up right after.</p>}
+        {arState === 'error' && !paid && <p style={{ color: '#f87171' }}>We couldn't confirm auto-renew with PayPal. If you approved it, wait a
+          minute and refresh; otherwise pay once below or <Link to="/tickets">message us</Link>.</p>}
 
         {paid ? (
           <>

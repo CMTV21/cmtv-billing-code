@@ -1,5 +1,6 @@
 // CMTV local addition 2026-09-25: PayPal auto-renew on My Services and at checkout (backend: cmtv_autorenew.py)
 import React, { useEffect, useState } from 'react';
+import { useCartStore } from '../../store/store'; // 2026-10-11: clear the cart before going to PayPal
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import { RefreshCw } from 'lucide-react';
@@ -161,9 +162,10 @@ export function CheckoutAutoRenewHint({ items, total, discounted, memberPrice = 
   );
 }
 
-export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null, clientId, onDone, onError, children }) {
+export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null, clientId, onDone, onError, guard, children }) {
   const { data: cfg } = useAutoRenewConfig();
   const [auto, setAuto] = useState(false);
+  const [busy, setBusy] = useState(false);   // 2026-10-11
   const [orderId, setOrderId] = useState(null);
   const item = checkoutItem(cfg, items, total, discounted, memberPrice);
   if (!item) return children;
@@ -193,33 +195,30 @@ export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null
             : cfg.discount_percent ? ` (${cfg.discount_percent}% off), starting today` : ''}. PayPal charges this price instead of the total above. Turn it off any time in My Services.
         </span>
       </label>
+      {/* CMTV local change 2026-10-11: no PayPal pop-up (a customer's browser never opened it). Billing creates the
+          subscription and PayPal opens in this tab; "Pay for your order" confirms it when they come back. */}
       {!auto ? children : (
-        <PayPalScriptProvider key="cmtv-sub" options={{ 'client-id': clientId, vault: true, intent: 'subscription', 'data-namespace': 'paypalCmtvSub' }}>
-          <PayPalButtons
-            style={{ layout: 'vertical', color: 'blue', label: 'subscribe' }}
-            createSubscription={async (data, actions) => {
+        <div>
+          <button type="button" disabled={busy}
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+            onClick={async () => {
+              const stop = guard ? guard() : null;
+              if (stop) { onError(stop); return; }
+              setBusy(true);
               try {
                 const id = await ensureOrder();
-                const { data: p } = await api.post('/api/cmtv/autorenew/checkout-plan', { order_id: id });
-                return actions.subscription.create({ plan_id: p.plan_id, custom_id: p.custom_id, application_context: { shipping_preference: 'NO_SHIPPING' } });
+                const { data: r } = await api.post('/api/cmtv/autorenew/checkout-start', { order_id: id });
+                try { useCartStore.getState().clearCart(); } catch (e) { /* cart store unavailable */ }
+                window.location.href = r.approve_url;
               } catch (e) {
                 onError(errText(e, "Couldn't set up auto-renew. Untick it to pay once instead."));
-                throw e;
+                setBusy(false);
               }
-            }}
-            onApprove={async (data) => {
-              try {
-                const { data: r } = await api.post('/api/cmtv/autorenew/checkout-approved', { order_id: orderId, subscription_id: data.subscriptionID });
-                toast.success(r.status === 'paid' ? 'Payment successful! Your service is being set up, and it will renew automatically.'
-                  : 'Subscribed! PayPal is finishing your first payment; your service will be ready in a few minutes.');
-                onDone();
-              } catch (e) {
-                onError(errText(e, 'PayPal approved, but we could not confirm it. Please contact support.'));
-              }
-            }}
-            onError={() => onError('PayPal auto-renew failed. Untick it to pay once instead.')}
-          />
-        </PayPalScriptProvider>
+            }}>
+            {busy ? 'Opening PayPal…' : 'Continue to PayPal (auto-renew)'}
+          </button>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">PayPal opens in this tab; approve the subscription and you'll come straight back.</p>
+        </div>
       )}
     </div>
   );

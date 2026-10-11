@@ -1522,7 +1522,8 @@ export default function CheckoutPage() {
                   /* CMTV local change 2026-09-25: optional "Renew automatically" (PayPal subscription) around the normal buttons */
                   <CheckoutAutoRenew items={items} total={getTotal()} discounted={(!!appliedCouponCode && !tierWins) || creditsApplied > 0}
                     memberPrice={tierWins ? payTotal : null}
-                    clientId={settings.paypal.client_id} onDone={() => { clearCart(); navigate('/orders'); }} onError={setError}>
+                    clientId={settings.paypal.client_id} onDone={() => { clearCart(); navigate('/orders'); }} onError={setError}
+                    guard={() => (cmtvNeedsNewLineOk() ? 'You chose "Create New Line": tick the box to confirm a second line, or choose "Extend" to keep your login.' : null)}>
                   <div>
                     {/* CMTV local change 2026-10-11 (owner): PayPal's own button stays (pop-up, PayPal only); its pop-up "Debit or
                         Credit Card" button is off (a customer's Firefox closed it at once). Cards: our button below places the
