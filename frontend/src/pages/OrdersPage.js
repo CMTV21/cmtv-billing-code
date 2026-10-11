@@ -138,6 +138,9 @@ export default function OrdersPage() {
                           order.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
                           'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                         }`}>{order.status}</span>
+                        {/* CMTV 2026-10-11 (owner): a pending order opens its "Pay for your order" page */}
+                        {order.status === 'pending' && order.total > 0 && (
+                          <Link to={`/pay/${order.id}`} className="ml-3 text-sm font-semibold text-blue-600 hover:underline">Complete payment →</Link>)}
                       </td>
                     </tr>
                   ))}
@@ -163,6 +166,8 @@ export default function OrdersPage() {
                     {order.items.map((item, idx) => <span key={idx}>{item.product_name}{idx < order.items.length - 1 ? ', ' : ''}</span>)}
                   </div>
                   <div className="mt-1 text-sm font-bold text-gray-900 dark:text-white">${order.total.toFixed(2)}</div>
+                  {order.status === 'pending' && order.total > 0 && (   /* CMTV 2026-10-11 */
+                    <Link to={`/pay/${order.id}`} className="mt-3 block w-full text-center bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700">Complete payment →</Link>)}
                 </div>
               ))}
             </div>
@@ -172,7 +177,7 @@ export default function OrdersPage() {
         {orders?.some((o) => o.status === 'pending') && (
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-sm text-blue-800">
-              <strong>Pending orders:</strong> Please contact support to complete payment for pending orders.
+              <strong>Pending orders:</strong> tap "Complete payment" to pay, or to pay a different way (PayPal, card, e-Transfer or Wise).
             </p>
           </div>
         )}
