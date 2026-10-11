@@ -175,7 +175,7 @@ function TimezoneLoader() {
 function App() {
   const { fetchBranding } = useBrandingStore();
   const { fetchCurrency } = useCurrencyStore();
-  const { token, logout } = useAuthStore();
+  const { token, logout, user } = useAuthStore();
   const [recaptchaSiteKey, setRecaptchaSiteKey] = useState('');
   const [isReady, setIsReady] = useState(false);
 
@@ -183,7 +183,9 @@ function App() {
   useEffect(() => {
     if (!token) return;
     
-    const TIMEOUT = 15 * 60 * 1000; // 15 minutes
+    // CMTV local change 2026-10-11 (owner): admin/staff still 15 minutes; customers 4 hours (being signed out mid-checkout
+    // or while reading setup steps was annoying; the sign-in itself still lasts 24 hours)
+    const TIMEOUT = ['admin', 'staff'].includes(user?.role) ? 15 * 60 * 1000 : 4 * 60 * 60 * 1000;
     let timer;
 
     const resetTimer = () => {
@@ -202,7 +204,7 @@ function App() {
       clearTimeout(timer);
       events.forEach(e => window.removeEventListener(e, resetTimer));
     };
-  }, [token, logout]);
+  }, [token, logout, user?.role]);
 
   React.useEffect(() => {
     const loadBranding = async () => {

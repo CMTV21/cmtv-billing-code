@@ -251,6 +251,11 @@ async def switch_offers(uid):
 def init_routes():
     admin, current = D["get_current_admin_user"], D["get_current_user"]
 
+    @router.get("/public")   # 2026-10-11: the outage promise shown on the status page
+    async def public():
+        c = await config()
+        return {"outage": {"enabled": bool(c["outage_enabled"]), "amount": c["amount"], "min_hours": c["min_hours"]}}
+
     @router.get("/switch-trial")
     async def my_switch_trial(current_user: dict = Depends(current)):
         return {"offers": await switch_offers(str(current_user.get("sub")))}

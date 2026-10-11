@@ -16,6 +16,10 @@ export default function StatusPage() {
     queryKey: ['cmtv-status-page'], queryFn: async () => (await api.get('/api/cmtv/status/page')).data, refetchInterval: 60000,
   });
   const services = data?.services || [];
+  // CMTV 2026-10-11 (owner): the outage-credit promise (cmtv_promise.py)
+  const { data: promise } = useQuery({ queryKey: ['cmtv-promise-public'], staleTime: 600000,
+    queryFn: async () => { try { return (await api.get('/api/cmtv/promise/public')).data; } catch { return null; } } });
+  const op = promise?.outage;
   const down = services.filter((s) => s.status === 'down');
   return (
     <div className="cmtv-kb">
@@ -40,6 +44,12 @@ export default function StatusPage() {
                 </div>
               ))}
             </div>
+            {op?.enabled && (
+              <div style={{ padding: '12px 16px', borderRadius: 12, margin: '0 0 18px', background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.35)' }}>
+                <b>Our promise:</b> if CCTV or Imperium is down for more than {op.min_hours} hours, everyone affected gets
+                {' '}<b>${op.amount} account credit</b>, once per outage. No need to ask: we'll email you when it's on your account.
+              </div>
+            )}
             <h2>Recent incidents (14 days)</h2>
             {data?.incidents?.length ? (
               <ul>{data.incidents.map((i) => (
