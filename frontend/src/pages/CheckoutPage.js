@@ -89,6 +89,7 @@ export default function CheckoutPage() {
   const [resellerPassword, setResellerPassword] = useState('');
   const [resellerUsernameExists, setResellerUsernameExists] = useState(false);
   const [resellerAddCredits, setResellerAddCredits] = useState(false);
+  const [newLineOk, setNewLineOk] = useState(false);   // CMTV 2026-10-11: "yes, I want a second line" tick
   const [checkingUsername, setCheckingUsername] = useState(false);
   
   // Blockonomics Bitcoin payment state
@@ -233,6 +234,10 @@ export default function CheckoutPage() {
     },
   });
 
+  // CMTV 2026-10-11: a paid plan set to "Create New Line" while the customer has a line it could extend, not yet confirmed
+  const cmtvNeedsNewLineOk = () => !newLineOk && items.some((i) => canExtend(i) && Number(i.price) > 0
+    && (!i.action_type || i.action_type === 'create_new') && extendChoices(i, userServices, addonIds, trialOf).length > 0);
+
   const handleCheckout = () => {
     if (items.length === 0) {
       setError('Cart is empty');
@@ -270,12 +275,11 @@ export default function CheckoutPage() {
     
     if (!validateShipping()) return;
     
-    // CMTV local change 2026-10-11 (owner): a customer renewing by "Create New Line" got a second line + login. Ask first.
-    const cmtvNewLines = items.filter((i) => canExtend(i) && Number(i.price) > 0 && (!i.action_type || i.action_type === 'create_new')
-      && extendChoices(i, userServices, addonIds, trialOf).length > 0);
-    if (cmtvNewLines.length && !window.confirm(
-      `You're starting a NEW line (${cmtvNewLines.map((i) => i.product_name).join(', ')}): a second, separate login you'd set up on your TV again.\n\n`
-      + 'To keep your current login, press Cancel and choose "Extend" instead.\n\nStart a new line?')) {
+    // CMTV local change 2026-10-11 (owner): a customer renewing by "Create New Line" got a second line + login. The tick in
+    // the yellow box is required (window.confirm was skipped by some phone / in-app browsers).
+    if (cmtvNeedsNewLineOk()) {
+      setError('You chose "Create New Line": tick the box to confirm you want a second line, or choose "Extend" to keep your login.');
+      document.getElementById('cmtv-newline-ok')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
@@ -292,6 +296,7 @@ export default function CheckoutPage() {
   const createPayPalOrder = async () => {
     try {
       if (!cmtvChannelsReady) throw new Error('Choose your channel package first (above).');   // CMTV 2026-10-04
+      if (cmtvNeedsNewLineOk()) throw new Error('tick the box to confirm a second line, or choose "Extend" to keep your login.');   // CMTV 2026-10-11
       if (!currentOrderId) {
         const orderData = {
           items: buildOrderItems(),
@@ -803,6 +808,14 @@ export default function CheckoutPage() {
                               </div>
                             </label>
                           ))}
+                          {/* CMTV 2026-10-11 (owner): a new line next to an existing one must be confirmed here (required tick) */}
+                          {(!item.action_type || item.action_type === 'create_new') && Number(item.price) > 0 && (
+                            <label id="cmtv-newline-ok" className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm cursor-pointer">
+                              <input type="checkbox" className="mt-1 w-4 h-4" checked={newLineOk} onChange={(e) => setNewLineOk(e.target.checked)} />
+                              <span><b>Heads up:</b> "Create New Line" gives you a second, separate line with a new login that you'd set up on your
+                                TV again. To renew the line you have, choose <b>Extend</b> above. <b>Tick here to confirm you want a new line.</b></span>
+                            </label>
+                          )}
                         </div>
                       </div>
                     )}
