@@ -193,18 +193,21 @@ export default function AdminImportedUsers() {
   };
 
   // Filter users by panel selection
+  // CMTV 2026-10-11: the panel sync can leave status "active" after the end date; show those as expired
+  const cmtvFix = (list) => list.map((u) => (u.status === 'active' && u.expiry_date && new Date(u.expiry_date) < new Date()
+    ? { ...u, status: 'expired' } : u));
   const users = React.useMemo(() => {
     if (!allUsers) return null;
     
     if (selectedPanel === 'all') {
-      return allUsers;
+      return cmtvFix(allUsers);
     }
     
     // Parse panel selection: "xtream-0" or "xuione-0"
     const [panelType, panelIndexStr] = selectedPanel.split('-');
     const panelIndex = parseInt(panelIndexStr);
     
-    return allUsers.filter(u => 
+    return cmtvFix(allUsers).filter(u => 
       (u.panel_type || 'xtream') === panelType && u.panel_index === panelIndex
     );
   }, [allUsers, selectedPanel]);

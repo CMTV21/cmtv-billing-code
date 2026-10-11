@@ -111,6 +111,8 @@ async def candidates(cfg, now=None):
         seen.add(uid)
         if await D["db"].cmtv_trial_winback.find_one({"_id": uid}):
             continue
+        if await D["db"].cmtv_dupe_blocks.find_one({"user_id": uid, "status": "blocked"}):
+            continue   # 2026-10-11 (owner): suspected duplicates on hold get no 15% code
         u = await D["users"].find_one({"_id": _oid(uid)})
         email = str((u or {}).get("email") or "")
         if not u or u.get("role") != "user" or "@" not in email or email.endswith("@panel.local"):

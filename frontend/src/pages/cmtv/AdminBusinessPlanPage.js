@@ -34,7 +34,7 @@ const PRIORITIES = [
     next: ['Send the link with every "time to renew" message', 'Grow the Telegram updates group'] },
   { n: 3, title: 'Referrals and reviews', why: 'Customers like us (recommend score 53) but rarely tell anyone: few referrals, 1 review.',
     built: ['Referral card spells out "$5 for them, $15 for you" with Share / WhatsApp / Text / Email', 'Referral campaigns with bigger rewards for set dates (Admin > Notices)',
-      'Review asks at happy moments: after a renewal or a solved ticket'], link: ['/admin/notices', 'Referral campaign'],
+      'Star rating in every "ticket closed" email (automatic review emails are off since Oct 9)'], link: ['/admin/notices', 'Referral campaign'],
     next: ['January and September referral campaigns', 'Sign up 2-3 trusted resellers in other cities'] },
   { n: 4, title: 'Trials into customers', why: 'Website TV trials convert ~33%, and almost everyone who buys does it within a day: the decision happens during the trial.',
     built: ['Trial watch: billing checks if the trial is actually playing', 'Not playing 3 h in: setup help email + a note to you on Telegram', 'Trial ending: "glad you\'re enjoying it" or "we\'ll help you set it up"'],

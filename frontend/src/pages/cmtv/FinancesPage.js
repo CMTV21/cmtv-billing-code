@@ -269,11 +269,11 @@ export default function FinancesPage() {
           <>
             <div className="tiles">
               <div className="tile"><div className="lab">Revenue</div><div className="val">{money(s.mtd.revenue)}</div>
-                <div className="sub"><Change now={s.mtd.revenue} before={s.prev.revenue} /> vs {monthLabel(shiftMonth(month, -1), 'short')} · YTD {money(s.ytd.revenue)}</div></div>
+                <div className="sub"><Change now={s.mtd.revenue} before={(s.prev_same || s.prev).revenue} /> vs {s.prev_same ? 'same point in ' : ''}{monthLabel(shiftMonth(month, -1), 'short')} · YTD {money(s.ytd.revenue)}</div></div>
               <div className="tile"><div className="lab"><span className="dot" style={{ background: '#8b5cf6' }} />Costs</div><div className="val">{money(s.mtd.costs)}</div>
                 <div className="sub">credits {money(s.mtd.credit_cost)} · fees {money(s.mtd.fees)} · expenses {money(s.mtd.expenses)}</div></div>
               <div className="tile"><div className="lab"><span className="dot" style={{ background: '#1596b3' }} />Net profit</div><div className="val">{money(s.mtd.profit)}</div>
-                <div className="sub"><Change now={s.mtd.profit} before={s.prev.profit} /> · {s.mtd.revenue ? Math.round((s.mtd.profit / s.mtd.revenue) * 100) : 0}% margin · YTD {money(s.ytd.profit)}</div></div>
+                <div className="sub"><Change now={s.mtd.profit} before={(s.prev_same || s.prev).profit} /> · {s.mtd.revenue ? Math.round((s.mtd.profit / s.mtd.revenue) * 100) : 0}% margin · YTD {money(s.ytd.profit)}</div></div>
               <div className="tile"><div className="lab">New customers</div><div className="val">{s.mtd.new_users}</div>
                 <div className="sub">{s.mtd.payments} payments this month · {s.ytd.new_users} new this year</div></div>
             </div>

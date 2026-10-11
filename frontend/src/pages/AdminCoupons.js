@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 export default function AdminCoupons() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
+  const [showPersonal, setShowPersonal] = useState(false);   // CMTV 2026-10-11: personal come-back codes hidden by default
   const [formData, setFormData] = useState({
     code: '',
     coupon_type: 'percentage',
@@ -94,6 +95,11 @@ export default function AdminCoupons() {
           </button>
         </div>
 
+        {(coupons || []).some((c) => c.cmtv_user_id) && (
+          <button type="button" onClick={() => setShowPersonal(!showPersonal)} className="mb-4 text-sm text-blue-600 hover:underline">
+            {showPersonal ? 'Hide' : 'Show'} personal come-back codes ({(coupons || []).filter((c) => c.cmtv_user_id).length})
+          </button>
+        )}
         {/* Coupons List */}
         {isLoading ? (
           <div className="text-center py-12">
@@ -101,7 +107,7 @@ export default function AdminCoupons() {
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {coupons?.map((coupon) => (
+            {coupons?.filter((c) => showPersonal || !c.cmtv_user_id).map((coupon) => (
               <div key={coupon.id} className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-2">

@@ -61,6 +61,7 @@ export default function AdminProducts() {
   const panels = xtreamPanels;
   
   const getPanelName = (panelIndex, panelType = 'xtream') => {
+    if (panelType === 'manual') return 'Add-on (no panel)';   // CMTV 2026-10-11: was shown as CCTV
     if (panelIndex === undefined || panelIndex === null) return 'Default Panel';
     
     if (panelType === 'xuione') {

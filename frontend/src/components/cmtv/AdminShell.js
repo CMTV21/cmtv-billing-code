@@ -34,12 +34,12 @@ const NAV = [
   { group: 'Services', items: [
     { label: 'Products', to: '/admin/products' }, { label: 'Nuvio', to: '/admin/nuvio' }, { label: 'Stremio', to: '/admin/stremio' },
     { label: 'CMTVpn', to: '/admin/cmtvpn' }, { label: 'Audiobooks', to: '/admin/audiobooks', count: 'stuck' },
-    { label: 'Downloads', to: '/admin/downloads' }, { label: 'Launcher', to: '/admin/launcher' },
+    { label: 'Downloads', to: '/admin/downloads' },   // 2026-10-11: Launcher (unused) off the menu, /admin/launcher still works
     { label: 'Knowledge base', to: '/admin/knowledge-base' },
   ] },
   { group: 'System', items: [
     { label: 'Possible duplicates', to: '/admin/duplicates', count: 'dupes', crit: true }, { label: 'Imported users', to: '/admin/imported-users', perm: 'imported_users' },
-    { label: 'Mass email', to: '/admin/mass-email' }, { label: 'Email templates', to: '/admin/email-templates' },
+    { label: 'Email templates', to: '/admin/email-templates' },   // 2026-10-11: Mass email off the menu (use Campaign emails)
     { label: 'Staff', to: '/admin/staff' }, { label: 'Settings', to: '/admin/settings' },
   ] },
 ];

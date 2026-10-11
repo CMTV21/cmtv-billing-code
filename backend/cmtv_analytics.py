@@ -71,6 +71,8 @@ def init_routes():
             p["cost"] += float(t.get("total_cost") or 0) + float(t.get("paypal_fee") or 0)
             p["payments"] += 1
             name = (t.get("customer") or "").strip()
+            if name.lower() in ("cctv payment", "imperium payment", "amethyst payment", "extreme payment", "onetime payment"):
+                name = ""   # 2026-10-11: lump-sum ledger rows (one-time payments from a server), not a customer
             if name:
                 c = customers.setdefault(name.lower(), {"name": name, "total": 0.0, "payments": 0, "last": None})
                 c["total"] += amt

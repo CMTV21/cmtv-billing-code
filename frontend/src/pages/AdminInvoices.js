@@ -182,8 +182,7 @@ export default function AdminInvoices() {
                                 className="text-green-600 hover:text-green-800" title="Mark paid"><CheckCircle className="w-4 h-4" /></button>
                             )}
                             <button onClick={() => setEditInvoice(inv)} className="text-blue-600 hover:text-blue-800" title="Edit"><Edit className="w-4 h-4" /></button>
-                            <button onClick={() => { if(window.confirm('Delete this invoice?')) deleteMutation.mutate(inv.id); }}
-                              className="text-red-500 hover:text-red-700" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                            {/* CMTV 2026-10-11: Delete removed (permanent; the owner's rule is to cancel/retire instead) */}
                           </div>
                         </td>
                       </tr>
@@ -214,7 +213,6 @@ export default function AdminInvoices() {
                         <button onClick={() => handleDownloadPdf(inv.id, inv.invoice_number)} className="text-xs text-blue-600">Download</button>
                         {inv.status === 'pending' && <button onClick={() => updateMutation.mutate({ id: inv.id, data: { status: 'paid' } })} className="text-xs text-green-600">Mark Paid</button>}
                         <button onClick={() => setEditInvoice(inv)} className="text-xs text-blue-600">Edit</button>
-                        <button onClick={() => { if(window.confirm('Delete?')) deleteMutation.mutate(inv.id); }} className="text-xs text-red-500">Delete</button>
                       </div>
                     </div>
                   </div>

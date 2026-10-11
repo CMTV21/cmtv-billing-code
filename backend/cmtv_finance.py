@@ -251,7 +251,9 @@ async def sync_billing_orders():
         if await D["tx"].find_one({"order_id": oid}):
             continue
         user = await D["users"].find_one({"_id": ObjectId(o["user_id"])}) if ObjectId.is_valid(str(o.get("user_id"))) else None
-        first_paid = await D["orders"].find_one({"user_id": o["user_id"], "status": "paid"}, sort=[("paid_at", 1)])
+        # CMTV 2026-10-11: first PAID order (a $0 trial counted as "first", so real new customers were never flagged)
+        first_paid = await D["orders"].find_one({"user_id": o["user_id"], "status": "paid", "total": {"$gt": 0},
+                                                 "payment_method": {"$ne": "test"}}, sort=[("paid_at", 1)])
         credits, note = 0.0, []
         server = None
         for it in o.get("items", []):
@@ -367,6 +369,8 @@ async def summary(month: Optional[str] = None):
     out = {
         "month": m0.strftime("%Y-%m"),
         "mtd": await _totals(m0, m1), "prev": await _totals(prev, m0), "ytd": await _totals(y0, m1),
+        # 2026-10-11: the month in progress is compared with the same point last month, not the whole month
+        "prev_same": (await _totals(prev, min(m0, prev + (now - m0)))) if m0 <= now < m1 else None,
         "all": await _totals(datetime(2000, 1, 1), datetime(2100, 1, 1)),
         "months": [],
     }
