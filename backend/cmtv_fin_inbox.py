@@ -95,6 +95,22 @@ async def _billing_paid_recently(user_id, now) -> bool:
                                              "paid_at": {"$gte": now - BILLING_WINDOW}}))
 
 
+async def _recorded_by_hand(username=None, amount=None, sender=None, when=None) -> bool:
+    """CMTV 2026-10-11: Admin > Extend / Record payment already put this payment in the ledger (source "manual") in the
+    last 3 days -> no suggestion (Sarah's and Rochelle's renewals showed up again in Needs recording)."""
+    when = when or datetime.utcnow()
+    first = next(iter(_words(sender)), "") if sender else ""
+    async for r in F.D["tx"].find({"source": "manual", "deleted": {"$ne": True},
+                                   "date": {"$gte": (when - timedelta(days=3)).replace(hour=0, minute=0, second=0, microsecond=0)}}):
+        notes = str(r.get("notes") or "")
+        if username and re.search("line " + re.escape(str(username)) + "(?![A-Za-z0-9@])", notes, re.I):
+            return True
+        if amount and abs(float(r.get("amount") or 0) - float(amount)) < 0.01 and sender and (
+                names_match(sender, r.get("customer")) or (len(first) >= 4 and first in str(r.get("customer") or "").lower())):
+            return True
+    return False
+
+
 async def scan_lines(now=None):
     """Compare every panel line's end date with the last scan; returns the suggestions made"""
     db = _db()
@@ -132,6 +148,8 @@ async def scan_lines(now=None):
             continue   # billing's own order paid for it (already in the ledger)
         if ((svc or {}).get("auto_renew") or {}).get("status") == "ACTIVE":
             continue   # PayPal auto-renew makes a billing order
+        if await _recorded_by_hand(username=line["username"], when=now):
+            continue   # 2026-10-11: already recorded by hand
         server = server_for_line(line)
         months, conns = snap_months(days), _conns(line.get("max_connections"))
         credits = F.credits_for(cfg, server, conns, months)
@@ -165,6 +183,8 @@ async def scan_etransfers(now=None):
         if await db.cmtv_fin_inbox.find_one({"etransfer_ref": base}):
             continue
         when = t.get("received_at") or now
+        if await _recorded_by_hand(amount=float(t.get("amount") or 0), sender=t.get("name"), when=when):
+            continue   # 2026-10-11: already recorded by hand
         doc = {"kind": "etransfer", "status": "open", "created_at": now, "date": when.replace(hour=0, minute=0, second=0, microsecond=0),
                "amount": float(t.get("amount") or 0), "amount_from": "e-Transfer", "method": "e-Transfer",
                "sender": t.get("name"), "sender_email": t.get("reply_to") or None, "customer": t.get("name"), "etransfer_ref": base, "server": None, "credits": None,

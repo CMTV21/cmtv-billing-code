@@ -1,8 +1,8 @@
 // CMTV local addition 2026-10-09: /pay/:orderId "Pay for your order" (backend cmtv_pay.py). After choosing e-Transfer or Wise
 // the customer lands here with every exact detail and a copy button for each (owner: "I get too many questions afterward").
 import React, { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';   // 2026-10-09: QR of the owner's Wise "get paid" link
 import api from '../../api/api';
@@ -10,6 +10,7 @@ import '../../components/cmtv/cmtv-kb.css';
 
 const card = { background: '#141d33', border: '1px solid #27345a', borderRadius: 14, padding: '6px 16px', margin: '14px 0' };
 const money = (v) => `$${Number(v || 0).toFixed(2)} CAD`;
+const LABEL = { paypal: 'PayPal or card', emt: 'Interac e-Transfer', wise: 'Wise' };   // 2026-10-11
 
 function Row({ label, value, mono = false, copy = true, note }) {
   const [done, setDone] = useState(false);
@@ -33,6 +34,25 @@ function Row({ label, value, mono = false, copy = true, note }) {
 
 export default function PayPage() {
   const { orderId } = useParams();
+  // 2026-10-11 (owner): PayPal / card in the same tab (no pop-up) + switch payment method on an unpaid order
+  const [params] = useSearchParams();
+  const cancelled = params.get('payment') === 'cancelled';
+  const qc = useQueryClient();
+  const [going, setGoing] = useState('');
+  const goPayPal = async (how) => {
+    setGoing(how);
+    try {
+      const r = await api.post(`/api/orders/${orderId}/pay/paypal`, { origin: window.location.origin, landing: how });
+      if (!r.data.approval_url) throw new Error('no link');
+      window.location.href = r.data.approval_url;
+    } catch (e) { toast.error(e?.response?.data?.detail || "PayPal couldn't be opened. Please try again in a minute."); setGoing(''); }
+  };
+  const switchTo = async (m) => {
+    setGoing(m);
+    try { qc.setQueryData(['cmtv-pay', orderId], (await api.post(`/api/cmtv/pay/order/${orderId}/method`, { method: m })).data); }
+    catch (e) { toast.error(e?.response?.data?.detail || "Couldn't change it. Please try again."); }
+    setGoing('');
+  };
   const { data: v, error, isLoading } = useQuery({
     queryKey: ['cmtv-pay', orderId],
     queryFn: async () => (await api.get(`/api/cmtv/pay/order/${orderId}`)).data,
@@ -116,8 +136,32 @@ export default function PayPage() {
               {Object.keys(v.wise.bank || {}).length > 0 ? '; bank transfers can take 1-2 business days' : ''}.
               This page updates by itself when it's paid. We've also emailed you these details.</p>
           </>
+        ) : v.method === 'paypal' ? (
+          <>
+            {cancelled && <p style={{ color: '#f59e0b' }}>The PayPal payment was cancelled. You can try again, or pay a different way below.</p>}
+            <p>Pay securely through PayPal. It opens in this tab and brings you back here when you're done.</p>
+            <div style={{ display: 'grid', gap: 10, margin: '14px 0' }}>
+              <button type="button" className="kb-btn glow" disabled={!!going} onClick={() => goPayPal('paypal')}>
+                {going === 'paypal' ? 'Opening PayPal…' : 'Pay with PayPal'}</button>
+              <button type="button" className="kb-btn" disabled={!!going} onClick={() => goPayPal('card')}>
+                {going === 'card' ? 'Opening…' : 'Pay by debit or credit card'}</button>
+            </div>
+            <p style={{ fontSize: 14, color: '#8391b5' }}>Paying by card doesn't need a PayPal account: choose "Pay by debit or credit card".</p>
+          </>
         ) : (
           <p>This order is waiting for payment. If you're not sure how to pay, <Link to="/tickets">message us</Link>.</p>
+        )}
+
+        {/* 2026-10-11 (owner): an unpaid order can switch how it's paid */}
+        {!paid && (v.methods || []).filter((m) => m !== v.method).length > 0 && (
+          <div style={{ marginTop: 18 }}>
+            <p style={{ margin: '0 0 8px', fontWeight: 700 }}>Pay a different way</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(v.methods || []).filter((m) => m !== v.method).map((m) => (
+                <button key={m} type="button" className="kb-btn" disabled={!!going} onClick={() => switchTo(m)}>{LABEL[m] || m}</button>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* 2026-10-09 (owner): the short order number, same as the reference/message above */}

@@ -2568,7 +2568,9 @@ async def create_paypal_payment(order_id: str, origin: dict, current_user: dict 
         raise HTTPException(status_code=500, detail="PayPal service not available")
     
     # Get frontend URL from origin
-    frontend_url = origin.get("origin", "http://localhost:3000")
+    # CMTV local change 2026-10-11: our own site address (not whatever the browser sends) + the same-tab PayPal flow
+    frontend_url = (os.getenv("SITE_URL") or origin.get("origin", "http://localhost:3000")).rstrip("/")
+    landing = "GUEST_CHECKOUT" if origin.get("landing") == "card" else None
     
     # Create payment with frontend URLs
     settings = await get_settings()
@@ -2577,12 +2579,12 @@ async def create_paypal_payment(order_id: str, origin: dict, current_user: dict 
         amount=order["total"],
         currency=currency,
         return_url=f"{frontend_url}/payment/paypal/success?order_id={order_id}",
-        cancel_url=f"{frontend_url}/checkout?payment=cancelled",
-        order_id=order_id
+        cancel_url=f"{frontend_url}/pay/{order_id}?payment=cancelled",   # CMTV 2026-10-11: back to "Pay for your order"
+        order_id=order_id, landing_page=landing
     )
     
     if result["success"]:
-        return {"success": True, "order_id": result["order_id"]}  # Return EC-XXX token
+        return {"success": True, "order_id": result["order_id"], "approval_url": result.get("approval_url")}  # CMTV 2026-10-11: + link
     else:
         raise HTTPException(status_code=500, detail=result.get("error", "Payment creation failed"))
 

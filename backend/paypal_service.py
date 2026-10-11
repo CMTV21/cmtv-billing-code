@@ -38,7 +38,7 @@ class PayPalService:
         except Exception as e:
             logger.error(f"PayPal auth error: {e}")
     
-    def create_order(self, amount, currency="USD", return_url="", cancel_url="", order_id=""):
+    def create_order(self, amount, currency="USD", return_url="", cancel_url="", order_id="", landing_page=None):
         """Create PayPal order using Orders API v2"""
         if not self.access_token:
             return {"success": False, "error": "PayPal not authenticated"}
@@ -59,7 +59,9 @@ class PayPalService:
                     "return_url": return_url,
                     "cancel_url": cancel_url,
                     "brand_name": "Digital Services",
-                    "user_action": "PAY_NOW"
+                    "user_action": "PAY_NOW",
+                    "shipping_preference": "NO_SHIPPING",   # CMTV 2026-10-11: nothing is shipped (no address step)
+                    **({"landing_page": landing_page} if landing_page else {}),   # CMTV 2026-10-11: "GUEST_CHECKOUT" = card form first
                 }
             }
             

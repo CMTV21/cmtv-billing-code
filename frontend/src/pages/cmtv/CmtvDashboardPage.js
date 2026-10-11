@@ -367,7 +367,7 @@ export default function CmtvDashboardPage() {
                       <span>{(o.items || []).map((i) => i.product_name).join(', ')}
                         <small>{fmtDate(o.paid_at || o.created_at)} · {o.status === 'pending' ? 'waiting for payment' : paymentLabel(o)}
                         {/* CMTV local change 2026-10-09: exact payment details (cmtv_pay) */}
-                        {o.status === 'pending' && ['emt', 'wise'].includes(o.payment_method) && <> · <Link to={`/pay/${o.id}`}>How to pay</Link></>}</small></span>
+                        {o.status === 'pending' && Number(o.total) > 0 && ['emt', 'wise', 'paypal'].includes(o.payment_method) && <> · <Link to={`/pay/${o.id}`}>How to pay</Link></>}</small></span>
                       <span className="ca-amt">${Number(o.total || 0).toFixed(2)}</span>
                     </div>
                   ))}

@@ -204,12 +204,12 @@ export default function CheckoutPage() {
       const orderId = response.data.order_id;
       setCurrentOrderId(orderId);
       
-      if (['manual', 'emt', 'zelle', 'cashapp', 'venmo', 'wise'].includes(paymentMethod) && Number(response.data.total) > 0) { // CMTV 2026-09-25: not for $0 orders
+      if (['manual', 'emt', 'zelle', 'cashapp', 'venmo', 'wise', 'paypal'].includes(paymentMethod) && Number(response.data.total) > 0) {   // CMTV 2026-10-11: + paypal // CMTV 2026-09-25: not for $0 orders
         clearCart();
         // CMTV local change 2026-10-09: e-Transfer / Wise go to "Pay for your order" with every exact detail (cmtv_pay)
-        if (['emt', 'wise'].includes(paymentMethod)) {
+        if (['emt', 'wise', 'paypal'].includes(paymentMethod)) {   // CMTV 2026-10-11: PayPal / card is paid from there too (no pop-up)
           navigate(`/pay/${orderId}`);
-          toast.success('Order placed! Here are the exact details to pay.');
+          toast.success(paymentMethod === 'paypal' ? 'Order placed! Pay with PayPal or a debit/credit card.' : 'Order placed! Here are the exact details to pay.');
         } else {
           navigate('/orders');
           toast.success(paymentMethod === 'manual' ? 'Order placed! Please wait for admin to confirm payment.' : `Order placed! Please send your ${paymentMethod.toUpperCase()} payment now. Include your Order ID.`);
@@ -1509,14 +1509,15 @@ export default function CheckoutPage() {
                   <CheckoutAutoRenew items={items} total={getTotal()} discounted={(!!appliedCouponCode && !tierWins) || creditsApplied > 0}
                     memberPrice={tierWins ? payTotal : null}
                     clientId={settings.paypal.client_id} onDone={() => { clearCart(); navigate('/orders'); }} onError={setError}>
-                  <PayPalScriptProvider options={{ "client-id": settings.paypal.client_id, currency: settings?.currency?.code || "USD" }}>
-                    <PayPalButtons
-                      style={{ layout: "vertical", color: "blue" }}
-                      createOrder={createPayPalOrder}
-                      onApprove={onPayPalApprove}
-                      onError={(err) => setError('PayPal payment failed')}
-                    />
-                  </PayPalScriptProvider>
+                  /* CMTV local change 2026-10-11 (owner): no PayPal pop-up buttons (a customer's Firefox closed the window at once).
+                     The order is placed here; PayPal or a card is paid on the "Pay for your order" page, in the same tab. */
+                  <div>
+                    <button onClick={handleCheckout} disabled={createOrderMutation.isPending}
+                      className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50">
+                      {createOrderMutation.isPending ? 'Processing...' : 'Continue to payment'}
+                    </button>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-3 text-center">Next: pay with PayPal or a debit/credit card (no PayPal account needed).</p>
+                  </div>
                   </CheckoutAutoRenew>
                 ) : paymentMethod === 'stripe' && settings?.stripe?.enabled ? (
                   <button

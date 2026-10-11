@@ -14,6 +14,21 @@ export default function PayPalSuccessPage() {
       const paymentId = searchParams.get('paymentId');
       const payerId = searchParams.get('PayerID');
       const orderId = searchParams.get('order_id');
+      // CMTV local change 2026-10-11: the same-tab PayPal / card flow (Orders v2) returns ?token=<PayPal order>: capture it
+      const ppToken = searchParams.get('token');
+      if (ppToken && orderId && !paymentId) {
+        try {
+          const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.token;
+          await axios.post(`${API_URL}/api/orders/paypal/capture`, { order_id: orderId, paypal_order_id: ppToken },
+            { headers: { Authorization: `Bearer ${auth}` } });
+          setStatus('success');
+          setTimeout(() => navigate(`/pay/${orderId}`), 1500);
+        } catch (error) {
+          console.error('PayPal capture error:', error);
+          setStatus('error');
+        }
+        return;
+      }
 
       if (!paymentId || !payerId) {
         setStatus('error');
@@ -72,7 +87,7 @@ export default function PayPalSuccessPage() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Payment Failed</h2>
             <p className="text-gray-600 dark:text-gray-400 mb-4">There was an error processing your payment</p>
             <button
-              onClick={() => navigate('/checkout')}
+              onClick={() => navigate(searchParams.get('order_id') ? `/pay/${searchParams.get('order_id')}` : '/checkout')}   /* CMTV 2026-10-11 */
               className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
             >
               Back to Checkout

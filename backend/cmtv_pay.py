@@ -62,6 +62,18 @@ def _wise_ready(dt):
     return bool(dt["wise_tag"] or dt["wise_email"] or dt["wise_link"] or any(dt["wise_bank"].values()))
 
 
+SWITCHABLE = ("paypal", "emt", "wise")
+
+
+async def methods():
+    """2026-10-11 (owner): payment methods an unpaid order can switch to on the pay page (switched on in Settings)."""
+    try:
+        s = await D["get_settings"]()
+    except Exception:
+        return []
+    return [m for m in SWITCHABLE if (s.get(m) or {}).get("enabled")]
+
+
 async def view(order, dt=None):
     """What the /pay page and the order email show for this order."""
     dt = dt or await details()
@@ -77,6 +89,7 @@ async def view(order, dt=None):
                        "link": dt["wise_link"],   # 2026-10-09: the Wise "get paid" link (button + QR on the pay page)
                        "invite": dt["wise_invite"],   # 2026-10-09: the owner's Wise invite link, for people without Wise
                        "amount": out["total"], "bank": {c: v for c, v in dt["wise_bank"].items() if v}, "ready": _wise_ready(dt)}
+    out["methods"] = await methods()   # 2026-10-11: what an unpaid order can switch to
     try:
         import cmtv_hours
         st = await cmtv_hours.current()
@@ -421,6 +434,22 @@ def init_routes():
         o = await D["orders"].find_one({"_id": _oid(order_id)}) if _oid(order_id) else None
         if not o or (str(o.get("user_id")) != str(current_user.get("sub")) and current_user.get("role") not in ("admin", "staff")):
             raise HTTPException(404, "Order not found")
+        return await view(o)
+
+    @router.post("/order/{order_id}/method")   # 2026-10-11 (owner): an unpaid order can change how it's paid
+    async def change_method(order_id: str, body: dict = Body(...), current_user: dict = Depends(current)):
+        o = await D["orders"].find_one({"_id": _oid(order_id)}) if _oid(order_id) else None
+        if not o or str(o.get("user_id")) != str(current_user.get("sub")):
+            raise HTTPException(404, "Order not found")
+        if o.get("status") != "pending" or float(o.get("total") or 0) <= 0:
+            raise HTTPException(400, "This order isn't waiting for payment.")
+        m = str(body.get("method") or "")
+        if m not in await methods():
+            raise HTTPException(400, "That payment option isn't available.")
+        if m != o.get("payment_method"):
+            await D["orders"].update_one({"_id": o["_id"]}, {"$set": {"payment_method": m}, "$push": {"cmtv_method_changes": {
+                "from": o.get("payment_method"), "to": m, "at": datetime.utcnow()}}})
+            o = await D["orders"].find_one({"_id": o["_id"]})
         return await view(o)
 
     @router.get("/admin/details")
