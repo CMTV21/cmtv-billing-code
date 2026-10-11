@@ -2570,7 +2570,7 @@ async def create_paypal_payment(order_id: str, origin: dict, current_user: dict 
     # Get frontend URL from origin
     # CMTV local change 2026-10-11: our own site address (not whatever the browser sends) + the same-tab PayPal flow
     frontend_url = (os.getenv("SITE_URL") or origin.get("origin", "http://localhost:3000")).rstrip("/")
-    landing = "GUEST_CHECKOUT" if origin.get("landing") == "card" else None
+    landing = "BILLING" if origin.get("landing") == "card" else None   # PayPal's card-form-first page (GUEST_CHECKOUT is rejected)
     
     # Create payment with frontend URLs
     settings = await get_settings()
