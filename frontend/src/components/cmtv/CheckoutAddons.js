@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { productsAPI, servicesAPI } from '../../api/api';
+import { isRunningTvTrial } from './KeepTrialLogin'; // 2026-10-11: ended TV trials can't be extended
 import { BRAND, lookup, bundlePartsFor, replacedBy, partsText } from './brand';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -44,7 +45,9 @@ export function useTrialOf() {
 // (so buying Stremio after the trial keeps the same login); a TV plan never extends an add-on.
 export function extendChoices(item, services, addonIds, trialOf = {}) {
   const isAddon = addonIds.has(item.product_id);
-  return (services || []).filter((s) => (isAddon
+  // 2026-10-11: an ENDED CCTV/Imperium trial line is never offered (it's often deleted on the panel; renewing it fails)
+  const endedTvTrial = (s) => s.is_trial && ['xtream', 'aether'].includes(s.panel_type) && !isRunningTvTrial(s);
+  return (services || []).filter((s) => !endedTvTrial(s)).filter((s) => (isAddon
     ? s.product_id === item.product_id || trialOf[s.product_id] === item.product_id
     : !addonIds.has(s.product_id) && !trialOf[s.product_id]));
 }
