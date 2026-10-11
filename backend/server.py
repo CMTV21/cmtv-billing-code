@@ -4205,10 +4205,11 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             _trial = bool(product.get("trial_duration")) or "trial" in str(product.get("name") or "").lower()
             _same = bool(_svc) and _svc.get("panel_type") == product.get("panel_type") and (
                 product.get("panel_type") != "manual" or _svc.get("cockpit_module") == product.get("cockpit_module"))
-            # CMTV 2026-10-11: an ENDED CCTV/Imperium trial line can't be extended (often deleted on the panel: renew "not found")
+            # CMTV 2026-10-11 (owner): a CCTV/Imperium trial line that ended MORE than 7 days ago can't be extended (often deleted
+            # on the panel by then: renew "not found"); within 7 days it can
             _exp = (_svc or {}).get("expiry_date")
             _ended_trial = bool(_svc) and bool(_svc.get("is_trial")) and _svc.get("panel_type") in ("xtream", "aether") \
-                and isinstance(_exp, datetime) and _exp < datetime.utcnow()
+                and isinstance(_exp, datetime) and _exp < datetime.utcnow() - timedelta(days=7)
             if _trial or not _same or _ended_trial:
                 logger.warning(f"Order item {item.product_name}: 'extend' of service {item.renewal_service_id} "
                                f"({(_svc or {}).get('panel_type')}) not allowed for this product, made a new line instead")

@@ -10,8 +10,9 @@ import { isRunningTvTrial } from './KeepTrialLogin';
 const ts = (d) => (d ? new Date(String(d).endsWith('Z') ? d : `${d}Z`).getTime() : 0);
 
 export function bestLine(all, now = Date.now()) {
-  // 2026-10-11: never an ended TV trial, never a line that ended more than 30 days ago
-  const lines = all.filter((s) => !(s.is_trial && !isRunningTvTrial(s)) && ts(s.expiry_date) > now - 30 * 86400000);
+  // 2026-10-11 (owner): a trial only while running or within 7 days of ending; other lines within 30 days of ending
+  const lines = all.filter((s) => (s.is_trial ? (isRunningTvTrial(s) || ts(s.expiry_date) > now - 7 * 86400000)
+    : ts(s.expiry_date) > now - 30 * 86400000));
   const trial = lines.filter(isRunningTvTrial).sort((a, b) => ts(b.expiry_date) - ts(a.expiry_date))[0];
   if (trial) return trial;
   const active = lines.filter((s) => ts(s.expiry_date) > now).sort((a, b) => ts(a.expiry_date) - ts(b.expiry_date))[0];
