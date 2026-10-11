@@ -9780,7 +9780,7 @@ async def get_currency():
         "symbol": CURRENCY_SYMBOLS.get(code, "$"),
         "available": [
             {"code": c, "symbol": CURRENCY_SYMBOLS.get(c, "$"), "rate": r}
-            for c, r in CURRENCY_RATES.items()
+            for c, r in sorted(CURRENCY_RATES.items(), key=lambda kv: kv[0] != code)   # CMTV 2026-10-11: shop's currency first
         ],
         "base_currency": code,
     }
@@ -15750,6 +15750,12 @@ async def track_download(
 # This billing panel only has license STATUS checking and ACTIVATION
 # Customers cannot generate their own licenses
 
+# CMTV local change 2026-10-11: cache the licence answer. Every page load (and every open tab every 30 s) asked the
+# developer's licence server: ~0.5 s of "Checking license..." for every visitor, 5-8k logged checks a day, and when that
+# server was slow the whole site showed the lock screen. A VALID answer is now reused for an hour; if the licence servers
+# can't be reached, the last valid answer is kept for up to 3 days. An invalid/expired licence still locks straight away.
+_CMTV_LICENSE = {"good": None, "good_at": None, "key": None}
+
 # License status endpoint (keep this - needed for activation)
 @app.get("/api/license/status")
 async def get_license_status():
@@ -15780,7 +15786,19 @@ async def get_license_status():
             "message": "No license key configured. Add LICENSE_KEY to environment or Settings → License tab."
         }
     
-    validation = await license_manager.validate_license(license_key, current_domain)
+    _c, _now = _CMTV_LICENSE, datetime.utcnow()   # CMTV 2026-10-11: see _CMTV_LICENSE
+    if _c["good"] and _c["key"] == license_key and _now - _c["good_at"] < timedelta(hours=1):
+        validation = _c["good"]
+    else:
+        validation = await license_manager.validate_license(license_key, current_domain)
+        if validation.get("valid"):
+            _c.update(good=validation, good_at=_now, key=license_key)
+        elif (str(validation.get("reason") or "").startswith("Unable to connect") and _c["good"]
+              and _c["key"] == license_key and _now - _c["good_at"] < timedelta(days=3)):
+            logger.warning("License servers unreachable: using the last valid answer")
+            validation = _c["good"]
+        else:
+            _c.update(good=None, good_at=None, key=None)
     
     return {
         "licensed": validation["valid"],

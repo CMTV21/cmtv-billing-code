@@ -121,33 +121,33 @@ function AdminRoute({ children }) {
 }
 
 // License Check Component
+// CMTV local change 2026-10-11: the last "licensed" answer is remembered for the browser session, so pages show straight
+// away instead of "Checking license..."; a failed check (network blip, backend restarting) no longer shows the lock screen
+// (only a real "not licensed" answer does; first load retries 3 times); checked every 5 minutes instead of every 30 s.
 function LicenseCheck({ children }) {
-  const [licensed, setLicensed] = React.useState(null);
+  const [licensed, setLicensed] = React.useState(() => {
+    try { return sessionStorage.getItem('cmtv-licensed') === '1' ? true : null; } catch (e) { return null; }
+  });
 
   React.useEffect(() => {
-    const checkLicense = async () => {
+    let timer;
+    const checkLicense = async (retry = 0) => {
       try {
         const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/license/status`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        
-        if (!data.licensed && licensed === true) {
-          // License became invalid, force reload to show lock screen
-          window.location.reload();
-        }
-        
-        setLicensed(data.licensed);
+        try { sessionStorage.setItem('cmtv-licensed', data.licensed ? '1' : '0'); } catch (e) { /* storage blocked */ }
+        setLicensed(!!data.licensed);
       } catch (error) {
-        setLicensed(false);
+        if (retry < 3) timer = setTimeout(() => checkLicense(retry + 1), 2000 * (retry + 1));
+        else setLicensed((prev) => (prev === null ? false : prev));
       }
     };
-    
+
     checkLicense();
-    
-    // Check license every 30 seconds
-    const interval = setInterval(checkLicense, 30000);
-    
-    return () => clearInterval(interval);
-  }, [licensed]);
+    const interval = setInterval(() => checkLicense(), 300000);
+    return () => { clearInterval(interval); clearTimeout(timer); };
+  }, []);
 
   if (licensed === null) {
     return (

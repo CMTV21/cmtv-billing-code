@@ -965,7 +965,8 @@ def init_routes():
     # ---- the customer's own devices (dashboard, 2026-09-29): only accounts linked to one of their services
     async def _own(username: str, current_user: dict) -> dict:
         rx = {"$regex": f"^{re.escape(username)}$", "$options": "i"}
-        svc = await D["services"].find_one({"user_id": str(current_user.get("_id") or current_user.get("id")),
+        # CMTV 2026-10-11: the token payload has "sub", not "_id": every lookup used "None" and 404'd (devices never showed)
+        svc = await D["services"].find_one({"user_id": str(current_user.get("sub") or current_user.get("_id") or current_user.get("id")),
                                              "cockpit_module": MODULE, "username": rx})
         acc = await get_account(username) if svc else None
         if not acc:

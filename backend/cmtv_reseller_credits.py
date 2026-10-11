@@ -573,7 +573,7 @@ def init_routes():
         u = await db.users.find_one({"_id": _oid(uid)}) or {}
         if u.get("role") != "admin" and not await db.services.find_one(
                 {"user_id": uid, "account_type": "reseller", "status": "active"}):
-            raise HTTPException(status_code=403, detail="These guides are for CMTV resellers.")
+            return {"articles": []}   # 2026-10-11: was a 403 for every non-reseller opening the guides (only noise)
         arts = await db.kb_articles.find({"cmtv_audience": "resellers"}, {"_id": 0}).sort("display_order", 1).to_list(50)
         return {"articles": arts}
 

@@ -317,7 +317,13 @@ export default function CmtvHomePage() {
         </div>
       </section>
 
-      <footer>{branding.footer_text || 'CMTV'} · <Link to="/terms" style={{ color: 'inherit' }}>Terms and Conditions</Link> · <Link to="/privacy" style={{ color: 'inherit' }}>Privacy Policy</Link></footer>{/* CMTV 2026-09-27: terms + privacy links */}
+      {/* CMTV 2026-09-27: terms + privacy links; 2026-10-11 (owner): the useful pages too */}
+      <footer>{branding.footer_text || 'CMTV'}
+        {[['Guides', '/knowledge-base'], ['Devices & apps', '/devices'], ['Service status', '/status'], ['Sports tonight', '/sports'],
+          ['Gift cards', '/gift'], ['Terms and Conditions', '/terms'], ['Privacy Policy', '/privacy']].map(([label, to]) => (
+          <React.Fragment key={to}> · <Link to={to} style={{ color: 'inherit' }}>{label}</Link></React.Fragment>))}
+        {' · '}<a href="https://t.me/Cmtv_support_bot" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>Telegram support</a>
+      </footer>
     </div>
   );
 }
@@ -504,7 +510,8 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
         {!(family === 'addons' && logo) && <h4 style={family === 'imperium' ? { marginTop: 8 } : undefined}>{titleCase(card.name)}</h4>}
         {family === 'addons' && lookup(BRAND.taglines, first?.name) && <div className="tag">{lookup(BRAND.taglines, first.name)}</div>}
         {products.length > 1 && <small>{products.length} plans available</small>}
-        {(family === 'cctv' || family === 'trials' || family === 'other') && first?.account_type !== 'reseller' && first?.panel_type !== 'manual' && (
+        {(family === 'cctv' || family === 'trials' || family === 'other') && first?.account_type !== 'reseller' && first?.panel_type !== 'manual'
+          && !/connection/i.test(card.name || '') && (   /* 2026-10-11: not when the title already says it ("1 Connection") */
           <div className="conn">{conns} connection{conns !== 1 ? 's' : ''}</div>
         )}
         {family === 'resellers' && first?.reseller_credits > 0 && <div className="conn">{first.reseller_credits} credits</div>}
