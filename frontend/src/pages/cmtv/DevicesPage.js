@@ -20,6 +20,9 @@ const APPS = {
     how: 'Downloader app → code 5883394 → Nuvio', link: `${DL}/nuvio`, linkText: 'Download', plan: '/?tab=addons' },
   stremio: { name: 'Stremio', tag: 'Movies & series', what: 'The classic movies & series app, if you prefer it to Nuvio.',
     how: 'stremio.com or your device\'s app store', link: 'https://www.stremio.com/downloads', linkText: 'stremio.com', guide: 'cmtv-stremio' },
+  // 2026-10-11 (owner): free extra, the developer's own app; billing.cmtv.info/youtube = nginx 302 to the latest arm APK
+  ttcobalt: { name: 'TizenTube Cobalt', tag: 'YouTube · free extra', what: 'YouTube on your TV box without the ads, free for CMTV customers. It skips sponsor segments too. Free and open source.',
+    how: 'Downloader app → type billing.cmtv.info/youtube → Install', link: 'https://github.com/reisxd/TizenTubeCobalt', linkText: 'Official page', guide: 'cmtv-youtube' },
   smarttube: { name: 'SmartTube', tag: 'YouTube', what: 'YouTube for Android TV and Google TV without the ads. Free and open source.',
     how: 'Install steps are on its official page', link: 'https://github.com/yuliskov/SmartTube', linkText: 'Official page' },
   tizentube: { name: 'TizenTube', tag: 'YouTube', what: 'Ad-free YouTube for Samsung (Tizen) smart TVs. Free and open source.',
@@ -41,9 +44,9 @@ const APPS = {
 
 const DEVICES = [
   { key: 'androidtv', label: 'Android TV / Google TV box', sub: 'Onn 4K Pro, Formuler, Nvidia Shield, Chromecast with Google TV',
-    apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'smarttube', 'cmtvpn', 'fast', 'ookla'], guide: 'cmtv-onn-4k-google-tv',
+    apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'ttcobalt', 'smarttube', 'cmtvpn', 'fast', 'ookla'], guide: 'cmtv-onn-4k-google-tv',
     note: 'Formuler boxes also come with MYTVOnline built in, which works great with CMTV.' },
-  { key: 'fire', label: 'Amazon Firestick / Fire TV', sub: 'Fire TV Stick, Fire TV Cube', apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'smarttube', 'cmtvpn', 'fast', 'ookla'],
+  { key: 'fire', label: 'Amazon Firestick / Fire TV', sub: 'Fire TV Stick, Fire TV Cube', apps: ['ghost', 'tivimate', 'nuvio', 'stremio', 'ttcobalt', 'smarttube', 'cmtvpn', 'fast', 'ookla'],
     guide: 'cmtv-firestick-android-tv',
     note: 'Already have a Firestick? Most current ones still run these apps. Buying a new device? We don\'t recommend a Firestick, especially the newest models.' },
   { key: 'apple', label: 'iPhone, iPad or Apple TV', sub: 'iOS / tvOS', apps: ['mytv', 'prologue', 'cmtvpn', 'ookla'], guide: 'cmtv-iphone-ipad',
