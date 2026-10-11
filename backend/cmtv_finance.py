@@ -362,7 +362,7 @@ async def _totals(start, end):
 
 async def summary(month: Optional[str] = None):
     now = datetime.utcnow()
-    m0 = datetime.strptime(month, "%Y-%m") if month else _month_start(now)
+    m0 = datetime.strptime(month, "%Y-%m") if month else _month_start(_local(now))   # 2026-10-11: Toronto month
     m1 = _add_months(m0, 1)
     prev = _add_months(m0, -1)
     y0 = m0.replace(month=1)
@@ -370,7 +370,8 @@ async def summary(month: Optional[str] = None):
         "month": m0.strftime("%Y-%m"),
         "mtd": await _totals(m0, m1), "prev": await _totals(prev, m0), "ytd": await _totals(y0, m1),
         # 2026-10-11: the month in progress is compared with the same point last month, not the whole month
-        "prev_same": (await _totals(prev, min(m0, prev + (now - m0)))) if m0 <= now < m1 else None,
+        # 2026-10-11: whole days, the 1st through today's day number in Toronto (same rule as the admin home)
+        "prev_same": (await _totals(prev, min(m0, prev + timedelta(days=_local(now).day)))) if m0 <= _local(now) < m1 else None,
         "all": await _totals(datetime(2000, 1, 1), datetime(2100, 1, 1)),
         "months": [],
     }

@@ -109,7 +109,8 @@ def init_routes():
         month_total = prev_same = prev_full = 0.0
         by_family = defaultdict(float)
         by_method = defaultdict(float)
-        same_point = (prev_month_start + elapsed).replace(tzinfo=None)
+        # CMTV 2026-10-11: whole days, the 1st through today's day number (same rule as Admin > Finances)
+        same_point = (prev_month_start + timedelta(days=now.day)).replace(tzinfo=None)
         import cmtv_finance
         async for r in cmtv_finance.D["tx"].find({"deleted": {"$ne": True}, "date": {"$gte": ledger_from}}):
             amt = float(r.get("amount") or 0)
