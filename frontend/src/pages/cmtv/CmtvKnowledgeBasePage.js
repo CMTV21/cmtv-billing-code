@@ -83,7 +83,16 @@ function renderContent(content) {
     if (b.type === 'h') return <h2 key={i}>{inline(b.text, i)}</h2>;
     if (b.type === 'p') return <p key={i}>{inline(b.text, i)}</p>;
     if (b.type === 'image') return <img key={i} src={b.src} alt="" loading="lazy" />;
-    if (b.type === 'video') return <video key={i} src={b.src} controls />;
+    if (b.type === 'video') {   // 2026-10-11: YouTube links play in a YouTube player (privacy-enhanced embed)
+      const yt = String(b.src).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/))([\w-]{11})/);
+      if (yt) return (
+        <div key={i} style={{ position: 'relative', paddingTop: '56.25%', margin: '12px 0' }}>
+          <iframe src={`https://www.youtube-nocookie.com/embed/${yt[1]}`} title="Video guide" loading="lazy" allowFullScreen
+            allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: 12 }} />
+        </div>);
+      return <video key={i} src={b.src} controls />;
+    }
     if (b.type === 'callout') return <div key={i} className={`kb-callout ${b.kind}`}><b>{b.kind === 'warn' ? 'Important' : 'Tip'}</b><span>{inline(b.text, i)}</span></div>;
     const Tag = b.type === 'ol' ? 'ol' : 'ul';
     return (
