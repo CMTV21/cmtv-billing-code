@@ -4,6 +4,7 @@ GET  /api/cmtv/admin/customers/search?q=   name / email / username, or any servi
 GET  /api/cmtv/admin/customers/{id}/profile  profile, totals, services, orders, tickets, credit, referrals, emails, activity, notes
 POST /api/cmtv/admin/customers/{id}/notes    add an internal note (admin only; customers never see them)
 POST /api/cmtv/admin/customers/{id}/notes/{note_id}/delete   retire a note (kept, hidden)
+POST /api/cmtv/admin/customers/{id}/email   {email, notify}: add / change the sign-in email (2026-10-11)
 Service actions on the page reuse existing endpoints (suspend/unsuspend TV lines, Cockpit/Audiobooks extend and switch).
 """
 import re
@@ -191,6 +192,100 @@ def init_routes():
         r = await D["db"].cmtv_customer_notes.update_one({"_id": _oid(note_id), "user_id": customer_id},
                                                          {"$set": {"deleted": True, "deleted_at": datetime.utcnow()}})
         return {"success": bool(r.matched_count)}
+
+    # CMTV local change 2026-10-11 (owner: "allow me to add emails directly to customer profiles"): set or change a
+    # customer's sign-in email. Same checks as sign-up (already used / throwaway inbox / second spelling of a Gmail inbox).
+    # TV-only (@panel.local) accounts keep their password + TV login; optional "Your CMTV account is ready" email with a
+    # 7-day set-password link (no $5 claim credit: that's for customers who do it themselves, owner's choice). Changing a
+    # real email always tells the customer at the new address. The address counts as verified (the admin vouches; left
+    # unverified, sign-in would refuse a normal account and send a TV-only one round the /link-email page).
+    @router.post("/{customer_id}/email")
+    async def set_email(customer_id: str, data: dict = Body(...), current_user: dict = Depends(admin)):
+        import hashlib
+        import html
+        import secrets
+        from datetime import timedelta
+        import cmtv_claim
+        import cmtv_dupes
+        users = D["users"]
+        u = await users.find_one({"_id": _oid(customer_id)})
+        if not u or u.get("role") != "user":
+            raise HTTPException(404, "Customer not found")
+        email = str(data.get("email") or "").strip().lower()
+        if not cmtv_claim.EMAIL_RE.match(email) or email.endswith("@panel.local"):
+            raise HTTPException(400, "Enter a valid email address.")
+        old = str(u.get("email") or "")
+        if email == old.lower():
+            raise HTTPException(400, "That's already their email.")
+        placeholder = cmtv_claim.is_placeholder(u)
+        other = await users.find_one({"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}, "_id": {"$ne": u["_id"]}},
+                                     {"name": 1, "role": 1})
+        if other:
+            if other.get("role") != "user":
+                raise HTTPException(400, "That email belongs to a staff or admin account.")
+            hint = " To combine the two, use \"Move to an existing customer\" below." if placeholder else ""
+            raise HTTPException(400, f"That email already belongs to another customer ({other.get('name') or 'no name'}).{hint}")
+        try:
+            await cmtv_dupes.check_email(email, exclude_user_id=u["_id"])
+        except HTTPException as e:
+            raise HTTPException(400, "That's a temporary inbox: use a permanent address." if "emporary" in str(e.detail)
+                                else "That's the same Gmail inbox as another customer's account (Gmail ignores dots and anything after a +).")
+        now, by = datetime.utcnow(), current_user.get("sub")
+        me = await users.find_one({"_id": _oid(by)}, {"name": 1}) or {}
+        upd = {"email": email, "email_verified": True, "cmtv_email_set_by_admin": {"at": now, "by": by, "old": old}}
+        if placeholder:
+            upd["cmtv_placeholder_email"] = old
+        await users.update_one({"_id": u["_id"]}, {"$set": upd, "$push": {"cmtv_email_history": {"old": old, "new": email, "at": now, "by": by}}})
+
+        notify = bool(data.get("notify", True)) if placeholder else True
+        sent = None
+        if notify:
+            sent = False
+            try:
+                from cmtv_gifts import _shell, _button, P
+                es = await cmtv_claim.D["get_email_service"]()
+                site = cmtv_claim.D.get("site_url") or "https://billing.cmtv.info"
+                first = html.escape((u.get("name") or "").split(" ")[0] or "there")
+                if placeholder:
+                    token = secrets.token_urlsafe(32)
+                    await users.update_one({"_id": u["_id"]}, {"$set": {
+                        "password_reset_token_hash": hashlib.sha256(token.encode()).hexdigest(),
+                        "password_reset_expires": now + timedelta(days=7), "password_reset_requested_at": now}})
+                    login = html.escape(u.get("panel_username") or "")
+                    subject = "Your CMTV account is ready"
+                    body = (f'<p style="{P}">Hi {first}, we\'ve set up your CMTV website account with this email address.</p>'
+                            f'<p style="{P}">Choose a password and you can sign in any time to see your plan, renew, get setup '
+                            "help and open support tickets." + (f" Your TV login <b>{login}</b> still works too." if login else "") + "</p>"
+                            + _button(f"{site}/reset-password#token={token}", "Set my password")
+                            + f'<p style="{P}">The link works for 7 days. Not expecting this? Ignore it, or message @Cmtv_support_bot.</p>')
+                    page = _shell("Choose a password to sign in to your CMTV account.", "Your CMTV account is ready", body)
+                else:
+                    subject = "Your CMTV sign-in email was changed"
+                    body = (f'<p style="{P}">Hi {first}, the sign-in email on your CMTV account is now <b>{html.escape(email)}</b>. '
+                            "Use it to sign in from now on (your password hasn't changed).</p>"
+                            + _button(f"{site}/login", "Sign in")
+                            + f'<p style="{P}">Didn\'t ask for this? Message @Cmtv_support_bot right away.</p>')
+                    page = _shell("Your CMTV sign-in email was changed.", "Your sign-in email was changed", body)
+                if es and getattr(es, "enabled", False):
+                    sent = bool(await es.send_email(to_email=email, subject=subject,
+                                                    html_content=es._wrap_email(page, subject, email, "transactional"),
+                                                    email_type="transactional", template_type="cmtv_admin_email_set",
+                                                    customer_id=customer_id, recipient_name=u.get("name") or ""))
+            except Exception as e:
+                import logging
+                logging.getLogger("server").warning(f"admin email set: email failed ({type(e).__name__}: {e})")
+        who = me.get("name") or "admin"
+        text = (f"Email added by {who}: {email} (was a TV-only account)" if placeholder else f"Sign-in email changed by {who}: {old} -> {email}")
+        text += {None: ". No email sent.", True: ". Customer emailed." if not placeholder else ". Set-password email sent.",
+                 False: ". The email to the customer FAILED to send."}[sent]
+        await D["db"].cmtv_customer_notes.insert_one({"user_id": customer_id, "text": text, "created_at": now, "by": by,
+                                                      "by_name": me.get("name"), "auto": True})
+        try:
+            import cmtv_notify
+            await cmtv_notify.ops(f"✉️ {html.escape(text)} · {html.escape(u.get('name') or '')}", kind="billing", silent=True)
+        except Exception:
+            pass
+        return {"ok": True, "email": email, "emailed": sent}
 
     # CMTV local change 2026-10-08 (owner: "allow me to assign users to existing customers such as randyp"): move a
     # panel-only placeholder account (<line>@panel.local, made by the panel sync) into the customer's real account. Same

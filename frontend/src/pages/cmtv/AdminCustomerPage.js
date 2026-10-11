@@ -164,6 +164,57 @@ function orderPill(o) {
 
 // CMTV local change 2026-10-08 (owner: "allow me to assign users to existing customers such as randyp"): a panel-only
 // account (no real email) can be moved into the customer's real account: search, check what moves, confirm.
+// 2026-10-11 (owner): add an email to a TV-only account, or change a customer's sign-in email (cmtv_customer.py)
+function EmailCard({ c, onClose }) {
+  const qc = useQueryClient();
+  const [email, setEmail] = useState('');
+  const [notify, setNotify] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const placeholder = !c.real_email;
+  const save = async () => {
+    const v = email.trim();
+    if (!v) return;
+    const ask = placeholder
+      ? `Add ${v} to this account?${notify ? " They'll get an email with a link to set their website password." : ' No email will be sent.'}`
+      : `Change the sign-in email from ${c.email} to ${v}? They'll be told at the new address.`;
+    if (!window.confirm(ask)) return;
+    setBusy(true);
+    try {
+      const r = await api.post(`/api/cmtv/admin/customers/${c.id}/email`, { email: v, notify });
+      if (r.data.emailed === false) toast.warning('Email saved, but the message to the customer failed to send');
+      else toast.success('Email saved');
+      setEmail('');
+      qc.invalidateQueries({ queryKey: ['cust-profile'] });
+      if (onClose) onClose();
+    } catch (e) { toast.error(errText(e, "Couldn't save the email")); }
+    setBusy(false);
+  };
+  return (
+    <section className="card" style={{ marginBottom: 14 }}>
+      <h2>{placeholder ? 'Add their email' : 'Change sign-in email'}</h2>
+      <p className="note" style={{ marginBottom: 8 }}>
+        {placeholder
+          ? 'This account only has a TV login. Add their email so they can sign in on the website, get renewal reminders and receipts. Their TV login and password keep working.'
+          : "They'll sign in with the new address from now on (same password). We email the new address to let them know."}
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
+          aria-label="Customer's email address" onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+          style={{ flex: '1 1 220px', minWidth: 0, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,.15)',
+            background: 'transparent', color: 'inherit' }} />
+        <button type="button" className="btn sm" disabled={busy || !email.trim()} onClick={save}>{busy ? 'Saving…' : 'Save email'}</button>
+        {onClose && <button type="button" className="btn sm" disabled={busy} onClick={onClose}>Cancel</button>}
+      </div>
+      {placeholder && (
+        <label className="note" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+          <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} />
+          Email them a link to set their website password (works for 7 days)
+        </label>
+      )}
+    </section>
+  );
+}
+
 function MergeCard({ customerId }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -243,6 +294,7 @@ export default function AdminCustomerPage() {
   const { id } = useParams();
   const qc = useQueryClient();
   const [showAllOrders, setShowAllOrders] = useState(false);
+  const [editEmail, setEditEmail] = useState(false);   // 2026-10-11
   const { data: d, error, isLoading } = useQuery({
     queryKey: ['cust-profile', id],
     queryFn: async () => (await api.get(`/api/cmtv/admin/customers/${id}/profile`)).data,
@@ -276,6 +328,7 @@ export default function AdminCustomerPage() {
           <h1>{c.name || '(no name)'}</h1>
           <p>
             {c.real_email ? <a className="link" href={`mailto:${c.email}`}>{c.email}</a> : <span className="note">{c.email} (no real email)</span>}
+            {c.real_email && c.role === 'user' && !editEmail && <> · <button type="button" className="link" onClick={() => setEditEmail(true)}>change email</button></>}
             {c.username && <> · login <code>{c.username}</code></>}
           </p>
           <p className="note">
@@ -289,6 +342,7 @@ export default function AdminCustomerPage() {
         </div>
       </section>
 
+      {c.role === 'user' && (!c.real_email || editEmail) && <EmailCard c={c} onClose={c.real_email ? () => setEditEmail(false) : null} />}
       {!c.real_email && c.role !== 'merged' && <MergeCard customerId={c.id} />}
 
       <section className="kpis" aria-label="Totals">
