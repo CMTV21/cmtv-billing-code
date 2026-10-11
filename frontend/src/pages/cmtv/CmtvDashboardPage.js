@@ -385,7 +385,8 @@ export default function CmtvDashboardPage() {
                 <Link className="ca-btn ca-ghost" to="/tickets">Open a ticket</Link>
               </div>
               {/* 2026-10-02 */}
-              <p style={{ marginTop: 10 }}><Link to="/knowledge-base/cmtv-buffering">Buffering? Quick fixes</Link> · <Link to="/status">Service status</Link></p>
+              <p style={{ marginTop: 10 }}><Link to="/knowledge-base/cmtv-buffering">Buffering? Quick fixes</Link> · <Link to="/status">Service status</Link>
+                {' · '}<a href="https://www.youtube.com/@cmtvinfo" target="_blank" rel="noopener noreferrer">Video guides ▶</a></p>{/* 2026-10-11 */}
               {/* 2026-10-04: point people at the recommended devices before they buy (owner: no Firesticks) */}
               <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(34,230,242,.35)', background: 'rgba(34,230,242,.07)' }}>
                 <b>Thinking of buying a new device?</b>

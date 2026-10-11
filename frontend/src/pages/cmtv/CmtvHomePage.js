@@ -323,6 +323,7 @@ export default function CmtvHomePage() {
           ['Gift cards', '/gift'], ['Terms and Conditions', '/terms'], ['Privacy Policy', '/privacy']].map(([label, to]) => (
           <React.Fragment key={to}> · <Link to={to} style={{ color: 'inherit' }}>{label}</Link></React.Fragment>))}
         {' · '}<a href="https://t.me/Cmtv_support_bot" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>Telegram support</a>
+        {' · '}<a href="https://www.youtube.com/@cmtvinfo" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>YouTube</a>{/* 2026-10-11 */}
       </footer>
     </div>
   );

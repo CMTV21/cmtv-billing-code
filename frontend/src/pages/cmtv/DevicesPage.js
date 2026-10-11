@@ -78,6 +78,7 @@ export default function DevicesPage() {
       <article className="kb-article" style={{ marginTop: 12 }}>
         <h1>Devices &amp; apps</h1>
         <p className="kb-lede">What are you watching on? Pick your device to see the apps we recommend and how to set them up.</p>
+        <p style={{ margin: '-6px 0 14px' }}>Prefer video? <a href="https://www.youtube.com/@cmtvinfo" target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700 }}>Watch our setup guides on YouTube ▶</a></p>{/* 2026-10-11 */}
         <div className="dv-devs" role="tablist">
           {DEVICES.map((x) => (
             <button key={x.key} type="button" role="tab" aria-selected={pick === x.key} className={pick === x.key ? 'on' : ''} onClick={() => setPick(x.key)}>
