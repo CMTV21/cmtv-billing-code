@@ -15,6 +15,7 @@ import SpellOut from '../../components/cmtv/SpellOut'; // 2026-10-04: I / l look
 import UpgradeDevices from '../../components/cmtv/UpgradeDevices'; // 2026-10-04: add devices, prorated
 import FeedbackBox from '../../components/cmtv/FeedbackBox'; // 2026-10-04: suggestions + leave a review
 import LineCheck from '../../components/cmtv/LineCheck'; // 2026-10-04: Test my line
+import SwitchTrialOffer from '../../components/cmtv/SwitchTrialOffer'; // 2026-10-11: buffering? try the other server
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -214,6 +215,8 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
           <AutoRenewSwitch d={d} enabled={autoRenewEnabled} />
           {['xtream', 'aether'].includes(s.panel_type) && s.account_type !== 'reseller'
             && <LineCheck service={s} onRenew={d.canRenew ? () => onRenew(d) : null} />}
+          {!d.ended && !d.isTrial && ['xtream', 'aether'].includes(s.panel_type) && s.account_type !== 'reseller' && s.status === 'active'
+            && <SwitchTrialOffer service={s} />}
           {!d.ended && !d.isTrial && ['xtream', 'aether'].includes(s.panel_type) && s.account_type !== 'reseller' && s.status === 'active'
             && <UpgradeDevices service={s} />}
         </div>

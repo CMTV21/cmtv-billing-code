@@ -374,6 +374,13 @@ cmtv_dupes.D["get_current_admin_user"] = get_current_admin_user
 cmtv_dupes.init_routes()
 app.include_router(cmtv_dupes.router)
 
+# CMTV local change 2026-10-11: outage credits + "Buffering? try the other server" (cmtv_promise.py)
+import cmtv_promise
+cmtv_promise.D["get_current_admin_user"] = get_current_admin_user
+cmtv_promise.D["get_current_user"] = get_current_user
+cmtv_promise.init_routes()
+app.include_router(cmtv_promise.router)
+
 
 # MongoDB connection
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017/iptv_billing")
@@ -1179,6 +1186,8 @@ async def startup_event():
     import cmtv_daily_brief   # CMTV local change 2026-10-10: daily admin dashboard in Telegram (8 am Toronto)
     cmtv_daily_brief.init(db=db)
     await cmtv_daily_brief.startup()
+    cmtv_promise.init(db=db, credit_service=credit_service, get_email_service=get_configured_email_service)   # CMTV 2026-10-11
+    await cmtv_promise.startup()
     cmtv_claim.init(db=db, get_settings=get_settings, get_email_service=get_configured_email_service,
                     find_user_by_email=find_user_by_email, verify_password=verify_password, hash_password=get_password_hash,
                     create_access_token=create_access_token, credit_service=credit_service,

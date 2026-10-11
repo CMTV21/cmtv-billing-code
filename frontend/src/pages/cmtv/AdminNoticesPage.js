@@ -9,6 +9,7 @@ import api from '../../api/api';
 import { NoticeBox } from './AdminResellersPage';
 import SportsKeyBox from '../../components/cmtv/SportsKeyBox'; // 2026-10-04: TheSportsDB key
 import HoursBox from '../../components/cmtv/HoursBox'; // 2026-10-05: support hours
+import PromiseBox from '../../components/cmtv/PromiseBox'; // 2026-10-11: outage credits + try the other server
 import { PromoBox } from '../../components/cmtv/Promo'; // 2026-10-05: holiday bonus months
 import { RefBoostBox } from '../../components/cmtv/ReferralShare'; // 2026-10-05: referral campaigns
 import '../../components/cmtv/reseller-credits.css';
@@ -189,6 +190,7 @@ export default function AdminNoticesPage() {
         customer group, every customer's dashboard and cmtv.info. Use these boxes for targeted messages.
       </p>
       <ServiceStatus />
+      <PromiseBox />
       <DailyChangelog />
       <PromoBox />
       <RefBoostBox />
