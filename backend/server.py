@@ -4153,9 +4153,18 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             actual_total += item.price * qty
             physical_entries.append({"item": pitem, "quantity": qty})
             continue
-        product = await products_collection.find_one({"_id": str_to_objectid(item.product_id)})
+        product = await products_collection.find_one({"_id": str_to_objectid(item.product_id)}) if ObjectId.is_valid(str(item.product_id)) else None
+        # CMTV local change 2026-10-11: a cart saved in the browser before a plan was re-created (new id, e.g. the Oct 1
+        # 1-connection plans) was refused "Product not found". Use the current plan with the same name (price is the
+        # current plan's anyway).
+        if not product and (item.product_name or "").strip():
+            product = await products_collection.find_one({"name": {"$regex": rf"^\s*{re.escape(item.product_name.strip())}\s*$", "$options": "i"},
+                                                          "is_active": {"$ne": False}})
+            if product:
+                logger.warning(f"Order item {item.product_name}: old product id {item.product_id} -> current {product['_id']}")
+                item.product_id = str(product["_id"])
         if not product:
-            raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}")
+            raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}. Please remove it from your cart and add it again.")
         # CMTV local change 2026-10-04: a renewal is charged and renewed at the line's real device count (cmtv_upgrades.py)
         if getattr(item, "action_type", None) in ("renew", "extend") and getattr(item, "renewal_service_id", None):
             _bigger = await cmtv_upgrades.renewal_plan(user_id, item.renewal_service_id, product)
