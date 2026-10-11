@@ -47,6 +47,13 @@ export default function PayPage() {
       window.location.href = r.data.approval_url;
     } catch (e) { toast.error(e?.response?.data?.detail || "PayPal couldn't be opened. Please try again in a minute."); setGoing(''); }
   };
+  // 2026-10-11: from checkout's "Pay by debit or credit card" button (?card=1): open PayPal's card page right away, once
+  const autoCard = React.useRef(false);
+  React.useEffect(() => {
+    if (autoCard.current || params.get('card') !== '1') return;
+    const d = qc.getQueryData(['cmtv-pay', orderId]);
+    if (d && d.status === 'pending' && d.method === 'paypal') { autoCard.current = true; goPayPal('card'); }
+  });
   const switchTo = async (m) => {
     setGoing(m);
     try { qc.setQueryData(['cmtv-pay', orderId], (await api.post(`/api/cmtv/pay/order/${orderId}/method`, { method: m })).data); }

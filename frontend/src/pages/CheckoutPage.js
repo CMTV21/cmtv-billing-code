@@ -208,8 +208,9 @@ export default function CheckoutPage() {
         clearCart();
         // CMTV local change 2026-10-09: e-Transfer / Wise go to "Pay for your order" with every exact detail (cmtv_pay)
         if (['emt', 'wise', 'paypal'].includes(paymentMethod)) {   // CMTV 2026-10-11: PayPal / card is paid from there too (no pop-up)
-          navigate(`/pay/${orderId}`);
-          toast.success(paymentMethod === 'paypal' ? 'Order placed! Pay with PayPal or a debit/credit card.' : 'Order placed! Here are the exact details to pay.');
+          // the card button (PayPal method) goes straight on to PayPal's card page (?card=1, PayPage starts it)
+          navigate(`/pay/${orderId}${paymentMethod === 'paypal' ? '?card=1' : ''}`);
+          toast.success(paymentMethod === 'paypal' ? 'Order placed! Opening the card payment page…' : 'Order placed! Here are the exact details to pay.');
         } else {
           navigate('/orders');
           toast.success(paymentMethod === 'manual' ? 'Order placed! Please wait for admin to confirm payment.' : `Order placed! Please send your ${paymentMethod.toUpperCase()} payment now. Include your Order ID.`);
@@ -1509,14 +1510,23 @@ export default function CheckoutPage() {
                   <CheckoutAutoRenew items={items} total={getTotal()} discounted={(!!appliedCouponCode && !tierWins) || creditsApplied > 0}
                     memberPrice={tierWins ? payTotal : null}
                     clientId={settings.paypal.client_id} onDone={() => { clearCart(); navigate('/orders'); }} onError={setError}>
-                  /* CMTV local change 2026-10-11 (owner): no PayPal pop-up buttons (a customer's Firefox closed the window at once).
-                     The order is placed here; PayPal or a card is paid on the "Pay for your order" page, in the same tab. */
                   <div>
-                    <button onClick={handleCheckout} disabled={createOrderMutation.isPending}
-                      className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50">
-                      {createOrderMutation.isPending ? 'Processing...' : 'Continue to payment'}
+                    {/* CMTV local change 2026-10-11 (owner): PayPal's own button stays (pop-up, PayPal only); its pop-up "Debit or
+                        Credit Card" button is off (a customer's Firefox closed it at once). Cards: our button below places the
+                        order and opens PayPal's card page in the same tab (no PayPal account needed). */}
+                    <PayPalScriptProvider options={{ "client-id": settings.paypal.client_id, currency: settings?.currency?.code || "USD", "disable-funding": "card" }}>
+                      <PayPalButtons
+                        style={{ layout: "vertical", color: "gold" }}
+                        createOrder={createPayPalOrder}
+                        onApprove={onPayPalApprove}
+                        onError={(err) => setError('PayPal payment failed')}
+                      />
+                    </PayPalScriptProvider>
+                    <button type="button" onClick={handleCheckout} disabled={createOrderMutation.isPending}
+                      className="w-full mt-1 bg-gray-800 text-white py-3 rounded-lg font-semibold hover:bg-gray-900 disabled:opacity-50 dark:bg-gray-700 dark:hover:bg-gray-600">
+                      {createOrderMutation.isPending ? 'Processing...' : 'Pay by debit or credit card'}
                     </button>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-3 text-center">Next: pay with PayPal or a debit/credit card (no PayPal account needed).</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">No PayPal account needed: you'll enter your card on PayPal's secure card page.</p>
                   </div>
                   </CheckoutAutoRenew>
                 ) : paymentMethod === 'stripe' && settings?.stripe?.enabled ? (
