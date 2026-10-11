@@ -12,7 +12,7 @@ const C = { bg: '#0f1728', card: '#141d33', deep: '#0a1020', line: '#27345a', te
 const toDate = (iso) => (iso ? new Date(String(iso).endsWith('Z') ? iso : `${iso}Z`) : null);
 const nice = (iso) => { const d = toDate(iso); return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'no date'; };
 const label = (m) => (m === 12 ? '1 year' : `${m} month${m > 1 ? 's' : ''}`);
-const METHODS = ['e-Transfer', 'PayPal', 'Cash', 'Other', 'Free'];
+const METHODS = ['e-Transfer', 'PayPal', 'Wise', 'Cash', 'Other', 'Free'];   // 2026-10-11: + Wise
 const chip = (on) => ({ font: 'inherit', fontSize: 14, fontWeight: 700, borderRadius: 10, padding: '9px 12px', cursor: 'pointer', textAlign: 'left',
   border: `1px solid ${on ? C.cyan : C.line}`, background: on ? 'rgba(34,230,242,.12)' : C.deep, color: C.text });
 

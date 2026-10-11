@@ -165,7 +165,7 @@ def init_routes():
         # Other with "Cash" in the notes
         method = str(data.get("method") or "Other")
         how = f"paid ${amount:.2f} by {method}" if amount > 0 else "free"
-        if method not in ("e-Transfer", "PayPal"):
+        if method not in ("e-Transfer", "PayPal", "Wise"):   # CMTV 2026-10-11: Wise kept as its own method
             data = {**data, "method": "Other"}
         try:
             import cmtv_finance

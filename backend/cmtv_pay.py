@@ -191,12 +191,33 @@ async def _ops(text, kind="billing"):
         log.warning(f"CMTV pay: Ops note failed: {e}")
 
 
-async def match(tx_text, amount, currency, now=None):
+async def _by_amount_and_name(amount, currency, sender, now):
+    """CMTV 2026-10-11 (a customer paid $140 by Wise without the order number): accept it only when there is exactly ONE
+    pending Wise order from the last 6 hours for exactly this CAD amount, and a word of the sender's name (4+ letters)
+    appears in that customer's name or email. Anything less certain still goes to the owner."""
+    if currency != "CAD" or not sender:
+        return None
+    cands = [o async for o in D["orders"].find({"status": "pending", "payment_method": "wise",
+                                                "total": {"$gte": amount - 0.005, "$lte": amount + 0.005},
+                                                "created_at": {"$gte": now - timedelta(hours=6)}})]
+    if len(cands) != 1:
+        return None
+    o = cands[0]
+    u = await D["db"].users.find_one({"_id": ObjectId(o["user_id"])}, {"name": 1, "email": 1}) if ObjectId.is_valid(str(o.get("user_id"))) else None
+    hay = re.sub(r"[^a-z]", "", ((u or {}).get("name") or "").lower() + " " + ((u or {}).get("email") or "").split("@")[0].lower())
+    words = [w for w in re.findall(r"[a-z]{4,}", sender.lower())]
+    return o if hay and any(w in hay for w in words) else None
+
+
+async def match(tx_text, amount, currency, now=None, sender=""):
     """(order, why) for an incoming Wise payment: a pending order whose number is in the reference and whose total it covers."""
     codes = {c.lower() for c in HEX.findall(tx_text or "")}
-    if not codes:
-        return None, "no order number in the reference"
     now = now or datetime.utcnow()
+    if not codes:
+        o = await _by_amount_and_name(amount, currency, sender, now)   # 2026-10-11
+        if o:
+            return o, f"{amount:.2f} {currency}, no order number: matched by amount + name ({sender})"
+        return None, "no order number in the reference"
     found = []
     async for o in D["orders"].find({"status": "pending", "total": {"$gt": 0}, "created_at": {"$gte": now - timedelta(days=45)}}):
         oid = str(o["_id"])
@@ -310,7 +331,7 @@ async def handle(tx, now=None):
                                                 "date": tx.get("date"), "seen_at": now, "result": "checking"})
     except DuplicateKeyError:
         return "seen"
-    o, why = await match(text, amount, cur, now)
+    o, why = await match(text, amount, cur, now, sender=sender)
     if not o:
         await db.cmtv_wise_payments.update_one({"_id": ref}, {"$set": {"result": "no_match", "why": why}})
         await _ops(f"💶 <b>Wise payment to check</b>: {amount:.2f} {html.escape(cur)} from {html.escape(sender or 'unknown')}\n"

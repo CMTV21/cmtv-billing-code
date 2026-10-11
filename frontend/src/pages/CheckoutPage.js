@@ -7,6 +7,7 @@ import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { CheckoutAutoRenew, CheckoutAutoRenewHint } from './../components/cmtv/AutoRenew'; // CMTV local change 2026-09-25; hint 2026-10-08
 import { useTierQuote } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
+import PreferExtend from '../components/cmtv/PreferExtend'; // CMTV 2026-10-11: renewals default to extending the line
 import CheckoutAddons, { useAddonProducts, useTrialOf, extendChoices } from '../components/cmtv/CheckoutAddons'; // CMTV 2026-09-25: add-on offer
 import CheckoutChannels, { useChannelsReady } from '../components/cmtv/CheckoutChannels'; // CMTV 2026-10-04: channel package step
 import { EmtHoursHint, EmtHoursNotice } from '../components/cmtv/SupportHours'; // CMTV 2026-10-05: support hours
@@ -268,6 +269,15 @@ export default function CheckoutPage() {
     
     if (!validateShipping()) return;
     
+    // CMTV local change 2026-10-11 (owner): a customer renewing by "Create New Line" got a second line + login. Ask first.
+    const cmtvNewLines = items.filter((i) => canExtend(i) && Number(i.price) > 0 && (!i.action_type || i.action_type === 'create_new')
+      && extendChoices(i, userServices, addonIds, trialOf).length > 0);
+    if (cmtvNewLines.length && !window.confirm(
+      `You're starting a NEW line (${cmtvNewLines.map((i) => i.product_name).join(', ')}): a second, separate login you'd set up on your TV again.\n\n`
+      + 'To keep your current login, press Cancel and choose "Extend" instead.\n\nStart a new line?')) {
+      return;
+    }
+
     createOrderMutation.mutate({
       items: buildOrderItems(),
       total: getGrandTotal(),
@@ -763,7 +773,7 @@ export default function CheckoutPage() {
                             <Plus className="w-5 h-5 text-green-600" />
                             <div>
                               <span className="font-medium text-gray-900 dark:text-white">Create New Line</span>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">Get a new subscriber account</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">A second, separate line with a new login: you'd set it up on your TV again</p>{/* CMTV 2026-10-11 */}
                             </div>
                           </label>
                           
@@ -804,6 +814,8 @@ export default function CheckoutPage() {
             <CheckoutChannels items={items} />
             <PromoPlusSync items={items} setItems={(next) => useCartStore.setState({ items: next })} />{/* CMTV 2026-10-05 */}
             <KeepTrialLogin items={items} services={userServices} updateItemAction={updateItemAction} />{/* CMTV 2026-10-05 */}
+            <PreferExtend items={items} services={userServices} updateItemAction={updateItemAction}
+              choicesFor={(it) => (canExtend(it) ? extendChoices(it, userServices, addonIds, trialOf) : [])} />{/* CMTV 2026-10-11 */}
 
             {/* CMTV local change 2026-09-25: "Complete your setup" add-on offer */}
             <CheckoutAddons items={items} addItem={addItem} removeItem={removeItem}
