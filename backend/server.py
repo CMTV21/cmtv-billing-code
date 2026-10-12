@@ -6797,19 +6797,22 @@ async def provision_xtream_service(order_id: str, order: dict, user: dict, item:
                     pkg_duration = 1
                     pkg_duration_unit = "days"
             
+            # CMTV local change 2026-10-12: calendar months (like the panel), not 30-day months. This date is only used when
+            # the panel's own end date can't be read; 12 x 30 days made yearly lines look 5 days short in billing + emails.
+            from dateutil.relativedelta import relativedelta as _cmtv_rd
             if pkg_duration:
                 pkg_duration = int(pkg_duration)
                 if pkg_duration_unit.lower() in ("months", "month"):
-                    expiry_date = datetime.utcnow() + timedelta(days=pkg_duration * 30)
+                    expiry_date = datetime.utcnow() + _cmtv_rd(months=pkg_duration)
                 elif pkg_duration_unit.lower() in ("years", "year"):
-                    expiry_date = datetime.utcnow() + timedelta(days=pkg_duration * 365)
+                    expiry_date = datetime.utcnow() + _cmtv_rd(years=pkg_duration)
                 elif pkg_duration_unit.lower() in ("days", "day"):
                     expiry_date = datetime.utcnow() + timedelta(days=pkg_duration)
                 else:
-                    expiry_date = datetime.utcnow() + timedelta(days=pkg_duration * 30)
+                    expiry_date = datetime.utcnow() + _cmtv_rd(months=pkg_duration)
                 logger.info(f"Using product duration: {pkg_duration} {pkg_duration_unit}")
             else:
-                expiry_date = datetime.utcnow() + timedelta(days=term_months * 30)
+                expiry_date = datetime.utcnow() + _cmtv_rd(months=term_months)
                 logger.info(f"Using term_months fallback: {term_months} months")
         
         expiry_timestamp = int(expiry_date.timestamp())
@@ -6955,18 +6958,20 @@ async def provision_xtream_service(order_id: str, order: dict, user: dict, item:
                             # Use product duration, not term_months
                             pkg_dur = product.get("duration") or product.get("official_duration")
                             pkg_dur_unit = (product.get("duration_unit") or product.get("official_duration_in") or "months").lower()
+                            # CMTV local change 2026-10-12: calendar months (like the panel), not 30-day months (fallback only)
+                            from dateutil.relativedelta import relativedelta as _cmtv_rd
                             if pkg_dur:
                                 pkg_dur = int(pkg_dur)
                                 if pkg_dur_unit in ("months", "month"):
-                                    extend_td = timedelta(days=pkg_dur * 30)
+                                    extend_td = _cmtv_rd(months=pkg_dur)
                                 elif pkg_dur_unit in ("years", "year"):
-                                    extend_td = timedelta(days=pkg_dur * 365)
+                                    extend_td = _cmtv_rd(years=pkg_dur)
                                 elif pkg_dur_unit in ("days", "day"):
                                     extend_td = timedelta(days=pkg_dur)
                                 else:
-                                    extend_td = timedelta(days=pkg_dur * 30)
+                                    extend_td = _cmtv_rd(months=pkg_dur)
                             else:
-                                extend_td = timedelta(days=term_months * 30)
+                                extend_td = _cmtv_rd(months=term_months)
                         current_expiry = existing_subscriber.get("expiry_date", datetime.utcnow())
                         if current_expiry < datetime.utcnow():
                             new_expiry = datetime.utcnow() + extend_td
@@ -7031,37 +7036,53 @@ async def provision_xtream_service(order_id: str, order: dict, user: dict, item:
                         await asyncio.sleep(3)
                         
                         actual_expiry = expiry_date
-                        try:
-                            # Search for the user to get real expiry
-                            import time, re as _re
-                            search_params = {
-                                'draw': '1', 'start': '0', 'length': '10',
-                                'search[value]': username, 'search[regex]': 'false',
-                                'id': 'users', '_': str(int(time.time() * 1000))
-                            }
-                            for i in range(12):
-                                search_params[f'columns[{i}][data]'] = str(i)
-                                search_params[f'columns[{i}][searchable]'] = 'true'
-                                search_params[f'columns[{i}][orderable]'] = 'true'
-                            search_params['order[0][column]'] = '0'
-                            search_params['order[0][dir]'] = 'desc'
-                            
-                            session_client = xtream_service._get_session_client()
-                            search_url = f"{session_client.panel_url}/table_search.php"
-                            resp = session_client.session.get(search_url, params=search_params, auth=session_client.http_auth, timeout=15)
-                            if resp.status_code == 200 and len(resp.text.strip()) == 0:
-                                resp = session_client.session.post(search_url, data=search_params, auth=session_client.http_auth, timeout=15)
-                            
-                            if resp.status_code == 200 and resp.text.strip():
-                                search_data = resp.json()
-                                users_data = search_data.get('data', [])
-                                if users_data:
-                                    panel_dt, _unl, _raw = panel_row_expiry(users_data[0])
-                                    if panel_dt:
-                                        actual_expiry = panel_dt
-                                        logger.info(f"Actual panel expiry for {username}: {actual_expiry} (UTC)")
-                        except Exception as e:
-                            logger.warning(f"Could not fetch actual expiry from panel: {e}")
+                        # CMTV local change 2026-10-12: up to 3 tries (~3 s, +4 s, +5 s). One try 3 s after creation missed
+                        # ~60% of new CCTV lines (not listed yet), so billing + the welcome email used the rough fallback date.
+                        # Each miss is now logged with what the panel answered.
+                        for _cmtv_try in range(3):
+                            if _cmtv_try:
+                                await asyncio.sleep(3 + _cmtv_try)
+                            _cmtv_why = ""
+                            try:
+                                # Search for the user to get real expiry
+                                import time, re as _re
+                                search_params = {
+                                    'draw': '1', 'start': '0', 'length': '10',
+                                    'search[value]': username, 'search[regex]': 'false',
+                                    'id': 'users', '_': str(int(time.time() * 1000))
+                                }
+                                for i in range(12):
+                                    search_params[f'columns[{i}][data]'] = str(i)
+                                    search_params[f'columns[{i}][searchable]'] = 'true'
+                                    search_params[f'columns[{i}][orderable]'] = 'true'
+                                search_params['order[0][column]'] = '0'
+                                search_params['order[0][dir]'] = 'desc'
+
+                                session_client = xtream_service._get_session_client()
+                                search_url = f"{session_client.panel_url}/table_search.php"
+                                resp = session_client.session.get(search_url, params=search_params, auth=session_client.http_auth, timeout=15)
+                                if resp.status_code == 200 and len(resp.text.strip()) == 0:
+                                    resp = session_client.session.post(search_url, data=search_params, auth=session_client.http_auth, timeout=15)
+
+                                if resp.status_code == 200 and resp.text.strip():
+                                    search_data = resp.json()
+                                    users_data = search_data.get('data', [])
+                                    if users_data:
+                                        panel_dt, _unl, _raw = panel_row_expiry(users_data[0])
+                                        if panel_dt:
+                                            actual_expiry = panel_dt
+                                            logger.info(f"Actual panel expiry for {username}: {actual_expiry} (UTC)")
+                                            break
+                                        _cmtv_why = f"row found but no readable date ({str(_raw)[:40]!r})"
+                                    else:
+                                        _cmtv_why = "no rows yet"
+                                else:
+                                    _cmtv_why = f"HTTP {resp.status_code}, {len(resp.text.strip())} bytes"
+                            except Exception as e:
+                                _cmtv_why = f"error {e}"
+                            logger.warning(f"Panel expiry lookup for {username}, try {_cmtv_try + 1}/3: {_cmtv_why}")
+                        else:
+                            logger.warning(f"Panel expiry for {username} not readable: using {actual_expiry:%Y-%m-%d} until the hourly sync")
                         
                         service_dict.update({
                             "bouquets": product["bouquets"],
