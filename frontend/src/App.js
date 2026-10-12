@@ -254,6 +254,7 @@ function App() {
             <Route path="/hi/:token" element={<CmtvAccountFrame><HiPage /></CmtvAccountFrame>} />
             <Route path="/sports" element={<CmtvAccountFrame><SportsPage /></CmtvAccountFrame>} />
             <Route path="/pay/:orderId" element={<ProtectedRoute><CmtvAccountFrame><PayPage /></CmtvAccountFrame></ProtectedRoute>} />
+            <Route path="/payment/paypal/success" element={<PayPalSuccessPage />} />{/* CMTV local change 2026-10-12: PayPal's same-tab return (card button, Complete payment) had no route, so payments were approved but never captured */}
             <Route path="/audiobooks/top" element={<Navigate to="/?tab=addons" replace />} />{/* CMTV local change 2026-10-10: NYT bestseller lists removed (owner) */}
             <Route path="/privacy" element={<CmtvAccountFrame><PrivacyPage /></CmtvAccountFrame>} />
             <Route path="/review" element={<CmtvAccountFrame><ReviewPage /></CmtvAccountFrame>} />
