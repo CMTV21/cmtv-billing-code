@@ -145,9 +145,13 @@ async def after_provision(order_id: str, order: dict):
 
 
 def init(**deps):
-    """deps: db, get_settings, get_current_user"""
+    """At startup. deps: db, get_settings"""
     D.update(deps)
-    current = deps["get_current_user"]
+
+
+def init_routes():
+    """At import time, BEFORE app.include_router (routes added later are never registered). Needs D["get_current_user"]."""
+    current = D["get_current_user"]
 
     @router.get("/listed-first")
     async def list_options():

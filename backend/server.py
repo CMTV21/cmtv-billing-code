@@ -334,6 +334,8 @@ import cmtv_lineups
 app.include_router(cmtv_lineups.router)
 # CMTV local change 2026-10-12: Imperium "listed first" (which country's channels come first) (cmtv_listed_first.py)
 import cmtv_listed_first
+cmtv_listed_first.D["get_current_user"] = get_current_user
+cmtv_listed_first.init_routes()
 app.include_router(cmtv_listed_first.router)
 
 # CMTV local change 2026-09-28: panel-only customers finish their account / join it to an existing one (cmtv_claim.py)
@@ -1189,7 +1191,7 @@ async def startup_event():
     cmtv_ghostapk.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service)
     await cmtv_ghostapk.startup()
     cmtv_lineups.init(db=db, get_settings=get_settings)  # CMTV 2026-09-29: Imperium line-ups
-    cmtv_listed_first.init(db=db, get_settings=get_settings, get_current_user=get_current_user)  # CMTV 2026-10-12
+    cmtv_listed_first.init(db=db, get_settings=get_settings)  # CMTV 2026-10-12: Imperium "listed first"
     cmtv_nuvio.init(db=db, users=users_collection, services=services_collection, products=products_collection,
                     get_email_service=get_configured_email_service)  # CMTV 2026-09-29: Nuvio server accounts
     await cmtv_nuvio.startup()   # sharing check (hourly)
