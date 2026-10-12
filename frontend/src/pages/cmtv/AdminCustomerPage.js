@@ -92,7 +92,7 @@ function ServiceCard({ s, onChanged }) {
     <div className="svc" style={{ '--c': fam.c }}>
       <div className="svc-top">
         <span className="dot" />
-        <div className="svc-name"><b>{s.product_name}</b><small>{fam.label}{s.is_trial ? ' · trial' : ''}{s.connections ? ` · ${s.connections} conn.` : ''}{s.panel_name ? ` · ${s.panel_name}` : ''}</small></div>
+        <div className="svc-name"><b>{s.product_name}</b><small>{fam.label}{s.is_trial ? ' · trial' : ''}{s.connections ? ` · ${s.connections} conn.` : ''}{s.panel_name ? ` · ${s.panel_name}` : ''}{s.listed_first ? ` · ${s.listed_first}` /* 2026-10-12 */ : ''}</small></div>
         <span className={`pill ${pill}`}>{s.status}</span>
       </div>
       {s.username && <div className="svc-row"><span>Login</span><code>{s.username}</code><Secret value={s.password} /></div>}

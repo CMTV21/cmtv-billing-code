@@ -16,6 +16,7 @@ import UpgradeDevices from '../../components/cmtv/UpgradeDevices'; // 2026-10-04
 import FeedbackBox from '../../components/cmtv/FeedbackBox'; // 2026-10-04: suggestions + leave a review
 import LineCheck from '../../components/cmtv/LineCheck'; // 2026-10-04: Test my line
 import SwitchTrialOffer from '../../components/cmtv/SwitchTrialOffer'; // 2026-10-11: buffering? try the other server
+import { ListedFirstControl } from '../../components/cmtv/ListedFirst'; // 2026-10-12: Imperium "listed first"
 import { pendingPlan } from '../../components/cmtv/pendingPlan'; // 2026-09-28: plan picked before signing in
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -182,6 +183,8 @@ function ServiceCard({ d, autoRenewEnabled, onRenew }) {
               <button type="button" className="ca-icon" onClick={() => copy(d.s.cmtv_tivimate.code, 'CMTivi code')}>Copy</button></div>
               <small style={{ display: 'block', color: 'var(--muted)', fontSize: 12.5, marginTop: 3 }}>Enter this code when the CMTivi app asks for an activation code.</small></div>}
             {s.cockpit_module === 'nuviocloud' && d.username && <NuvioDevices username={d.username} />}
+            {/* 2026-10-12: Imperium "listed first" (which country's channels come first), saved straight to the panel */}
+            {s.panel_type === 'aether' && s.account_type !== 'reseller' && <ListedFirstControl service={s} />}
           </div>
         )}
         {d.ended && d.isTrial && !d.canRenew && (

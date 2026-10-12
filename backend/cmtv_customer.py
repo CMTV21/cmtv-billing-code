@@ -91,7 +91,8 @@ def init_routes():
                 "connections": s.get("max_connections"), "status": s.get("status"), "is_trial": bool(s.get("is_trial")),
                 "account_type": s.get("account_type"), "start": _iso(s.get("start_date") or s.get("created_at")),
                 "expiry": _iso(exp), "days_left": (exp - now).days if isinstance(exp, datetime) else None,
-                "auto_renew": ar.get("status") == "ACTIVE", "order_id": s.get("order_id")})
+                "auto_renew": ar.get("status") == "ACTIVE", "order_id": s.get("order_id"),
+                "listed_first": (s.get("cmtv_listed_first") or {}).get("name")})   # 2026-10-12: Imperium "listed first"
         order_rank = {"active": 0, "suspended": 1, "expired": 2}
         services.sort(key=lambda x: (order_rank.get(x["status"], 3), x["days_left"] if x["days_left"] is not None else 99999))
 

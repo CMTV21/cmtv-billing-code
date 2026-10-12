@@ -9,6 +9,7 @@ import { productsAPI } from '../../api/api';
 import { useCartStore } from '../../store/store';
 import { LINEUPS, CCTV_LINEUPS, lineupName } from './lineups';
 import ChannelPicker, { customName } from './ChannelPicker';
+import { ListedFirstSelect } from './ListedFirst';   // CMTV 2026-10-12: Imperium "listed first"
 
 const isExtend = (i) => ['extend', 'renew', 'upgrade'].includes(i.action_type) && i.renewal_service_id;   // 2026-10-04: + upgrades
 const baseName = (i, p) => i.base_name || (p && p.name) || String(i.product_name || '')
@@ -79,6 +80,9 @@ function Step({ item, index, p }) {
               <div className="mt-3"><ChannelPicker source={imperium ? 'imperium' : 'cctv'} productId={item.product_id} lineup={item.lineup}
                 value={item.bouquets || null} onChange={setGroups} /></div>
             )
+          )}
+          {imperium && (   /* CMTV 2026-10-12: which country's channels come first (Canada First unless changed) */
+            <div className="mt-3"><ListedFirstSelect value={item.listed_first} onChange={(v) => update({ listed_first: v })} /></div>
           )}
         </>
       )}

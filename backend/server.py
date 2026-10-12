@@ -332,6 +332,9 @@ app.include_router(cmtv_reseller_credits.router)
 # CMTV local change 2026-09-29: Imperium channel line-ups (Full / no adult / North America) (cmtv_lineups.py)
 import cmtv_lineups
 app.include_router(cmtv_lineups.router)
+# CMTV local change 2026-10-12: Imperium "listed first" (which country's channels come first) (cmtv_listed_first.py)
+import cmtv_listed_first
+app.include_router(cmtv_listed_first.router)
 
 # CMTV local change 2026-09-28: panel-only customers finish their account / join it to an existing one (cmtv_claim.py)
 import cmtv_claim
@@ -1186,6 +1189,7 @@ async def startup_event():
     cmtv_ghostapk.init(db=db, get_settings=get_settings, get_xtream_service=get_xtream_service)
     await cmtv_ghostapk.startup()
     cmtv_lineups.init(db=db, get_settings=get_settings)  # CMTV 2026-09-29: Imperium line-ups
+    cmtv_listed_first.init(db=db, get_settings=get_settings, get_current_user=get_current_user)  # CMTV 2026-10-12
     cmtv_nuvio.init(db=db, users=users_collection, services=services_collection, products=products_collection,
                     get_email_service=get_configured_email_service)  # CMTV 2026-09-29: Nuvio server accounts
     await cmtv_nuvio.startup()   # sharing check (hourly)
@@ -6438,6 +6442,7 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
             await cmtv_lineups.remember(order_id, order)   # CMTV 2026-09-29: new Imperium lines keep their line-up
         except Exception as e:
             logger.warning(f"line-up remember failed: {e}")
+        await cmtv_listed_first.after_provision(order_id, order)   # CMTV 2026-10-12: new Imperium lines -> listed first (never raises)
         # Mark provisioning complete (release lock but keep flag for idempotency)
         update = {"provisioned": True, "provisioned_at": datetime.utcnow()}
         if acquired:
