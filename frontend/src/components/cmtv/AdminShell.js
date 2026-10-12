@@ -92,8 +92,11 @@ function AdminSidebar() {
   return (
     <nav className={`side ${open ? 'open' : ''}`} aria-label="Admin">
       <div className="brand">
-        <img src="/cmtv/cmtv-logo.png" alt="" />
-        <div><b>CMTV</b><small>{isStaff ? 'Staff' : 'Admin'}</small></div>
+        {/* CMTV local change 2026-10-12 (owner): the logo goes back to the admin home (staff: their first allowed page) */}
+        <Link to={groups[0]?.items[0]?.to || '/admin'} className="brand-home" aria-label="Admin home" onClick={() => setOpen(false)}>
+          <img src="/cmtv/cmtv-logo.png" alt="" />
+          <div><b>CMTV</b><small>{isStaff ? 'Staff' : 'Admin'}</small></div>
+        </Link>
         <button type="button" className="menu-btn" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Close' : 'Menu'}</button>
       </div>
       <div className="links">

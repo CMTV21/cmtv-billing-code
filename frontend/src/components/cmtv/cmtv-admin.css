@@ -29,6 +29,10 @@
 .cmtv-adm .side { position: sticky; top: 12px; align-self: start; max-height: calc(100vh - 24px); overflow-y: auto; background: var(--deep); border: 1px solid var(--row-line); border-radius: 16px; padding: 14px 10px; }
 .cmtv-adm .side .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; border-bottom: 1px solid var(--row-line); margin-bottom: 8px; }
 .cmtv-adm .side .brand img { height: 30px; }
+/* CMTV local change 2026-10-12: logo + name are one link to the admin home; keep the old look */
+.cmtv-adm .side .brand .brand-home { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; color: inherit; text-decoration: none; border-radius: 8px; }
+.cmtv-adm .side .brand .brand-home:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.cmtv-adm .side .brand .brand-home:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .cmtv-adm .side .brand b { font: italic 800 18px var(--display); letter-spacing: .03em; display: block; line-height: 1.1; }
 .cmtv-adm .side .brand small { color: var(--faint); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
 .cmtv-adm .menu-btn { display: none; margin-left: auto; background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: 13px; font-weight: 700; }
