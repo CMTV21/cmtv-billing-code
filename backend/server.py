@@ -148,6 +148,8 @@ cmtv_referral.D["get_current_admin_user"] = get_current_admin_user
 cmtv_referral.init_routes()
 app.include_router(cmtv_referral.router)
 
+# CMTV local change 2026-10-13: shared "trial or paid line?" rule, used by the renew/extend check in create_order
+import cmtv_lines
 # CMTV local change 2026-09-26: admin home "command centre" (cmtv_admin_overview.py)
 import cmtv_admin_overview
 cmtv_admin_overview.D["get_current_admin_user"] = get_current_admin_user
@@ -4217,15 +4219,17 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         # and the customer got nothing (order 6ac0517c). Anything else becomes a new line.
         if getattr(item, "renewal_service_id", None) and getattr(item, "action_type", None) in ("renew", "extend"):
             _svc = await services_collection.find_one({"_id": str_to_objectid(item.renewal_service_id), "user_id": user_id})
-            _trial = bool(product.get("trial_duration")) or "trial" in str(product.get("name") or "").lower()
+            # CMTV local change 2026-10-13: trial = the product's is_trial flag (as the developer's code uses it). Every paid
+            # plan also has trial_duration (it holds the plan length), so checking that turned EVERY paid renewal into a new line.
+            _trial = bool(product.get("is_trial")) or "trial" in str(product.get("name") or "").lower()
             _same = bool(_svc) and _svc.get("panel_type") == product.get("panel_type") and (
                 product.get("panel_type") != "manual" or _svc.get("cockpit_module") == product.get("cockpit_module"))
-            # CMTV 2026-10-11 (owner): a CCTV/Imperium trial line that ended MORE than 7 days ago can't be extended (often deleted
-            # on the panel by then: renew "not found"); within 7 days it can
-            _exp = (_svc or {}).get("expiry_date")
-            _ended_trial = bool(_svc) and bool(_svc.get("is_trial")) and _svc.get("panel_type") in ("xtream", "aether") \
-                and isinstance(_exp, datetime) and _exp < datetime.utcnow() - timedelta(days=7)
-            if _trial or not _same or _ended_trial:
+            # CMTV local change 2026-10-13 (owner, option A): a CCTV/Imperium TRIAL line is never extended into a paid plan
+            # (replaces the 2026-10-11 "within 7 days" rule, which never ran because of the bug above): the customer gets a
+            # fresh paid line, as they have since 2026-10-03. Trial line = the shared rule (cmtv_lines.is_trial_line: marked
+            # as a trial AND no longer than 8 days), so the 17 old paid Imperium lines wrongly flagged is_trial still extend.
+            _trial_line = bool(_svc) and _svc.get("panel_type") in ("xtream", "aether") and cmtv_lines.is_trial_line(_svc)
+            if _trial or not _same or _trial_line:
                 logger.warning(f"Order item {item.product_name}: 'extend' of service {item.renewal_service_id} "
                                f"({(_svc or {}).get('panel_type')}) not allowed for this product, made a new line instead")
                 item.action_type = "create_new"
