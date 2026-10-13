@@ -281,15 +281,18 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* CMTV local change 2026-10-13 (owner: "switch it over"): /dashboard = the simplified dashboard; the previous one
+                stays at /dashboard/classic for a week (remove after 2026-10-20); /dashboard/new kept for links shared during the preview */}
             <Route
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <CmtvDashboardPage />
+                  <CmtvDashboardV2 />
                 </ProtectedRoute>
               }
             />
-            <Route path="/dashboard/new" element={<ProtectedRoute><CmtvDashboardV2 /></ProtectedRoute>} />{/* CMTV local change 2026-10-13: simplified dashboard preview */}
+            <Route path="/dashboard/classic" element={<ProtectedRoute><CmtvDashboardPage /></ProtectedRoute>} />
+            <Route path="/dashboard/new" element={<Navigate to="/dashboard" replace />} />
             <Route
               path="/services"
               element={

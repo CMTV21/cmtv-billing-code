@@ -10,10 +10,10 @@ import { WEBPLAYER } from './webPlayer';
 import SiteNav from './SiteNav';
 import './cmtv-account.css';
 
-const TABS = [
-  ['/dashboard', 'Home'], ['/services', 'Services'], ['/orders', 'Orders'], ['/invoices', 'Invoices'],
-  ['/tickets', 'Support'], ['/referrals', 'Referrals'], ['/knowledge-base', 'Guides'], ['/downloads', 'Downloads'],
-];
+// CMTV local change 2026-10-13 (owner, simplified dashboard): three tabs; everything else is in the account menu
+const TABS = [['/dashboard', 'Home'], ['/', 'Shop'], ['/knowledge-base', 'Help']];
+const MENU = [['/services', 'All services'], ['/orders', 'Orders'], ['/invoices', 'Invoices'], ['/tickets', 'Support tickets'],
+  ['/referrals', 'Referrals and credit'], ['/downloads', 'Downloads']];
 // 2026-09-27: visitors who aren't signed in (public Guides / Terms) get these instead of account tabs
 const GUEST_TABS = [['/', 'Plans'], ['/knowledge-base', 'Guides'], ['/terms', 'Terms']];
 
@@ -50,8 +50,6 @@ export function AccountHeader() {
         {user ? (
           <nav className="ca-tabs" aria-label="Account">
             {tabs.map(([to, label]) => <NavLink key={to} to={to} end={to === '/dashboard' || to === '/'}>{label}</NavLink>)}
-            {/* 2026-10-01: the CMTV Web Player (each TV line's card has a one-tap "Watch in browser" too) */}
-            <a href={WEBPLAYER} target="_blank" rel="noopener noreferrer" title="Watch in your browser">Web Player</a>
           </nav>
         ) : <SiteNav />}{/* 2026-10-01: visitors get the same site menu as the storefront */}
         {user ? (
@@ -63,7 +61,7 @@ export function AccountHeader() {
             {open && (
               <div className="ca-menu" role="menu">
                 <p>{user.name || user.email}</p>
-                <Link to="/" role="menuitem">Shop plans</Link>
+                {MENU.map(([to, label]) => <Link key={to} to={to} role="menuitem" onClick={() => setOpen(false)}>{label}</Link>)}
                 {isReseller && <Link to="/reseller" role="menuitem">Reseller tools</Link>}
                 <a href={WEBPLAYER} target="_blank" rel="noopener noreferrer" role="menuitem">Web Player</a>
                 <button type="button" role="menuitem" onClick={() => { logout(); navigate('/login'); }}>Log out</button>
