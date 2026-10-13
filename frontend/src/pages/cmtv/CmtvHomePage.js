@@ -20,6 +20,7 @@ import { useCurrencyStore } from '../../store/currency';
 import CurrencySwitcher from '../../components/CurrencySwitcher';
 import FormattedText from '../../components/cmtv/FormattedText';
 import ServiceComparison from '../../components/cmtv/ServiceComparison';
+import StoreRenewBanner from '../../components/cmtv/StoreRenewBanner'; // CMTV 2026-10-13: "Renew my line" before buying a second line
 import { BRAND, lookup, familyOf, bundlePartsFor } from '../../components/cmtv/brand';
 import '../../components/cmtv/cmtv-theme.css';
 
@@ -283,6 +284,7 @@ export default function CmtvHomePage() {
             <div key={g.id} id={`group-${g.family}`} style={{ scrollMarginTop: 80 }}>
               {gi === compareAt && <div id="compare" style={{ margin: '28px 0 8px', scrollMarginTop: 80 }}><ServiceComparison /></div>}
               {g.name && <div className={`family fam-${g.family}`}><span>{g.name}</span></div>}
+              {(g.family === 'cctv' || g.family === 'imperium') && <StoreRenewBanner family={g.family} />}{/* CMTV local change 2026-10-13 */}
               {g.hasSubgroups && (() => {
                 const { intro } = splitDescription(g.cards[0]?.products[0]?.description);
                 return intro ? <div className="family-desc"><FormattedText text={intro} /></div> : null;
