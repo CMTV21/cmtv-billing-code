@@ -5,14 +5,17 @@
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/api';
-import { isRunningTvTrial } from './KeepTrialLogin';
+import { isRunningTvTrial, isRealTvTrial } from './KeepTrialLogin';
 
 const ts = (d) => (d ? new Date(String(d).endsWith('Z') ? d : `${d}Z`).getTime() : 0);
 
 export function bestLine(all, now = Date.now()) {
-  // 2026-10-11 (owner): a trial only while running or within 7 days of ending; other lines within 30 days of ending
-  const lines = all.filter((s) => (s.is_trial ? (isRunningTvTrial(s) || ts(s.expiry_date) > now - 7 * 86400000)
-    : ts(s.expiry_date) > now - 30 * 86400000));
+  // 2026-10-11 (owner): other lines within 30 days of ending. 2026-10-13 (owner, option B): a real trial only while it's
+  // running (billing gives an ended trial a new line); old paid lines wrongly flagged is_trial count as normal lines
+  const tv = (s) => ['xtream', 'aether'].includes(s.panel_type);
+  const lines = all.filter((s) => (isRealTvTrial(s) ? isRunningTvTrial(s)
+    : (s.is_trial && !tv(s) ? isRunningTvTrial(s) || ts(s.expiry_date) > now - 7 * 86400000   // add-on trials: as before
+      : ts(s.expiry_date) > now - 30 * 86400000)));
   const trial = lines.filter(isRunningTvTrial).sort((a, b) => ts(b.expiry_date) - ts(a.expiry_date))[0];
   if (trial) return trial;
   const active = lines.filter((s) => ts(s.expiry_date) > now).sort((a, b) => ts(a.expiry_date) - ts(b.expiry_date))[0];

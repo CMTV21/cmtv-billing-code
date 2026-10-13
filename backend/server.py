@@ -4224,12 +4224,16 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             _trial = bool(product.get("is_trial")) or "trial" in str(product.get("name") or "").lower()
             _same = bool(_svc) and _svc.get("panel_type") == product.get("panel_type") and (
                 product.get("panel_type") != "manual" or _svc.get("cockpit_module") == product.get("cockpit_module"))
-            # CMTV local change 2026-10-13 (owner, option A): a CCTV/Imperium TRIAL line is never extended into a paid plan
-            # (replaces the 2026-10-11 "within 7 days" rule, which never ran because of the bug above): the customer gets a
-            # fresh paid line, as they have since 2026-10-03. Trial line = the shared rule (cmtv_lines.is_trial_line: marked
-            # as a trial AND no longer than 8 days), so the 17 old paid Imperium lines wrongly flagged is_trial still extend.
-            _trial_line = bool(_svc) and _svc.get("panel_type") in ("xtream", "aether") and cmtv_lines.is_trial_line(_svc)
-            if _trial or not _same or _trial_line:
+            # CMTV local change 2026-10-13 (owner, option B for RUNNING trials): a CCTV/Imperium trial line that is still
+            # running is extended into the paid plan = same login (tested on both panels 2026-10-05; cmtv_trial_watch.after_item
+            # does the bookkeeping). An ENDED trial line gets a fresh paid line (not tested; often gone from the panel).
+            # Trial line = the shared rule (cmtv_lines.is_trial_line: marked as a trial AND no longer than 8 days), so the 17
+            # old paid Imperium lines wrongly flagged is_trial still extend. Checkout (KeepTrialLogin.js) uses the same rule.
+            _exp = cmtv_lines._dt((_svc or {}).get("expiry_date"))
+            _running = (_svc or {}).get("status") == "active" and bool(_exp) and _exp > datetime.utcnow()
+            _ended_trial = bool(_svc) and _svc.get("panel_type") in ("xtream", "aether") \
+                and cmtv_lines.is_trial_line(_svc) and not _running
+            if _trial or not _same or _ended_trial:
                 logger.warning(f"Order item {item.product_name}: 'extend' of service {item.renewal_service_id} "
                                f"({(_svc or {}).get('panel_type')}) not allowed for this product, made a new line instead")
                 item.action_type = "create_new"

@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { productsAPI, servicesAPI } from '../../api/api';
-import { isRunningTvTrial } from './KeepTrialLogin'; // 2026-10-11: ended TV trials can't be extended
+import { isRunningTvTrial, isRealTvTrial } from './KeepTrialLogin'; // 2026-10-11/13: ended TV trials can't be extended
 import { BRAND, lookup, bundlePartsFor, replacedBy, partsText } from './brand';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -46,9 +46,9 @@ export function useTrialOf() {
 export function extendChoices(item, services, addonIds, trialOf = {}) {
   const isAddon = addonIds.has(item.product_id);
   // 2026-10-11 (owner): a CCTV/Imperium trial that ended MORE than 7 days ago isn't offered (it's often deleted on the panel by
-  // then; renewing it fails). Running trials and ones that ended within 7 days can still be extended.
-  const ago = (d) => Date.now() - new Date(String(d || 0).endsWith('Z') ? d : `${d}Z`).getTime();
-  const endedTvTrial = (s) => s.is_trial && ['xtream', 'aether'].includes(s.panel_type) && !isRunningTvTrial(s) && ago(s.expiry_date) > 7 * 86400000;
+  // then; renewing it fails). [2026-10-13: superseded below, no ended trial is offered.]
+  // 2026-10-13 (owner, option B): billing now gives ANY ended real trial a new line, so ended trials aren't offered at all
+  const endedTvTrial = (s) => isRealTvTrial(s) && !isRunningTvTrial(s);
   return (services || []).filter((s) => !endedTvTrial(s)).filter((s) => (isAddon
     ? s.product_id === item.product_id || trialOf[s.product_id] === item.product_id
     : !addonIds.has(s.product_id) && !trialOf[s.product_id]));
