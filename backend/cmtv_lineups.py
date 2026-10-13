@@ -260,6 +260,19 @@ async def _apply_cctv(product: dict, item: dict):
     allowed = _cctv_ids(product)
     if item.get("renewal_service_id"):   # renewals re-post a group list: send the line's own picks
         svc = await D["db"].services.find_one({"_id": _oid(item["renewal_service_id"])})
+        # CMTV local change 2026-10-13: the customer PICKED a package on the renew panel -> that package's groups, saved
+        # on the line for later renewals (Full = all of the plan's groups, saved picks cleared)
+        if item.get("lineup") in LINEUPS and svc:
+            pkg = cctv_package_ids(item["lineup"], allowed) if item["lineup"] != "full" else []
+            if pkg and set(pkg) != set(allowed):
+                await D["db"].services.update_one({"_id": svc["_id"]}, {"$set": {"cmtv_bouquets": pkg, "cmtv_lineup": item["lineup"],
+                                                                                "cmtv_lineup_at": datetime.utcnow()}})
+                log.info(f"CCTV packages: renewal switches {svc.get('xtream_username')} to {item['lineup']} ({len(pkg)} groups)")
+                return {**product, "bouquets": pkg}
+            await D["db"].services.update_one({"_id": svc["_id"]}, {"$set": {"cmtv_lineup": "full", "cmtv_lineup_at": datetime.utcnow()},
+                                                                   "$unset": {"cmtv_bouquets": ""}})
+            log.info(f"CCTV packages: renewal switches {svc.get('xtream_username')} to full ({len(allowed)} groups)")
+            return product
         keep = [b for b in ((svc or {}).get("cmtv_bouquets") or []) if b in allowed]
         if keep:
             log.info(f"CCTV groups: renewal keeps the line's {len(keep)} chosen groups")

@@ -8364,7 +8364,11 @@ async def provision_aether_service(order_id: str, order: dict, user: dict, item:
                 logger.error(f"Aether renewal: service {renewal_service_id} not found")
                 return
             line_user = existing.get("xtream_username") or existing.get("username", "")
-            result = await ae.renew_line(line_user, int(package_id), idem_key=f"billing-{order_id}-renew-{renewal_service_id}")
+            # CMTV local change 2026-10-13: a renewal where the customer PICKED a channel package (item.lineup, from the
+            # dashboard renew panel) also re-syncs the line's channel groups to that package; without it Imperium keeps the
+            # old groups and the new package changes nothing. "Keep my channels" sends no lineup = groups untouched.
+            result = await ae.renew_line(line_user, int(package_id), idem_key=f"billing-{order_id}-renew-{renewal_service_id}",
+                                         sync_bouquets=bool(item.get("lineup")))
             if result.get("success"):
                 new_exp = result.get("new_expiry")
                 await services_collection.update_one(

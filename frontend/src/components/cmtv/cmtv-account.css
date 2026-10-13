@@ -164,3 +164,51 @@
 .ca-tg-toggle .ca-switch { margin-top: 2px; }
 .ca-linkbtn { background: none; border: 0; padding: 0; color: var(--muted); font: 600 13px var(--body); text-decoration: underline; cursor: pointer; }
 .ca-linkbtn:hover { color: var(--text); }
+/* 2026-10-13: simplified dashboard (pages/cmtv/CmtvDashboardV2.js) + the renew panel (components/cmtv/RenewPanel.js) */
+.ca-v2 { max-width: 760px; }
+.ca-v2 section { margin-bottom: 22px; }
+.ca-stack { display: grid; gap: 12px; }
+.ca-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 12px; }
+.ca-card.cctv { border-left: 3px solid var(--cyan); }
+.ca-card.imperium { border-left: 3px solid var(--gold); }
+.ca-card.addons { border-left: 3px solid var(--violet); }
+.ca-card.dim { opacity: .85; }
+.ca-card.compact { padding: 10px 14px; gap: 10px; }
+.ca-card-top { display: flex; align-items: center; gap: 12px; }
+.ca-card-logo { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; }
+.ca-tile-sm { border-radius: 12px; background: var(--ring); display: grid; place-items: center; font: italic 800 20px var(--display); color: #07101f; }
+.ca-card-title { flex: 1; min-width: 0; }
+.ca-card-title b { display: block; font: 700 17px var(--display); }
+.ca-card-title small { display: block; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.ca-card-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ca-card-btns .ca-btn { justify-content: center; }
+.ca-card.compact .ca-card-btns { grid-template-columns: auto auto; justify-content: start; }
+.ca-details { display: grid; gap: 12px; border-top: 1px solid var(--row-line); padding-top: 12px; }
+.ca-details .ca-toggle { margin-left: 0; }
+.ca-fieldnote { display: block; color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+.ca-plus-parts { display: grid; border-top: 1px solid var(--row-line); }
+.ca-plus-row { display: flex; justify-content: space-between; width: 100%; background: none; border: 0; border-bottom: 1px solid var(--row-line); color: var(--text); font: 600 14px var(--body); padding: 10px 0; cursor: pointer; }
+.ca-linkish { color: var(--cyan); font-size: 13px; }
+.ca-ended { margin: 6px 0 22px; }
+.ca-ended summary { cursor: pointer; color: var(--muted); font-weight: 600; padding: 6px 0; }
+.ca-ended .ca-stack { margin-top: 10px; }
+.ca-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.ca-tilebtn { display: grid; justify-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 6px; color: var(--text); font: 600 14px var(--body); text-decoration: none; cursor: pointer; text-align: center; }
+.ca-tilebtn span { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--cyan); font-weight: 800; }
+.ca-tilebtn:hover { border-color: var(--muted); }
+.ca-helpbox { margin-bottom: 12px; }
+.ca-lastorder { font-size: 13px; color: var(--faint); }
+.ca-renew { border: 1px solid var(--cyan); border-radius: 14px; padding: 14px; background: var(--deep); display: grid; gap: 8px; }
+.ca-renew-head { display: flex; justify-content: space-between; align-items: center; }
+.ca-renew-head b { font: 700 16px var(--display); }
+.ca-renew-step { display: block; margin: 6px 0 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+.ca-renew-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ca-renew-opt { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; color: var(--text); cursor: pointer; font: 600 14px var(--body); }
+.ca-renew-opt small { display: block; color: var(--muted); font-weight: 500; font-size: 12.5px; }
+.ca-renew-opt.on { border: 2px solid var(--cyan); padding: 8px 10px; background: var(--surface-2); }
+.ca-select { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font: 500 14px var(--body); }
+.ca-renew-hint { font-size: 13px; }
+.ca-renew-sum { background: var(--surface); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--muted); margin-top: 4px; }
+.ca-renew-sum b { color: var(--text); }
+.ca-renew-credit { display: block; color: var(--good); margin-top: 4px; }
+.ca-renew-go { justify-content: center; }

@@ -53,6 +53,7 @@ import OrderItemPage from './pages/OrderItemPage';
 import CheckoutPage from './pages/CheckoutPage';
 import DashboardPage from './pages/DashboardPage'; // eslint-disable-line no-unused-vars -- CMTV 2026-09-26: replaced by CmtvDashboardPage
 import CmtvDashboardPage from './pages/cmtv/CmtvDashboardPage'; // CMTV local change 2026-09-26: new customer dashboard
+import CmtvDashboardV2 from './pages/cmtv/CmtvDashboardV2'; // CMTV local change 2026-10-13: simplified dashboard (preview at /dashboard/new)
 import { CmtvAccountFrame } from './components/cmtv/AccountShell'; // CMTV local change 2026-09-26: navy frame for customer pages
 import ServicesPage from './pages/ServicesPage';
 import OrdersPage from './pages/OrdersPage';
@@ -288,6 +289,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="/dashboard/new" element={<ProtectedRoute><CmtvDashboardV2 /></ProtectedRoute>} />{/* CMTV local change 2026-10-13: simplified dashboard preview */}
             <Route
               path="/services"
               element={

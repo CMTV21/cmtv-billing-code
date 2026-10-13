@@ -27,23 +27,23 @@ import { BRAND, familyOf, lookup } from '../../components/cmtv/brand';
 import FormattedText from '../../components/cmtv/FormattedText';
 import { paymentLabel } from '../../components/cmtv/paymentMethod';
 
-const DAY = 86400000;
-const SOON = 7;
+export const DAY = 86400000;   // 2026-10-13: these helpers are shared with CmtvDashboardV2
+export const SOON = 7;
 const MODULE_PRODUCT = { nuvio: 'Stremio', vpn: 'CMTVpn', audiobooks: 'CMTV Audiobooks', nuviocloud: 'Nuvio' };
 const errText = (e, fb) => e?.response?.data?.detail || fb;
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
-const termText = (m) => (m === 12 ? 'yr' : m === 1 ? 'mo' : `${m} mo`);
+export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+export const termText = (m) => (m === 12 ? 'yr' : m === 1 ? 'mo' : `${m} mo`);
 const firstPrice = (p) => {
   const [term, price] = Object.entries(p?.prices || {})[0] || ['1', 0];
   return { term: parseInt(term, 10) || 1, price: parseFloat(price) || 0 };
 };
-const copy = (text, label) => {
+export const copy = (text, label) => {
   const done = () => toast.success(`${label} copied`);
   try { navigator.clipboard.writeText(text).then(done, () => toast(text)); } catch (e) { toast(text); }
 };
 
 // Everything the card needs about one service, worked out once
-function describe(s, productsById, groupsById, now) {
+export function describe(s, productsById, groupsById, now) {
   const product = productsById[s.product_id];
   const paid = product?.cmtv_trial_of ? productsById[product.cmtv_trial_of] : null;   // a trial's paid product
   const groupName = groupsById[product?.group_id] || '';
@@ -89,7 +89,7 @@ function describe(s, productsById, groupsById, now) {
            username, password, server, subtitle, setup: s.setup_instructions || product?.setup_instructions || renewWith?.setup_instructions };
 }
 
-function AutoRenewSwitch({ d, enabled }) {
+export function AutoRenewSwitch({ d, enabled }) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [confirmOff, setConfirmOff] = useState(false);
