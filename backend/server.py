@@ -4229,10 +4229,7 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
             # does the bookkeeping). An ENDED trial line gets a fresh paid line (not tested; often gone from the panel).
             # Trial line = the shared rule (cmtv_lines.is_trial_line: marked as a trial AND no longer than 8 days), so the 17
             # old paid Imperium lines wrongly flagged is_trial still extend. Checkout (KeepTrialLogin.js) uses the same rule.
-            _exp = cmtv_lines._dt((_svc or {}).get("expiry_date"))
-            _running = (_svc or {}).get("status") == "active" and bool(_exp) and _exp > datetime.utcnow()
-            _ended_trial = bool(_svc) and _svc.get("panel_type") in ("xtream", "aether") \
-                and cmtv_lines.is_trial_line(_svc) and not _running
+            _ended_trial = cmtv_lines.ended_tv_trial(_svc)   # 2026-10-13: same rule again at provisioning
             if _trial or not _same or _ended_trial:
                 logger.warning(f"Order item {item.product_name}: 'extend' of service {item.renewal_service_id} "
                                f"({(_svc or {}).get('panel_type')}) not allowed for this product, made a new line instead")
@@ -6308,6 +6305,19 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
             # with that many credits (every reseller path reads product["reseller_credits"])
             if item.get("credits") and product.get("account_type") == "reseller":
                 product = {**product, "reseller_credits": float(item["credits"])}
+            # CMTV local change 2026-10-13: create_order only extends a trial line that is still RUNNING (option B), but an
+            # order placed during the trial can be paid after it ended (late e-Transfer). Same rule again here: an ended
+            # CCTV/Imperium trial gets a new line instead of a failed extension (order item keeps the old line id in cmtv_trial_ended_new_line).
+            if item.get("action_type") in ("renew", "extend") and item.get("renewal_service_id"):
+                _svc = await services_collection.find_one({"_id": str_to_objectid(item["renewal_service_id"]), "user_id": order["user_id"]})
+                if cmtv_lines.ended_tv_trial(_svc):
+                    logger.warning(f"Order {order_id} item {item.get('product_name')}: trial line {item['renewal_service_id']} "
+                                   f"ended before payment, making a new line instead of extending it")
+                    _k = next(k for k, x in enumerate(order["items"]) if x is item)
+                    item["action_type"], item["renewal_service_id"] = "create_new", None
+                    await orders_collection.update_one({"_id": str_to_objectid(order_id)}, {"$set": {
+                        f"items.{_k}.action_type": "create_new", f"items.{_k}.renewal_service_id": None,
+                        f"items.{_k}.cmtv_trial_ended_new_line": _svc.get("_id") and str(_svc["_id"])}})
             # CMTV local change 2026-10-01: CMTV's own balance must cover reseller credits; if not, nothing goes to the
             # panel and the order is held as not provisioned (Critical alert says LOW CREDITS with both numbers)
             # CMTV local change 2026-10-01: Nuvio reseller credits are kept in billing (cmtv_nuvio_reseller.provision_credits)

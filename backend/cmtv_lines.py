@@ -39,3 +39,15 @@ def is_trial_line(s, now=None, product=None):
 def is_paid_line(s, now=None, product=None):
     """Not a real trial (a normal plan, or a trial-named line that was paid for and extended)."""
     return not is_trial_line(s, now, product)
+
+
+# CMTV local change 2026-10-13: the "running trial?" check of create_order, repeated when the order is provisioned.
+def ended_tv_trial(s, now=None):
+    """A CCTV/Imperium real trial line that is no longer running (not active, or past its end). Option B: a paid order
+    extends a RUNNING trial (same login); an ENDED one gets a new line. Used by create_order's rule at order time and by
+    provision_order_services at payment time (an order placed during the trial but paid after it ended)."""
+    if not s or s.get("panel_type") not in ("xtream", "aether") or not is_trial_line(s, now):
+        return False
+    now = now or datetime.utcnow()
+    exp = _dt(s.get("expiry_date"))
+    return not (s.get("status") == "active" and exp and exp > now)
