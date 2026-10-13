@@ -186,7 +186,7 @@ export default function CmtvDashboardV2() {
   const renew = (d) => {   // add-ons + CMTV+ (no length choice): the same plan, as before
     const p = d.renewWith;
     addRenewalItem({ product_id: p.id, product_name: p.name, term_months: d.rp.term, price: d.rp.price,
-                     account_type: p.account_type || d.s.account_type }, d.s.id, 'extend');
+                     account_type: p.account_type || d.s.account_type, renew_locked: true }, d.s.id, 'extend');
     toast.success(`${p.name} added. It extends your current login.`);
     navigate('/checkout');
   };
@@ -273,8 +273,8 @@ export default function CmtvDashboardV2() {
             <div style={{ marginTop: 12 }}><FeedbackBox /></div>
           </div>
         )}
-        {(orders.data || []).length > 0 && <p className="ca-note ca-lastorder">Last order: {(orders.data[0].items || []).map((i) => i.product_name).join(', ')}
-          {' · '}{fmtDate(orders.data[0].paid_at || orders.data[0].created_at)} · {paymentLabel(orders.data[0])}</p>}
+        {(() => { const o = (orders.data || []).find((x) => x.status === 'paid'); return o && <p className="ca-note ca-lastorder">Last order: {(o.items || []).map((i) => i.product_name).join(', ')}
+          {' · '}{fmtDate(o.paid_at || o.created_at)} · {paymentLabel(o)}</p>; })()}
       </main>
     </div>
   );

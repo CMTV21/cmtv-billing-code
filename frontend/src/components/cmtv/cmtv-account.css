@@ -212,3 +212,9 @@
 .ca-renew-sum b { color: var(--text); }
 .ca-renew-credit { display: block; color: var(--good); margin-top: 4px; }
 .ca-renew-go { justify-content: center; }
+/* 2026-10-13 (owner): a small Telegram prompt under the greeting on the simplified dashboard */
+.ca-v2 .ca-attention:has(.ca-tg-nudge) { margin-bottom: 18px; }
+.ca-v2 .ca-tg-nudge { padding: 8px 12px; gap: 8px 12px; border-left-width: 3px; }
+.ca-v2 .ca-tg-nudge .msg b { font-size: 14px; }
+.ca-v2 .ca-tg-nudge .msg small { font-size: 12.5px; }
+.ca-v2 .ca-tg-nudge .ca-btn { padding: 6px 12px; font-size: 13px; }

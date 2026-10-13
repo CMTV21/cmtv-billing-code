@@ -761,7 +761,15 @@ export default function CheckoutPage() {
                     </div>
                     
                     {/* Extend/Create Option for Subscriber Products */}
-                    {canExtend(item) && extendChoices(item, userServices, addonIds, trialOf).length > 0 && (
+                    {/* CMTV local change 2026-10-13: a renewal started from the dashboard's renew panel is locked to that line
+                        (no "Create New Line" chooser: customers kept picking it by mistake) */}
+                    {item.renew_locked && item.renewal_service_id && (
+                      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 text-sm text-blue-800 dark:text-blue-200">
+                        Renewing your line <b>{(userServices || []).find((s) => s.id === item.renewal_service_id)?.xtream_username
+                          || (userServices || []).find((s) => s.id === item.renewal_service_id)?.username || ''}</b>: same login, nothing to set up again.
+                      </div>
+                    )}
+                    {!item.renew_locked && canExtend(item) && extendChoices(item, userServices, addonIds, trialOf).length > 0 && (
                       <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
                         <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-3">
                           What would you like to do?

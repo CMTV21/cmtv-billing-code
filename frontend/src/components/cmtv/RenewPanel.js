@@ -78,7 +78,7 @@ export default function RenewPanel({ d, products, onClose }) {
     }
     addRenewalItem({
       product_id: plan.id, base_name: plan.name, product_name: lineup ? lineupName(plan.name, lineup) : plan.name,
-      term_months: term, price, account_type: 'subscriber', lineup: lineup || undefined, channels_confirmed: true,
+      term_months: term, price, account_type: 'subscriber', lineup: lineup || undefined, channels_confirmed: true, renew_locked: true,   // checkout: no new-line chooser
     }, s.id, 'extend');
     toast.success(`Renewal added: same login (${d.username || s.product_name}), nothing to set up again.`);
     navigate('/checkout');
