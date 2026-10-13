@@ -3,8 +3,10 @@
 // customer list (tap a line) and the profile ("Extend line"). It shows the end date now and after each choice, the price
 // from the plan, how they paid (e-Transfer / PayPal / Cash / Other / Free), email on/off and a note. The big button says
 // exactly what will happen; no browser pop-up. Payments go into Finances, so nothing lands in "Needs recording".
-import React, { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+// 2026-10-13 (owner, Ed Carroll 2 -> 1): an ENDED CCTV line can come back with fewer devices ("Devices" choice; same login,
+// the smaller package lowers it on the panel). Imperium can't lower devices: a note says the customer needs a new line.
+import React, { useEffect, useRef, useState } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '../../api/api';
 
@@ -17,8 +19,11 @@ const chip = (on) => ({ font: 'inherit', fontSize: 14, fontWeight: 700, borderRa
   border: `1px solid ${on ? C.cyan : C.line}`, background: on ? 'rgba(34,230,242,.12)' : C.deep, color: C.text });
 
 export function ExtendSheet({ serviceId, onClose, onDone }) {
-  const { data, error } = useQuery({ queryKey: ['cmtv-extend-opts', serviceId], staleTime: 0, retry: false,
-    queryFn: async () => (await api.get(`/api/cmtv/admin/extend/${serviceId}/options`)).data });
+  const [devices, setDevices] = useState(0);   // 0 = the line's own device count
+  const { data, error, isFetching } = useQuery({ queryKey: ['cmtv-extend-opts', serviceId, devices], staleTime: 0, retry: false,
+    placeholderData: keepPreviousData,
+    queryFn: async () => (await api.get(`/api/cmtv/admin/extend/${serviceId}/options`, { params: devices ? { devices } : {} })).data });
+  const emailSet = useRef(false);
   const [months, setMonths] = useState(null);
   const [method, setMethod] = useState('e-Transfer');
   const [amount, setAmount] = useState('');
@@ -27,17 +32,20 @@ export function ExtendSheet({ serviceId, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const opts = data?.options || [];
   const opt = opts.find((o) => o.months === months);
-  useEffect(() => { if (data) { setEmail(!!data.can_email); const first = opts.find((o) => o.months === 12) || opts[0]; if (first) { setMonths(first.months); setAmount(String(first.price || '')); } } },
+  useEffect(() => { if (data) { if (!emailSet.current) { setEmail(!!data.can_email); emailSet.current = true; } const first = opts.find((o) => o.months === 12) || opts[0]; if (first) { setMonths(first.months); setAmount(String(first.price || '')); } } },
     [data]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const k = (e) => e.key === 'Escape' && !busy && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [busy, onClose]);
   const pick = (o) => { setMonths(o.months); if (method !== 'Free') setAmount(String(o.price || '')); };
   const free = method === 'Free';
+  const lineDevices = data?.line_devices || data?.devices || 1;
+  const lower = !!data && data.devices < lineDevices;   // extending with fewer devices than the line has now
   const amt = free ? 0 : Number(amount || 0);
   const go = async () => {
     if (!opt || busy) return;
     setBusy(true);
     try {
-      const r = (await api.post(`/api/cmtv/admin/extend/${serviceId}`, { months, amount: amt, method: free ? 'Other' : method, email, note })).data;
+      const r = (await api.post(`/api/cmtv/admin/extend/${serviceId}`, { months, amount: amt, method: free ? 'Other' : method, email, note,
+        devices: lower ? data.devices : undefined })).data;
       toast.success(`${data.login} now ends ${nice(r.new_expiry)}${r.emailed ? ' · customer emailed' : ''}`);
       onDone && onDone(r);
       onClose();
@@ -64,6 +72,19 @@ export function ExtendSheet({ serviceId, onClose, onDone }) {
             {data.ends_from === 'panel' && <span> (from the panel)</span>}
             {data.ended && <span> · extending starts from today</span>}
           </div>
+          {(data.device_choices || []).length > 1 && <>
+            <div style={{ fontSize: 13, color: C.muted, margin: '0 0 6px' }}>Devices (the line has ended, so it can come back with fewer)</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              {data.device_choices.map((n) => (
+                <button key={n} type="button" disabled={busy} aria-pressed={n === data.devices} style={{ ...chip(n === data.devices), padding: '7px 12px' }}
+                  onClick={() => setDevices(n === lineDevices ? 0 : n)}>{n}{n === lineDevices ? ' (now)' : ''}</button>
+              ))}
+            </div>
+            {lower && <p style={{ fontSize: 13, color: C.warn, margin: '-4px 0 12px' }}>Goes from {lineDevices} to {data.devices} device{data.devices === 1 ? '' : 's'}.
+              Same login; the panel lowers it when it renews.</p>}
+          </>}
+          {data.imperium_lower_note && <p style={{ fontSize: 13, color: C.muted, margin: '0 0 12px' }}>Want fewer devices? Imperium can't lower a
+            line's devices: the customer buys the smaller plan in the store and gets a new line (new login).</p>}
           {opts.length === 0 && <p style={{ color: C.warn }}>No {data.server} plan for {data.devices} devices in Products, so it can't be extended here.</p>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 8 }}>
             {opts.map((o) => (
@@ -93,9 +114,9 @@ export function ExtendSheet({ serviceId, onClose, onDone }) {
           <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder="Note (optional), e.g. paid in person"
             style={{ font: 'inherit', fontSize: 15, width: '100%', boxSizing: 'border-box', marginTop: 10, padding: '9px 10px', borderRadius: 8,
               border: `1px solid ${C.line}`, background: C.deep, color: C.text }} />
-          <button type="button" disabled={!opt || busy || (!free && !(amt > 0))} onClick={go}
+          <button type="button" disabled={!opt || busy || isFetching || (!free && !(amt > 0))} onClick={go}
             style={{ font: 'inherit', fontSize: 16, fontWeight: 800, width: '100%', marginTop: 14, padding: '13px 14px', borderRadius: 12, border: 0, cursor: 'pointer',
-              background: 'linear-gradient(135deg,#22e6f2,#8b5cf6)', color: '#07101f', opacity: !opt || busy || (!free && !(amt > 0)) ? 0.5 : 1 }}>
+              background: 'linear-gradient(135deg,#22e6f2,#8b5cf6)', color: '#07101f', opacity: !opt || busy || isFetching || (!free && !(amt > 0)) ? 0.5 : 1 }}>
             {busy ? 'Extending on the panel…' : opt ? `Extend to ${nice(opt.new_end)} · ${free ? 'free' : `$${amt.toFixed(2)} ${method}`}` : 'Pick how long'}
           </button>
           {!free && !(amt > 0) && opt && <p style={{ fontSize: 12.5, color: C.warn, margin: '6px 0 0' }}>Enter the amount, or pick Free.</p>}

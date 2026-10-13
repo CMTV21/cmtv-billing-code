@@ -4,7 +4,11 @@
 // Continue = a RENEWAL of this exact line in the cart (action extend + renewal_service_id) -> checkout. Never a new line.
 // Backend: a picked package re-syncs the line's channel groups on renewal (server.py Imperium renew, cmtv_lineups CCTV).
 // "Listed first" is free and is saved on the panel straight away (POST /api/cmtv/imperium/listed-first/{id}).
-import React, { useMemo, useState } from 'react';
+// 2026-10-13 (owner, Ed Carroll 2 -> 1): an ENDED line can come back with FEWER devices ("Devices" step). CCTV: same login,
+// the smaller package lowers it on the panel. Imperium can't lower a line's devices, so fewer devices there = a NEW line
+// (new login, emailed); the old line stays ended. The server applies the same rule (cmtv_upgrades.renewal_plan /
+// lower_needs_new_line), so the price shown here is the price charged.
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -20,13 +24,15 @@ const money = (n) => `$${Number(n).toFixed(n % 1 ? 2 : 0)}`;
 const addMonths = (d, m) => { const x = new Date(d); const day = x.getDate(); x.setMonth(x.getMonth() + m); if (x.getDate() < day) x.setDate(0); return x; };
 const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-// Every length on sale for this line: same server, same devices, subscriber, not a trial/bundle/CMTV+; one plan per length
-export function renewOptions(d, products) {
+// Every length on sale for this line: same server, same devices (or `devices`), subscriber, not a trial/bundle/CMTV+;
+// one plan per length
+export function renewOptions(d, products, devices) {
   const base = d.renewWith;
   if (!base || base.account_type !== 'subscriber' || !['xtream', 'aether'].includes(base.panel_type)) return [];
+  const want = Number(devices || base.max_connections);
   const byTerm = {};
   (products || []).filter((p) => p.panel_type === base.panel_type && p.account_type === 'subscriber' && !p.is_trial
-      && !p.is_bundle && !p.cmtv_plus && Number(p.max_connections) === Number(base.max_connections)
+      && !p.is_bundle && !p.cmtv_plus && Number(p.max_connections) === want
       && priceOf(p).price > 0 && p.is_active !== false)
     .forEach((p) => {
       const { term } = priceOf(p);
@@ -42,12 +48,22 @@ export default function RenewPanel({ d, products, onClose }) {
   const { addRenewalItem } = useCartStore();
   const s = d.s;
   const imperium = s.panel_type === 'aether';
-  const opts = useMemo(() => renewOptions(d, products), [d, products]);
+  // 2026-10-13: an ended line may come back with fewer devices (sizes that have plans on sale)
+  const lineDevices = Number(s.max_connections || d.renewWith?.max_connections || 1);
+  const deviceChoices = useMemo(() => (d.ended && !d.isTrial && lineDevices > 1
+    ? Array.from({ length: lineDevices }, (_, i) => i + 1).filter((n) => renewOptions(d, products, n).length) : []), [d, products, lineDevices]);
+  const [devices, setDevices] = useState(lineDevices);
+  const fewer = devices < lineDevices;
+  const newLine = imperium && fewer;   // Imperium can't lower a line: fewer devices = a new line
+  const opts = useMemo(() => renewOptions(d, products, devices), [d, products, devices]);
   const monthly = useMemo(() => {   // the best 1-month price, to show "save $X" on longer plans
     const one = opts.find((p) => priceOf(p).term === 1);
     return one ? priceOf(one).price : null;
   }, [opts]);
   const [term, setTerm] = useState(() => (opts.find((p) => priceOf(p).term === d.rp.term) ? d.rp.term : priceOf(opts[0] || d.renewWith).term));
+  useEffect(() => {   // a size without the chosen length: fall back to the first length on sale
+    if (opts.length && !opts.find((p) => priceOf(p).term === term)) setTerm(priceOf(opts[0]).term);
+  }, [opts]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [lineup, setLineup] = useState('');   // '' = keep my channels
   const list = imperium ? LINEUPS : CCTV_LINEUPS;
   const current = list.find((l) => l.key === (s.cmtv_lineup || 'full')) || list[0];
@@ -70,17 +86,19 @@ export default function RenewPanel({ d, products, onClose }) {
   const go = async () => {
     setBusy(true);
     try {
-      if (imperium && listed !== null && listed !== lf.data?.id) {
+      if (imperium && !newLine && listed !== null && listed !== lf.data?.id) {
         await api.post(`/api/cmtv/imperium/listed-first/${s.id}`, { profile_id: listed });
       }
     } catch (e) {
       toast.error("Couldn't save the channel order right now; you can change it later on your dashboard.");
     }
+    const keep = lineup || (newLine && current.key !== 'full' ? current.key : '');   // a new line keeps the old line's channels
     addRenewalItem({
-      product_id: plan.id, base_name: plan.name, product_name: lineup ? lineupName(plan.name, lineup) : plan.name,
-      term_months: term, price, account_type: 'subscriber', lineup: lineup || undefined, channels_confirmed: true, renew_locked: true,   // checkout: no new-line chooser
-    }, s.id, 'extend');
-    toast.success(`Renewal added: same login (${d.username || s.product_name}), nothing to set up again.`);
+      product_id: plan.id, base_name: plan.name, product_name: keep ? lineupName(plan.name, keep) : plan.name,
+      term_months: term, price, account_type: 'subscriber', lineup: keep || undefined, channels_confirmed: true, renew_locked: true,   // checkout: no new-line chooser
+    }, newLine ? null : s.id, newLine ? 'create_new' : 'extend');
+    toast.success(newLine ? `Added: a new Imperium line with ${devices} device${devices === 1 ? '' : 's'}. Your new login comes by email after payment.`
+      : `Renewal added: same login (${d.username || s.product_name})${fewer ? `, ${devices} device${devices === 1 ? '' : 's'}` : ''}, nothing to set up again.`);
     navigate('/checkout');
   };
 
@@ -94,7 +112,21 @@ export default function RenewPanel({ d, products, onClose }) {
       <p className="ca-note">Line {d.username} · {s.max_connections || plan.max_connections} device{Number(s.max_connections || plan.max_connections) === 1 ? '' : 's'}
         {d.expiry ? ` · ${d.ended ? 'ended' : 'ends'} ${fmt(d.expiry)}` : ''}</p>
 
-      <p className="ca-renew-step">1. How long</p>
+      {deviceChoices.length > 1 && (<>
+        <p className="ca-renew-step">Devices</p>
+        <div className="ca-renew-grid">
+          {deviceChoices.map((n) => (
+            <button type="button" key={n} className={`ca-renew-opt${n === devices ? ' on' : ''}`} aria-pressed={n === devices} onClick={() => setDevices(n)}>
+              <b>{n} device{n === 1 ? '' : 's'}</b>
+              <small>{n === lineDevices ? 'same as now' : 'watch on fewer screens'}</small>
+            </button>
+          ))}
+        </div>
+        {newLine && <p className="ca-note ca-renew-hint">Imperium can't lower the devices on an existing line, so this is a <b>new line
+          with new login details</b> (we email them after payment). Your old line stays ended.</p>}
+      </>)}
+
+      <p className="ca-renew-step">How long</p>
       <div className="ca-renew-grid">
         {opts.map((p) => {
           const pr = priceOf(p);
@@ -108,22 +140,23 @@ export default function RenewPanel({ d, products, onClose }) {
         })}
       </div>
 
-      <label className="ca-renew-step" htmlFor={`rl-${s.id}`}>2. Channels</label>
+      <label className="ca-renew-step" htmlFor={`rl-${s.id}`}>Channels</label>
       <select id={`rl-${s.id}`} className="ca-select" value={lineup} onChange={(e) => setLineup(e.target.value)}>
         <option value="">Keep my channels ({current.label})</option>
         {list.filter((l) => l.key !== current.key).map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
       </select>
       {lineup && <p className="ca-note ca-renew-hint">{list.find((l) => l.key === lineup)?.note} Your channel list changes when the renewal goes through.</p>}
 
-      {imperium && (lf.data?.options || []).length > 0 && (<>
-        <label className="ca-renew-step" htmlFor={`rlf-${s.id}`}>3. Listed first</label>
+      {imperium && !newLine && (lf.data?.options || []).length > 0 && (<>
+        <label className="ca-renew-step" htmlFor={`rlf-${s.id}`}>Listed first</label>
         <select id={`rlf-${s.id}`} className="ca-select" value={listedNow ?? ''} onChange={(e) => setListed(Number(e.target.value))}>
           {lf.data.options.map((o) => <option key={o.id} value={o.id}>{o.name}{o.id === lf.data.id ? ' (current)' : ''}</option>)}
         </select>
       </>)}
 
       <div className="ca-renew-sum">
-        Runs until <b>{fmt(until)}</b>. Same login, nothing to set up again.
+        Runs until <b>{fmt(until)}</b>. {newLine ? 'New login details by email; set it up once in your app.'
+          : `Same login, nothing to set up again${fewer ? ` (${devices} device${devices === 1 ? '' : 's'} from now on)` : ''}.`}
         {bal > 0 && <span className="ca-renew-credit">You have {money(bal)} store credit to use at checkout.</span>}
       </div>
       <button type="button" className="ca-btn ca-glow ca-renew-go" disabled={busy} onClick={go}>

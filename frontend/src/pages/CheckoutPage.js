@@ -236,7 +236,9 @@ export default function CheckoutPage() {
   });
 
   // CMTV 2026-10-11: a paid plan set to "Create New Line" while the customer has a line it could extend, not yet confirmed
-  const cmtvNeedsNewLineOk = () => !newLineOk && items.some((i) => canExtend(i) && Number(i.price) > 0
+  // CMTV local change 2026-10-13: not for a locked item from the renew panel (an ended Imperium line coming back with fewer
+  // devices is a deliberate new line; it has no chooser, so the confirm tick would never show and checkout would be stuck)
+  const cmtvNeedsNewLineOk = () => !newLineOk && items.some((i) => !i.renew_locked && canExtend(i) && Number(i.price) > 0
     && (!i.action_type || i.action_type === 'create_new') && extendChoices(i, userServices, addonIds, trialOf).length > 0);
 
   const handleCheckout = () => {
@@ -767,6 +769,14 @@ export default function CheckoutPage() {
                       <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 text-sm text-blue-800 dark:text-blue-200">
                         Renewing your line <b>{(userServices || []).find((s) => s.id === item.renewal_service_id)?.xtream_username
                           || (userServices || []).find((s) => s.id === item.renewal_service_id)?.username || ''}</b>: same login, nothing to set up again.
+                      </div>
+                    )}
+                    {/* CMTV local change 2026-10-13: an ended Imperium line renewed with fewer devices = a new line (the panel can't
+                        lower devices); say so here too */}
+                    {item.renew_locked && !item.renewal_service_id && item.action_type === 'create_new' && (
+                      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 text-sm text-blue-800 dark:text-blue-200">
+                        <b>New line</b> with fewer devices: Imperium can't lower the devices on your old line, so you get new login
+                        details by email after payment. Your old line stays ended.
                       </div>
                     )}
                     {!item.renew_locked && canExtend(item) && extendChoices(item, userServices, addonIds, trialOf).length > 0 && (

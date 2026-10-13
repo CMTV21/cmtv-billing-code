@@ -6,7 +6,10 @@ panel charges its normal credits. Line-ups are kept (cmtv_lineups.apply). A tria
 Optional: the payment (amount + method) goes into Finances (cmtv_finance.add_manual, with the panel credits); a free
 extension is recorded as $0 with its credit cost. Optional "service renewed" email. Always: a note on the profile.
 GET  /api/cmtv/admin/extend/{service_id}/options -> the plans available for that line
-POST /api/cmtv/admin/extend/{service_id} {months, amount, method, email, note}
+POST /api/cmtv/admin/extend/{service_id} {months, amount, method, email, note, devices}
+2026-10-13 (owner, Ed Carroll 2 -> 1): an ENDED CCTV line can be extended with FEWER devices (`devices`; GET options?devices=N).
+The renewal sends the smaller package, the panel lowers the line, same login. Imperium can't lower devices (its panel
+only offers upgrades), so there the customer needs a new line (store/checkout makes one automatically).
 """
 import logging
 import re
@@ -92,10 +95,23 @@ def init_routes():
     admin = D["get_current_admin_user"]
 
     @router.get("/{service_id}/options")
-    async def options(service_id: str, current_user: dict = Depends(admin)):
+    async def options(service_id: str, devices: int = 0, current_user: dict = Depends(admin)):
         svc = await _line(service_id)
         iu = await panel_view(svc)
-        svc = {**svc, "max_connections": panel_devices(svc, iu)}   # 2026-10-08: plans for the panel's device count
+        line_devices = panel_devices(svc, iu)
+        svc = {**svc, "max_connections": line_devices}   # 2026-10-08: plans for the panel's device count
+        # 2026-10-13: an ended CCTV line may go down in devices (the choices = sizes with a plan on sale)
+        end0, _ = current_end(svc, iu)
+        lowerable = svc["panel_type"] == "xtream" and not (end0 and end0 > datetime.utcnow())
+        choices = []
+        if lowerable:
+            for n in range(1, line_devices + 1):
+                if any([await _plan({**svc, "max_connections": n}, m) for m in MONTHS]):
+                    choices.append(n)
+        if devices and devices != line_devices:
+            if devices not in choices:
+                raise HTTPException(400, "Fewer devices is only possible on an ended CCTV line.")
+            svc = {**svc, "max_connections": devices}
         out = []
         for m in MONTHS:
             p = await _plan(svc, m)
@@ -110,6 +126,8 @@ def init_routes():
         for o in out:
             o["new_end"] = add_months(base, o["months"]).isoformat() + "Z"
         return {"server": SERVER[svc["panel_type"]], "devices": int(svc.get("max_connections") or 1), "options": out,
+                "line_devices": line_devices, "device_choices": choices,
+                "imperium_lower_note": svc["panel_type"] == "aether" and line_devices > 1 and not (end0 and end0 > datetime.utcnow()),
                 "can_email": "@" in email and not email.endswith("@panel.local"),
                 "login": svc.get("xtream_username") or svc.get("username"), "customer": (user or {}).get("name") or "",
                 "status": (iu or {}).get("status") or svc.get("status"), "ends": end.isoformat() + "Z" if end else None,
@@ -130,11 +148,23 @@ def init_routes():
             raise HTTPException(400, "The amount can't be negative.")
         # 2026-10-08: use the panel's device count; billing's copy is brought in line first so the package, the provisioner
         # and the credits in Finances all agree with the real line
-        conns = panel_devices(svc, await panel_view(svc))
+        iu = await panel_view(svc)
+        conns = panel_devices(svc, iu)
         if conns != int(svc.get("max_connections") or 1):
             await db.services.update_one({"_id": svc["_id"]}, {"$set": {"max_connections": conns, "cmtv_devices_from_panel_at": datetime.utcnow()}})
             logger.info(f"Admin extend: {svc.get('xtream_username')} devices {svc.get('max_connections')} -> {conns} (panel)")
             svc = {**svc, "max_connections": conns}
+        # 2026-10-13: fewer devices on an ENDED CCTV line (the smaller package lowers the line on the panel, same login)
+        try:
+            want = int(data.get("devices") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Devices is a number.")
+        lowered_from = None
+        if want and want != conns:
+            end0, _ = current_end(svc, iu)
+            if svc["panel_type"] != "xtream" or want > conns or want < 1 or (end0 and end0 > datetime.utcnow()):
+                raise HTTPException(400, "Fewer devices is only possible on an ended CCTV line (Imperium: the customer needs a new line).")
+            lowered_from, svc = conns, {**svc, "max_connections": want}
         product = await _plan(svc, months)
         if not product:
             raise HTTPException(400, f"No {months}-month {SERVER[svc['panel_type']]} plan for {svc.get('max_connections') or 1} devices.")
@@ -184,6 +214,7 @@ def init_routes():
         await db.cmtv_customer_notes.insert_one({"user_id": uid, "deleted": False, "created_at": datetime.utcnow(),
                                                  "by": current_user.get("email") or "admin",
                                                  "text": f"Extended {login} +{months} month{'s' if months > 1 else ''} ({product.get('name')}), {how}. "
-                                                         f"Now ends {exp.strftime('%Y-%m-%d') if exp else '?'}." + (f" {note}" if note else "")})
+                                                         + (f"Devices {lowered_from} -> {svc.get('max_connections')}. " if lowered_from else "")
+                                                         + f"Now ends {exp.strftime('%Y-%m-%d') if exp else '?'}." + (f" {note}" if note else "")})
         logger.info(f"Admin extend: {login} +{months} mo ({how}) -> {exp}")
         return {"ok": True, "new_expiry": exp, "product": product.get("name"), "emailed": bool(es)}

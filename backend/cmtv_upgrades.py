@@ -422,6 +422,17 @@ async def bigger_plan(panel, line, plan_product):
     return by_term[(sizes[0], term)] if sizes else None
 
 
+async def line_state(svc, now=None):
+    """CMTV local change 2026-10-13: (ended?, devices) for a TV line, from the later of billing's and the panel's end dates
+    and the panel's device count (imported_users, refreshed by the hourly panel sync), so a line renewed on the panel but
+    stale in billing never counts as ended. Same rule as Admin > extend (cmtv_admin_extend.current_end / panel_devices)."""
+    import cmtv_admin_extend as ext
+    iu = await ext.panel_view(svc)
+    end, _src = ext.current_end(svc, iu)
+    now = now or datetime.utcnow()
+    return (end is None or end <= now), ext.panel_devices(svc, iu)
+
+
 async def renewal_plan(user_id, service_id, product):
     """create_order: the plan to charge for renewing this line (None = the one in the cart is right)."""
     svc = await D["db"].services.find_one({"_id": _oid(service_id), "user_id": str(user_id)})
@@ -429,7 +440,26 @@ async def renewal_plan(user_id, service_id, product):
         return None
     if svc.get("is_trial"):   # 2026-10-05: keeping a trial login: the customer picks the plan's devices (Imperium trials have 2)
         return None
-    return await bigger_plan(svc["panel_type"], int(svc.get("max_connections") or 0), product)
+    # CMTV local change 2026-10-13 (owner, after Ed Carroll's 2 -> 1 renewal was bumped to the 2-device price): a line that
+    # has ENDED may come back with fewer devices at the smaller plan's price. While time is left, never down (as before).
+    ended, devices = await line_state(svc)
+    if ended:
+        return None
+    return await bigger_plan(svc["panel_type"], devices, product)
+
+
+async def lower_needs_new_line(user_id, service_id, product):
+    """CMTV local change 2026-10-13: Imperium can't lower a line's devices (the panel only offers upgrades: upgrade-options
+    lists bigger targets only, checked 2026-10-13), so renewing an ENDED Imperium line with fewer devices makes a NEW line
+    (new login). CCTV can (the renewal sends the smaller package; the owner did it by hand for Ecaroll2025, same login)."""
+    p = product or {}
+    if p.get("panel_type") != "aether" or p.get("is_trial") or p.get("account_type", "subscriber") != "subscriber":
+        return False
+    svc = await D["db"].services.find_one({"_id": _oid(service_id), "user_id": str(user_id)})
+    if not svc or svc.get("panel_type") != "aether" or svc.get("is_trial"):
+        return False
+    ended, devices = await line_state(svc)
+    return ended and int(p.get("max_connections") or 0) < devices
 
 
 async def reconcile_all():

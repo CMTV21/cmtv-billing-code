@@ -2573,11 +2573,14 @@ async def create_paypal_payment(order_id: str, origin: dict, current_user: dict 
     
     if order["status"] == "paid":
         raise HTTPException(status_code=400, detail="Order already paid")
-    
+    # CMTV local change 2026-10-13: a cancelled order can't be paid (it could be, and would then be set up)
+    if order.get("status") == "cancelled":
+        raise HTTPException(status_code=400, detail="This order was cancelled. Please place a new order.")
+
     # Get PayPal settings
     settings = await get_settings()
     paypal_settings = settings.get("paypal", {})
-    
+
     if not paypal_settings.get("enabled"):
         raise HTTPException(status_code=400, detail="PayPal not enabled")
     
@@ -2632,6 +2635,11 @@ async def capture_paypal_order(data: dict, background_tasks: BackgroundTasks, cu
         raise HTTPException(status_code=404, detail="Order not found")
     if order.get("status") == "paid":
         return {"success": True, "message": "Order already paid"}
+    # CMTV local change 2026-10-13: never capture money for a cancelled order (e.g. a PayPal tab left open after the
+    # owner cancelled it); nothing is charged
+    if order.get("status") == "cancelled":
+        logger.warning(f"PayPal capture refused for order {order_id}: the order was cancelled")
+        raise HTTPException(status_code=400, detail="This order was cancelled, so nothing was charged. Please place a new order.")
     pp = paypal.get_order(paypal_order_id) if paypal_order_id else {"success": False}
     try:
         pp_amount = float(pp.get("amount") or 0)
@@ -4174,6 +4182,14 @@ async def create_order(order_data: OrderCreate, background_tasks: BackgroundTask
         if not product:
             raise HTTPException(status_code=400, detail=f"Product not found: {item.product_name}. Please remove it from your cart and add it again.")
         # CMTV local change 2026-10-04: a renewal is charged and renewed at the line's real device count (cmtv_upgrades.py)
+        # CMTV local change 2026-10-13: an ended Imperium line renewed with fewer devices -> a new line (the panel can't lower
+        # devices; cmtv_upgrades.lower_needs_new_line). An ended CCTV line just renews at the smaller plan (renewal_plan).
+        if getattr(item, "action_type", None) in ("renew", "extend") and getattr(item, "renewal_service_id", None) \
+                and await cmtv_upgrades.lower_needs_new_line(user_id, item.renewal_service_id, product):
+            logger.warning(f"Order item {item.product_name}: Imperium line {item.renewal_service_id} ended and the plan has fewer "
+                           f"devices, made a new line instead (the panel can't lower devices)")
+            item.action_type = "create_new"
+            item.renewal_service_id = None
         if getattr(item, "action_type", None) in ("renew", "extend") and getattr(item, "renewal_service_id", None):
             _bigger = await cmtv_upgrades.renewal_plan(user_id, item.renewal_service_id, product)
             if _bigger:
