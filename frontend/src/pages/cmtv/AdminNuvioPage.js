@@ -38,6 +38,66 @@ function statusOf(a) {
   return { key: 'active', label: 'Active', days };
 }
 
+// CMTV local change 2026-10-13 (owner: "sort and delete accounts"): sorting, filters, bulk delete
+const bulkOk = (a) => ['expired', 'off'].includes(statusOf(a).key);
+const STATUS_ORDER = { active: 0, soon: 1, expired: 2, off: 3 };
+const SORTS = {
+  username: (a) => (a.login || a.username || '').toLowerCase(),
+  customer: (a) => (a.customer?.name || a.customer?.email || '~').toLowerCase(),
+  status: (a) => STATUS_ORDER[statusOf(a).key] ?? 9,
+  ends: (a) => a.expires || '9999-12-31',
+  devices: (a) => Number(a.devices || 0),
+  last: (a) => (a.last_seen ? new Date(a.last_seen).getTime() : 0),
+};
+const FILTERS = [
+  ['all', 'All', () => true], ['active', 'Active', (a) => statusOf(a).key === 'active'], ['soon', 'Ending soon', (a) => statusOf(a).key === 'soon'],
+  ['expired', 'Expired', (a) => statusOf(a).key === 'expired'], ['off', 'Switched off', (a) => statusOf(a).key === 'off'],
+  ['trial', 'Trials', (a) => a.trial], ['never', 'Never used', (a) => !a.last_seen], ['reseller', 'Resellers', (a) => !!a.reseller],
+];
+
+function BulkDelete({ list, onClose, onDone }) {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState([]);
+  const [failed, setFailed] = useState([]);
+  const run = async () => {
+    setBusy(true);
+    const ok = [];
+    const bad = [];
+    for (const a of list) {   // one at a time, through the same endpoint as the single Delete
+      try { await api.post(`/api/cmtv/nuvio/accounts/${a.username}/delete`, { confirm: a.username }); ok.push(a.username); }
+      catch (e) { bad.push(`${a.username}: ${errText(e, 'failed')}`); }
+      setDone([...ok]); setFailed([...bad]);
+    }
+    setBusy(false);
+    toast.success(`Deleted ${ok.length} account${ok.length === 1 ? '' : 's'}${bad.length ? `, ${bad.length} failed` : ''}`);
+    onDone();
+  };
+  const finished = !busy && done.length + failed.length === list.length;
+  return (
+    <Modal title={`Delete ${list.length} account${list.length === 1 ? '' : 's'}?`} onClose={busy ? () => {} : onClose}>
+      <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">Each one's profiles, add-ons and watch history are wiped and the account is removed from
+        the Nuvio server. Billing keeps a copy of each record. Only expired or switched-off accounts can be picked.</p>
+      <div className="max-h-48 overflow-y-auto text-sm border border-gray-200 dark:border-gray-700 rounded-lg p-2 mb-3">
+        {list.map((a) => (
+          <div key={a.username} className="flex justify-between gap-2">
+            <span>{a.login || a.username} <span className="text-gray-500">{a.customer?.name || ''}</span></span>
+            <span className="text-gray-500">{done.includes(a.username) ? 'deleted' : statusOf(a).label}</span>
+          </div>
+        ))}
+      </div>
+      {failed.length > 0 && <p className="text-sm text-red-600 mb-2">{failed.join(' · ')}</p>}
+      {finished ? <button type="button" className={`${btn} bg-gray-200 dark:bg-gray-700 w-full justify-center`} onClick={onClose}>Close</button> : (
+        <>
+          <input className={`${input} w-full`} placeholder="Type DELETE to confirm" value={typed} onChange={(e) => setTyped(e.target.value)} disabled={busy} />
+          <button type="button" disabled={typed !== 'DELETE' || busy} className={`${btn} bg-red-600 text-white w-full justify-center mt-3`} onClick={run}>
+            <Trash2 className="w-4 h-4" /> {busy ? `Deleting… ${done.length + failed.length}/${list.length}` : `Delete ${list.length} for good`}</button>
+        </>
+      )}
+    </Modal>
+  );
+}
+
 function CopyBtn({ text }) {
   return (
     <button type="button" title="Copy" className="text-gray-500 hover:text-blue-600"
@@ -213,7 +273,7 @@ function Devices({ acc, onClose }) {
   );
 }
 
-function Row({ a, refresh }) {
+function Row({ a, refresh, picked, onPick }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
   const [modal, setModal] = useState('');
@@ -231,6 +291,10 @@ function Row({ a, refresh }) {
   return (
     <>
       <tr className="border-t border-gray-200 dark:border-gray-700 align-top">
+        {/* CMTV 2026-10-13: bulk delete picks only ended / switched-off accounts */}
+        <td className="pl-3 py-3 w-6">{bulkOk(a)
+          ? <input type="checkbox" aria-label={`Select ${a.username}`} checked={!!picked} onChange={() => onPick(a.username)} />
+          : <input type="checkbox" disabled title="Only expired or switched-off accounts can be deleted in bulk (use Delete inside the account)" />}</td>
         <td className="px-3 py-3">
           <button type="button" className="font-semibold text-blue-700 dark:text-blue-300 hover:underline" onClick={() => setOpen(!open)}>{a.login || a.username}</button>
           {a.share_alert && <span title={`${a.share_alert.ips} internet connections at once (${ago(a.share_alert.at)})`} className="ml-2 inline-flex items-center text-amber-600"><AlertTriangle className="w-4 h-4" /></span>}
@@ -255,7 +319,7 @@ function Row({ a, refresh }) {
       </tr>
       {open && (
         <tr className="bg-gray-50 dark:bg-gray-800/50">
-          <td colSpan={6} className="px-3 py-3">
+          <td colSpan={7} className="px-3 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">Password: {pw ? <><b>{pw}</b><CopyBtn text={pw} /></> : '••••••'}
                 <button type="button" onClick={showPw} className="text-gray-500">{pw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></span>
@@ -344,14 +408,36 @@ function Accounts() {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
+  const [sort, setSort] = useState({ key: null, dir: 1 });   // null = newest first (the server's order)
+  const [filter, setFilter] = useState('all');
+  const [picked, setPicked] = useState(() => new Set());
+  const [bulk, setBulk] = useState(false);
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['nuvio-accounts'],
     queryFn: async () => (await api.get('/api/cmtv/nuvio/accounts')).data,
   });
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return (data?.accounts || []).filter((a) => !t || [a.username, a.login, a.customer?.name, a.customer?.email, a.notes].some((v) => (v || '').toLowerCase().includes(t)));
-  }, [data, q]);
+    const f = (FILTERS.find((x) => x[0] === filter) || FILTERS[0])[2];
+    const out = (data?.accounts || []).filter((a) => f(a) && (!t || [a.username, a.login, a.customer?.name, a.customer?.email, a.notes].some((v) => (v || '').toLowerCase().includes(t))));
+    if (sort.key) {
+      const k = SORTS[sort.key];
+      out.sort((x, y) => { const a = k(x); const b = k(y); return (a < b ? -1 : a > b ? 1 : 0) * sort.dir; });
+    }
+    return out;
+  }, [data, q, filter, sort]);
+  const counts = useMemo(() => Object.fromEntries(FILTERS.map(([key, , f]) => [key, (data?.accounts || []).filter(f).length])), [data]);
+  const sortBy = (key) => setSort((cur) => (cur.key === key ? { key, dir: -cur.dir } : { key, dir: 1 }));
+  const pick = (u) => setPicked((cur) => { const n = new Set(cur); if (n.has(u)) n.delete(u); else n.add(u); return n; });
+  const pickable = rows.filter(bulkOk);
+  const pickedRows = (data?.accounts || []).filter((a) => picked.has(a.username) && bulkOk(a));
+  const Th = ({ k, children }) => (
+    <th className="px-3 py-2">
+      <button type="button" className="inline-flex items-center gap-1 uppercase hover:text-gray-900 dark:hover:text-white" onClick={() => sortBy(k)}>
+        {children}{sort.key === k && (sort.dir === 1 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+      </button>
+    </th>
+  );
   const refresh = () => qc.invalidateQueries({ queryKey: ['nuvio-accounts'] });
   return (
     <div>
@@ -364,6 +450,25 @@ function Accounts() {
         <button type="button" onClick={() => refetch()} className={`${btn} bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white`}><RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh</button>
         <button type="button" onClick={() => setAdding(true)} className={`${btn} bg-blue-600 text-white hover:bg-blue-700 ml-auto`}><Plus className="w-4 h-4" /> New account</button>
       </div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        {FILTERS.map(([key, label]) => (
+          <button key={key} type="button" onClick={() => { setFilter(key); setPicked(new Set()); }}
+            className={`${btn} ${filter === key ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>
+            {label} <span className="opacity-70">{counts[key] ?? 0}</span>
+          </button>
+        ))}
+        {pickable.length > 0 && (
+          <button type="button" className={`${btn} bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 ml-auto`}
+            onClick={() => setPicked(new Set(pickedRows.length === pickable.length ? [] : pickable.map((a) => a.username)))}>
+            {pickedRows.length === pickable.length ? 'Clear selection' : `Select all ${pickable.length} expired / off`}
+          </button>
+        )}
+        {pickedRows.length > 0 && (
+          <button type="button" className={`${btn} bg-red-600 text-white`} onClick={() => setBulk(true)}>
+            <Trash2 className="w-4 h-4" /> Delete {pickedRows.length} selected
+          </button>
+        )}
+      </div>
       {data && !data.server_ok && <p className="mb-3 text-sm text-red-600">The Nuvio server didn't answer, so devices and activity aren't shown.</p>}
       {isLoading ? <p className="text-sm text-gray-500">Loading…</p> : rows.length === 0 ? (
         <p className="text-sm text-gray-500">No accounts yet. They're made automatically when a customer buys a product set to "Nuvio (CMTV server)", or with New account.</p>
@@ -371,14 +476,15 @@ function Accounts() {
         <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
           <table className="w-full text-left">
             <thead className="bg-gray-50 dark:bg-gray-800 text-xs uppercase text-gray-500">
-              <tr><th className="px-3 py-2">Username</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Ends</th><th className="px-3 py-2">Devices</th><th className="px-3 py-2">Last used</th></tr>
+              <tr><th className="pl-3 py-2 w-6" aria-label="Select" /><Th k="username">Username</Th><Th k="customer">Customer</Th><Th k="status">Status</Th>
+                <Th k="ends">Ends</Th><Th k="devices">Devices</Th><Th k="last">Last used</Th></tr>
             </thead>
-            <tbody>{rows.map((a) => <Row key={a.username} a={a} refresh={refresh} />)}</tbody>
+            <tbody>{rows.map((a) => <Row key={a.username} a={a} refresh={refresh} picked={picked.has(a.username)} onPick={pick} />)}</tbody>
           </table>
         </div>
       )}
       {adding && <NewAccount onClose={() => setAdding(false)} onDone={refresh} />}
+      {bulk && <BulkDelete list={pickedRows} onClose={() => setBulk(false)} onDone={() => { setPicked(new Set()); refresh(); }} />}
     </div>
   );
 }
