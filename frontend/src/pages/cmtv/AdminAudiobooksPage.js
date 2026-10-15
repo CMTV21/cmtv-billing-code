@@ -204,16 +204,17 @@ function LinkModal({ user, onClose, onDone }) {
   const [customer, setCustomer] = useState(null);
   const [busy, setBusy] = useState(false);
   return (
-    <Modal title={`Link ${user.username} to a customer`} onClose={onClose}>
+    <Modal title={user.customer ? `Move ${user.username} to another customer` : `Link ${user.username} to a customer`} onClose={onClose}>
       <div className="space-y-4">
         <CustomerPicker value={customer} onChange={setCustomer} />
+        {user.customer && <p className="text-sm text-gray-700 dark:text-gray-300">Now with <b>{user.customer.name}</b>. Moving it only changes whose dashboard it shows on: the login and end date stay the same.</p>}{/* CMTV 2026-10-15 */}
         <p className="text-xs text-gray-500">The account then shows in their My Services, and extending it here updates billing too.</p>
         <button type="button" disabled={!customer || busy} className={`${btn} bg-blue-600 text-white w-full justify-center py-2`}
           onClick={async () => {
             setBusy(true);
-            try { await api.post('/api/cmtv/audiobooks/link', { username: user.username, customer_id: customer.id }); toast.success('Linked'); onDone(); onClose(); }
+            try { await api.post('/api/cmtv/audiobooks/link', { username: user.username, customer_id: customer.id }); toast.success(user.customer ? 'Moved' : 'Linked'); onDone(); onClose(); }
             catch (e) { toast.error(errText(e, "Couldn't link")); } finally { setBusy(false); }
-          }}>Link</button>
+          }}>{user.customer ? 'Move' : 'Link'}</button>
       </div>
     </Modal>
   );
@@ -523,7 +524,8 @@ export default function AdminAudiobooksPage() {
                     <p className="font-semibold text-gray-900 dark:text-white">{u.username}</p>
                     {u.abs_missing && <p className="text-xs text-red-600">Deleted in Audiobookshelf (only abadmin still lists it)</p>}
                     {u.customer ? (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{u.customer.name} · {u.customer.email}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{u.customer.name} · {u.customer.email}{' '}
+                        <button type="button" onClick={() => setModal({ type: 'link', user: u })} className="text-blue-600 hover:underline">Move</button>{/* CMTV 2026-10-15 */}</p>
                     ) : (
                       <button type="button" onClick={() => setModal({ type: 'link', user: u })} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
                         <Link2 className="w-3 h-3" /> Not linked to a billing customer

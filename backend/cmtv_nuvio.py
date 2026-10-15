@@ -1236,6 +1236,34 @@ def init_routes():
             raise _http(e)
         return {"ok": True}
 
+    @router.post("/accounts/{username}/assign")
+    async def assign(username: str, data: dict, current_user: dict = Depends(admin)):
+        """CMTV local change 2026-10-15 (owner): give this account to a customer, or move it to another one (cmtv_assign.py).
+        No customer yet -> a billing Nuvio service for them (same fields as the 2026-09-30 link script); else the account's
+        billing services change owner. Reseller-made accounts belong to the reseller: refused."""
+        import cmtv_assign
+        acc = await _must(username)
+        if acc.get("reseller_id"):
+            raise HTTPException(400, "This account belongs to a reseller's customer: manage it in their reseller tools")
+        cust = await cmtv_assign.customer(_db(), data.get("customer_id"))
+        if not cust:
+            raise HTTPException(404, "Customer not found")
+        shown = shown_login(acc)
+        have = await _linked(acc["_id"])
+        if have:
+            try:
+                moved = await cmtv_assign.move(_db(), have, str(cust["_id"]), f"Nuvio account {shown}", current_user)
+            except ValueError as e:   # auto-renew / CMTV+: the reason goes to the admin's toast
+                raise HTTPException(400, str(e))
+            return {"success": True, "moved": len(moved)}
+        prod = await _db().products.find_one({"cmtv_nuvio_product": "paid"}) or {}
+        now = datetime.utcnow()
+        doc = cmtv_assign.nuvio_service(acc, prod, str(cust["_id"]), shown, MODULE, now)
+        sid = (await D["services"].insert_one(doc)).inserted_id
+        await _db().cmtv_nuvio_accounts.update_one({"_id": acc["_id"]}, {"$set": {"billing_service_id": str(sid), "linked_at": now}})
+        await cmtv_assign.note(_db(), cust["_id"], f"Nuvio account {shown} assigned to this customer.", current_user)
+        return {"success": True, "service_id": str(sid)}
+
     @router.post("/accounts/{username}/delete")
     async def delete(username: str, body: dict, current_user: dict = Depends(admin)):
         """Wipe (profiles, add-ons, history) and remove the account on the server. Billing keeps a copy."""

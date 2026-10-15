@@ -222,9 +222,8 @@ def init_routes():
         q = (q or "").strip()[:80]
         if len(q) < 2:
             return []
-        rx = {"$regex": re.escape(q), "$options": "i"}
-        return [{"id": str(u["_id"]), "name": u.get("name"), "email": u.get("email")} async for u in
-                D["users"].find({"role": "user", "$or": [{"name": rx}, {"email": rx}, {"username": rx}]}, {"name": 1, "email": 1}).limit(12)]
+        import cmtv_assign   # CMTV local change 2026-10-15: also TV-only customers by their line login, and any service login
+        return await cmtv_assign.find_customers(D["db"], q)
 
     async def _attach(module, username, customer_id, password, expiry, service_id=""):
         """Make (or convert) the customer's billing service for this account, so it shows in My Services"""
@@ -303,6 +302,17 @@ def init_routes():
             customer_id = str(data.get("customer_id") or "")
             if not await D["users"].find_one({"_id": _oid(customer_id)}):
                 raise HTTPException(404, "Customer not found")
+            # CMTV local change 2026-10-15: an account that already has a customer is MOVED (its billing service changes owner)
+            import cmtv_assign
+            if not await cmtv_assign.customer(D["db"], customer_id):
+                raise HTTPException(404, "Customer not found (only customer accounts can get add-ons)")
+            have = await _linked(module, username)
+            if have:
+                try:
+                    moved = await cmtv_assign.move(D["db"], have, customer_id, f"{MODULES[module]} account {username}", current_user)
+                except ValueError as e:   # auto-renew / CMTV+ / not a customer: the reason goes to the admin's toast
+                    raise HTTPException(400, str(e))
+                return {"success": True, "moved": len(moved)}
         pw = ""
         listing = await cockpit_service._call({"module": module, "action": "list"})
         for u in listing.get("users", []):
@@ -312,4 +322,7 @@ def init_routes():
                             str(data.get("service_id") or ""))
         if p:
             await D["services"].update_one({"_id": _oid(sid)}, {"$set": {"status": "suspended"}})
+        if not data.get("service_id"):   # CMTV local change 2026-10-15: note on the customer's profile
+            import cmtv_assign
+            await cmtv_assign.note(D["db"], customer_id, f"{MODULES[module]} account {username} assigned to this customer.", current_user)
         return {"success": True, "service_id": sid}

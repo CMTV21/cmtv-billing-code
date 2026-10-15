@@ -273,6 +273,29 @@ function Devices({ acc, onClose }) {
   );
 }
 
+// CMTV local change 2026-10-15: assign a Nuvio account to a customer, or move it to another one (cmtv_assign.py)
+function AssignModal({ acc, onClose, onDone }) {
+  const [customer, setCustomer] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const moving = !!acc.customer;
+  const name = acc.login || acc.username;
+  return (
+    <Modal title={moving ? `Move ${name} to another customer` : `Assign ${name} to a customer`} onClose={onClose}>
+      <div className="space-y-4">
+        {moving && <p className="text-sm text-gray-700 dark:text-gray-300">Now with <b>{acc.customer.name}</b>. Moving it only changes whose dashboard it shows on: the login, password and end date stay the same.</p>}
+        <CustomerPicker value={customer} onChange={setCustomer} />
+        <p className="text-xs text-gray-500">The account then shows on their dashboard (Nuvio card, devices, renew). Nothing is emailed.</p>
+        <button type="button" disabled={!customer || busy} className={`${btn} bg-blue-600 text-white w-full justify-center py-2`}
+          onClick={async () => {
+            setBusy(true);
+            try { await api.post(`/api/cmtv/nuvio/accounts/${acc.username}/assign`, { customer_id: customer.id }); toast.success(moving ? 'Moved' : 'Assigned'); onDone(); onClose(); }
+            catch (e) { toast.error(errText(e, "Couldn't assign")); } finally { setBusy(false); }
+          }}>{moving ? 'Move' : 'Assign'}</button>
+      </div>
+    </Modal>
+  );
+}
+
 function Row({ a, refresh, picked, onPick }) {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState('');
@@ -307,6 +330,7 @@ function Row({ a, refresh, picked, onPick }) {
         <td className="px-3 py-3 text-sm">
           {a.customer ? <a className="text-gray-900 dark:text-white hover:underline" href={`/admin/customer/${a.customer.id}`}>{a.customer.name}<br /><span className="text-gray-500">{a.customer.email}</span></a>
             : <span className="text-gray-400">No customer</span>}
+          {!a.reseller && <button type="button" className="block text-xs text-blue-600 hover:underline mt-0.5" onClick={() => setModal('assign')}>{a.customer ? 'Move to another customer' : 'Assign to a customer'}</button>}{/* CMTV 2026-10-15 */}
         </td>
         <td className="px-3 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${PILL[s.key]}`}>{s.label}</span></td>
         <td className="px-3 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap">{fmt(a.expires)}</td>
@@ -345,6 +369,7 @@ function Row({ a, refresh, picked, onPick }) {
         </tr>
       )}
       {modal === 'devices' && <Devices acc={a} onClose={() => setModal('')} />}
+      {modal === 'assign' && <AssignModal acc={a} onClose={() => setModal('')} onDone={refresh} />}
       {modal === 'delete' && (
         <Modal title={`Delete ${a.username}?`} onClose={() => setModal('')}>
           <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">This wipes their profiles, add-ons and watch history and removes the account from the Nuvio server.
