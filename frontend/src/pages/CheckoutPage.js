@@ -131,6 +131,7 @@ export default function CheckoutPage() {
   // Check if cart has reseller products that need new credentials
   const hasNewResellerProduct = items.some(item => 
     item.account_type === 'reseller' && item.action_type !== 'extend' && !item.topup_username /* CMTV 2026-09-28: dashboard top-up */
+    && !item.partner /* CMTV 2026-10-15: partner service (branded Ghost app), not a reseller panel */
   );
   // CMTV local change 2026-09-28: a reseller top-up from the dashboard carries topup_username (ResellerCredits.js):
   // no new username/password needed; the credits go onto that existing panel

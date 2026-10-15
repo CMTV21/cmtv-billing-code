@@ -175,7 +175,7 @@ export default function CmtvHomePage() {
         }
       }
       const { term, price } = firstPrice(p);
-      addItem({ product_id: p.id, product_name: extra?.product_name || p.name, term_months: term, price, account_type: p.account_type, ...(p.is_trial ? { term_label: `${termLabel(p)} · free trial` } : {}),
+      addItem({ product_id: p.id, product_name: extra?.product_name || p.name, term_months: term, price, account_type: p.account_type, ...(p.cmtv_partner ? { partner: p.cmtv_partner } : {}) /* CMTV 2026-10-15 */, ...(p.is_trial ? { term_label: `${termLabel(p)} · free trial` } : {}),
                 ...(extra?.lineup ? { lineup: extra.lineup } : {}), ...(extra?.bouquets ? { bouquets: extra.bouquets } : {}) });
       window.location.href = '/checkout';
     })();
@@ -295,6 +295,7 @@ export default function CmtvHomePage() {
                   <ResellerCredits />
                   <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--muted)' }}>New to reselling?{' '}
                     <a href="https://cmtv.info/partners/" style={{ color: 'var(--cyan)', fontWeight: 700 }}>See what's included and our partner services &rarr;</a></p>
+                  <PartnerCards cards={g.cards} />{/* CMTV local change 2026-10-15: e.g. the branded Ghost app */}
                 </>
               ) : (
                 <div className={g.family === 'trials' || g.family === 'addons' ? 'trial-grid' : 'stack'}>{/* 2026-10-01: trials + add-ons as tiles */}
@@ -327,6 +328,35 @@ export default function CmtvHomePage() {
         {' · '}<a href="https://t.me/Cmtv_support_bot" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>Telegram support</a>
         {' · '}<a href="https://www.youtube.com/@cmtvinfo" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>YouTube</a>{/* 2026-10-11 */}
       </footer>
+    </div>
+  );
+}
+
+// CMTV local change 2026-10-15: partner services (a product with cmtv_partner, e.g. the branded Ghost app) shown under the
+// reseller credits. They're reseller products, so only approved resellers see them (the store's list filter + create_order).
+function PartnerCards({ cards }) {
+  const { addItem } = useCartStore();
+  const { symbol, convertPrice } = useCurrencyStore();
+  const list = (cards || []).map((c) => c.products[0]).filter((p) => p && p.cmtv_partner);
+  if (!list.length) return null;
+  const buy = (p) => {
+    const { term, price } = firstPrice(p);
+    addItem({ product_id: p.id, product_name: p.name, term_months: term, price, account_type: p.account_type, partner: p.cmtv_partner });
+    window.location.href = '/checkout';
+  };
+  return (
+    <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
+      {list.map((p) => (
+        <div key={p.id} style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0, fontSize: 19 }}>{p.name}</h3>
+            <div><b style={{ fontSize: 22 }}>{symbol}{convertPrice(firstPrice(p).price).toFixed(2)}</b>{' '}
+              <span style={{ color: 'var(--muted)', fontSize: 13 }}>one-time</span></div>
+          </div>
+          {p.description && <div style={{ marginTop: 8 }}><FormattedText text={p.description} /></div>}
+          <button className="btn btn-glow" style={{ marginTop: 12, padding: '10px 22px' }} onClick={() => buy(p)}>Buy {p.name}</button>
+        </div>
+      ))}
     </div>
   );
 }

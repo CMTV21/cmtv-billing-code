@@ -6403,6 +6403,11 @@ async def provision_order_services(order_id: str, order: dict, user: dict):
             if panel_type == "manual" and product.get("cockpit_module"):
                 # CMTV local change 2026-09-24: manual product linked to Cockpit -> create/renew the account automatically
                 await run_item(item["product_name"], item, provision_cockpit_service(order_id, order, user, item, product, settings, email_service))
+            elif panel_type == "manual" and product.get("cmtv_partner"):
+                # CMTV local change 2026-10-15: partner service (branded Ghost app): next-steps email + Ops note,
+                # no service record and no "Your Streaming Service is Ready" email (cmtv_partner.py)
+                import cmtv_partner
+                await cmtv_partner.handle(order_id, order, user, item, product, email_service)
             elif panel_type == "manual":
                 # Manual product - create service record without panel provisioning
                 service_dict = {
