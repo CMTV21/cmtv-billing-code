@@ -13,7 +13,7 @@ const PERKS = {
   ],
   signup: [
     ['Try before you pay', 'Free trials: CCTV 24 hours, Imperium 48 hours, add-ons 7 days.'],
-    ['Add what you like', 'Stremio, CMTVpn and Audiobooks, or all three with CMTV+.'],
+    ['Add what you like', 'Nuvio, CMTVpn and Audiobooks, or all three with CMTV+.'],   // CMTV local change 2026-10-16: Stremio no longer sold
     ['Refer friends, save more', '5 referrals = 10% off your plans. 10 = 20% off, plus free add-ons.'],
   ],
 };

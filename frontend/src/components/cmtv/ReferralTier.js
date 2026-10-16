@@ -12,7 +12,7 @@ const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
 function perkText(t) {
   if (!t.pct && !t.free_cmtv_plus) return '$15 credit for each friend who joins, and $5 off for them';
-  return `${t.pct}% off every purchase${t.free_cmtv_plus ? ', plus CMTV+ free for life (Stremio, CMTVpn and Audiobooks)' : ''}`;
+  return `${t.pct}% off every purchase${t.free_cmtv_plus ? ', plus CMTV+ free for life (Nuvio, CMTVpn and Audiobooks)' : ''}`;   // CMTV local change 2026-10-16: Nuvio replaces Stremio
 }
 
 export function useTierQuote(items) {
@@ -49,10 +49,7 @@ export function TierCard() {
             <p className="text-2xl font-bold text-gray-900 dark:text-white">{data.tier}</p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-600 dark:text-gray-400">Lifetime referrals</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{data.count}</p>
-        </div>
+        {/* CMTV local change 2026-10-16: "Lifetime referrals" dropped here; the Referrals page shows the numbers once */}
       </div>
 
       <div className="mt-5">

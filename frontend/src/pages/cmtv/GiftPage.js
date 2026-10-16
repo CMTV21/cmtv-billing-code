@@ -178,7 +178,8 @@ export default function GiftPage() {
               {user ? `Continue to checkout · $${Number.isFinite(amount) ? amount : 0}` : 'Sign in to continue'}
             </button>
             {problem && <p className="gf-small">{problem}</p>}
-            <p className="gf-small">Pay by PayPal or e-Transfer as usual. The code works once and goes on the account of whoever redeems it.</p>
+            {/* CMTV local change 2026-10-16: list every payment method (was "PayPal or e-Transfer") */}
+            <p className="gf-small">Pay by PayPal (card and Pay Later too), Interac e-Transfer, Wise or crypto. The code works once and goes on the account of whoever redeems it.</p>
           </div>
         </div>
         {user && <MyGifts />}

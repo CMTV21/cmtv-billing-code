@@ -200,6 +200,13 @@ export default function CmtvKnowledgeBasePage() {
           <Search size={18} aria-hidden="true" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search, e.g. buffering, Firestick, renew" aria-label="Search the guides" />
         </label>
+        {/* CMTV local change 2026-10-16: Status, Sports and Devices were only linked from the page footer */}
+        <nav className="kb-quick" aria-label="More help">
+          <Link to="/status">Service status</Link>
+          <Link to="/sports">Sports tonight</Link>
+          <Link to="/devices">Devices &amp; apps</Link>
+          {user ? <Link to="/tickets">My support tickets</Link> : <a href={SUPPORT_BOT} target="_blank" rel="noopener noreferrer">Message support</a>}
+        </nav>
         {drafts && <p className="kb-admin-note">Admin preview: articles marked Draft aren't visible to customers yet.</p>}
       </section>
 

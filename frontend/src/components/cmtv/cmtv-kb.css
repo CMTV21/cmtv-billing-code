@@ -11,6 +11,11 @@
 .cmtv-kb .kb-search:focus-within { border-color: var(--cyan, #22e6f2); box-shadow: 0 0 0 3px rgba(34,230,242,.14); }
 .cmtv-kb .kb-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--text, #e9edf8); font-size: 16px; padding: 14px 0; }
 .cmtv-kb .kb-search input::placeholder { color: var(--faint, #6b7799); }
+/* CMTV local change 2026-10-16: quick links under the search (status, sports, devices, support) */
+.cmtv-kb .kb-quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px auto 0; max-width: 620px; }
+.cmtv-kb .kb-quick a { padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line, #27345a); background: var(--surface, #141d33);
+  color: var(--text, #e9edf8); font-size: 14px; font-weight: 600; text-decoration: none; }
+.cmtv-kb .kb-quick a:hover, .cmtv-kb .kb-quick a:focus-visible { border-color: var(--cyan, #22e6f2); color: var(--cyan, #22e6f2); }
 .cmtv-kb .kb-admin-note { margin-top: 12px !important; font-size: 13px; color: var(--warn, #fbbf24) !important; }
 
 .cmtv-kb .kb-devices { margin: 26px 0 8px; }

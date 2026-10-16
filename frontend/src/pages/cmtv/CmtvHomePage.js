@@ -33,6 +33,8 @@ const TABS = [
   { key: 'resellers', label: 'Resellers' },
 ];
 
+// CMTV local change 2026-10-16: products no longer sold in the store (still renewable by existing customers)
+const NOT_SOLD = /^stremio( 7-day trial)?$/i;
 const firstPrice = (p) => {
   const [term, price] = Object.entries(p?.prices || {})[0] || ['1', 0];
   return { term: parseInt(term, 10) || 1, price: parseFloat(price) || 0 };
@@ -117,7 +119,9 @@ export default function CmtvHomePage() {
   // Groups in the admin's order, each with its cards (one per sub-group, or one per product)
   const groups = useMemo(() => {
     if (!products) return [];
-    const list = products.filter((p) => canResell || p.account_type !== 'reseller');
+    // CMTV local change 2026-10-16 (owner): Stremio no longer sold to new customers (Nuvio replaces it). Hidden from the
+    // store only: the product stays active so the existing Stremio customers can still renew from their dashboard.
+    const list = products.filter((p) => (canResell || p.account_type !== 'reseller') && !NOT_SOLD.test(String(p.name || '').trim()));
     const byOrder = (a, b) => (a.display_order || 0) - (b.display_order || 0);
     const grps = [...(productGroups || [])].map((g, i) => ({ ...g, _i: i }))
       .sort((a, b) => (a.display_order ?? a._i) - (b.display_order ?? b._i) || a._i - b._i);
@@ -401,7 +405,7 @@ function PlanCard({ card, family, grouped, allProducts, focus }) {
   const monthly1 = products.map(firstPrice).find((fp) => fp.term === 1 && fp.price > 0)?.price;
   // 2026-09-30: parts as on sale now (Stremio stands in for Nuvio until Nuvio is switched on)
   const bundleOf = lookup(BRAND.bundles, first?.name) ? bundlePartsFor(first?.name, (allProducts || []).map((p) => p.name)) : null;
-  const vodChoice = !!bundleOf && bundleOf.includes('Nuvio');
+  const vodChoice = false;   // CMTV local change 2026-10-16 (owner): CMTV+ always comes with Nuvio (no Stremio choice)
   const bundleTotal = bundleOf
     ? bundleOf.map((n) => allProducts?.find((p) => p.name.trim().toLowerCase() === n.toLowerCase())).filter(Boolean)
         .reduce((sum, p) => sum + firstPrice(p).price, 0)

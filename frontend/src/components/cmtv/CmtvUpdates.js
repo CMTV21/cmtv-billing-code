@@ -2,6 +2,8 @@
 // cmtv_updates.py; the support bot forwards them). variant:
 //   "dashboard" - the latest post if there was news in the last 48 h, with its follow-ups
 //   "tickets"   - the Support page: every post still in the channel (or "no known issues")
+//   "dashboard-alert" / "dashboard-slim" (2026-10-16, simplified dashboard): the live-problem banner stays at the top;
+//                 the latest post moves below the customer's services as a slim 2-line strip ("Read more" opens it)
 //   "modal"     - the new-ticket form: "Known issues right now" (last 48 h), so people can skip writing in
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -29,15 +31,15 @@ function Text({ text }) {
   );
 }
 
-function Post({ item, open }) {
+function Post({ item, open, slim }) {
   // collapsed: recent posts show up to 5 lines, older ones 2; "Read more" shows everything incl. earlier updates
   const [more, setMore] = useState(open);
   const replies = item.replies || [];
   const shown = more ? replies : replies.slice(-1);
-  const long = (item.text || '').length + replies.reduce((n, r) => n + (r.text || '').length, 0) > (item.recent ? 260 : 90)
+  const long = (item.text || '').length + replies.reduce((n, r) => n + (r.text || '').length, 0) > (item.recent && !slim ? 260 : 90)
     || replies.length > 1;
   return (
-    <article className={`cu-post${item.recent ? ' recent' : ''}${more || !long ? '' : item.recent ? ' clamp5' : ' clamp2'}`}>
+    <article className={`cu-post${slim ? ' slim' : item.recent ? ' recent' : ''}${more || !long ? '' : item.recent && !slim ? ' clamp5' : ' clamp2'}`}>
       {/* a div, not <header>: the account frame hides page <header>s */}
       <div className="cu-head"><b>📢 CMTV update</b><time dateTime={item.last_at || item.at}>{ago(item.last_at || item.at)}</time></div>
       <Text text={item.text} />
@@ -98,6 +100,12 @@ export default function CmtvUpdates({ variant = 'dashboard' }) {
         {banner}{recent.length > 0 && <Post item={recent[0]} open={false} />}
       </section>
     );
+  }
+  // CMTV local change 2026-10-16 (owner): the customer's own services first; news below them, slim
+  if (variant === 'dashboard-alert') return issues.length ? <section className="cu cu-dash" aria-label="Service problem">{banner}</section> : null;
+  if (variant === 'dashboard-slim') {
+    if (!recent.length) return null;
+    return <section className="cu cu-dash cu-slim" aria-label="Latest from CMTV"><Post item={recent[0]} open={false} slim /></section>;
   }
   if (variant === 'modal') {
     if (!recent.length && !issues.length) return <section className="cu cu-modal" aria-label="Before you write"><QuickLinks /></section>;

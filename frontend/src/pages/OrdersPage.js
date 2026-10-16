@@ -2,7 +2,8 @@ import { formatDate } from "../utils/timezone";
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ordersAPI } from '../api/api';
+import { ordersAPI, productsAPI } from '../api/api';
+import { plainItemName } from '../components/cmtv/orderNames'; // CMTV local change 2026-10-16: plain item names
 import { ArrowLeft, ShoppingBag, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -19,6 +20,15 @@ export default function OrdersPage() {
       return response.data;
     },
   });
+
+  // CMTV local change 2026-10-16 (owner): plain item names ("CCTV · 1 month · 1 connection"); cancelled orders folded away
+  const { data: products } = useQuery({ queryKey: ['products'], queryFn: async () => (await productsAPI.getAll()).data || [], staleTime: 300000 });
+  const productsById = Object.fromEntries((products || []).map((p) => [p.id, p]));
+  const isClosed = (o) => o.status === 'cancelled' || o.status === 'failed';
+  const openOrders = (orders || []).filter((o) => !isClosed(o));
+  const closedOrders = (orders || []).filter(isClosed);
+  const [showClosed, setShowClosed] = useState(false);
+  const shownOrders = showClosed ? [...openOrders, ...closedOrders] : openOrders;
 
   // Returning from GhostPay: re-check the invoice a few times so the order flips to paid without waiting for the webhook
   useEffect(() => {
@@ -124,12 +134,12 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {orders?.map((order) => (
+                  {shownOrders.map((order) => (
                     <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="px-4 py-3 text-sm font-mono text-gray-900 dark:text-white">#{order.id.substring(0, 8)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{formatDate(order.created_at)}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                        {order.items.map((item, idx) => <div key={idx}>{item.product_name}</div>)}
+                        {order.items.map((item, idx) => <div key={idx}>{plainItemName(item, productsById)}</div>)}
                       </td>
                       <td className="px-4 py-3 text-sm font-semibold">${order.total.toFixed(2)}</td>
                       <td className="px-4 py-3">
@@ -149,7 +159,7 @@ export default function OrdersPage() {
             </div>
             {/* Mobile cards */}
             <div className="sm:hidden divide-y divide-gray-200 dark:divide-gray-700">
-              {orders?.map((order) => (
+              {shownOrders.map((order) => (
                 <div key={order.id} className="p-4">
                   <div className="flex items-start justify-between">
                     <div>
@@ -163,7 +173,7 @@ export default function OrdersPage() {
                     }`}>{order.status}</span>
                   </div>
                   <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                    {order.items.map((item, idx) => <span key={idx}>{item.product_name}{idx < order.items.length - 1 ? ', ' : ''}</span>)}
+                    {order.items.map((item, idx) => <span key={idx}>{plainItemName(item, productsById)}{idx < order.items.length - 1 ? ', ' : ''}</span>)}
                   </div>
                   <div className="mt-1 text-sm font-bold text-gray-900 dark:text-white">${order.total.toFixed(2)}</div>
                   {order.status === 'pending' && order.total > 0 && (   /* CMTV 2026-10-11 */
@@ -171,6 +181,12 @@ export default function OrdersPage() {
                 </div>
               ))}
             </div>
+            {closedOrders.length > 0 && (   /* CMTV local change 2026-10-16 */
+              <button type="button" onClick={() => setShowClosed(!showClosed)} aria-expanded={showClosed}
+                className="w-full px-4 py-3 text-sm text-left text-gray-600 dark:text-gray-300 hover:text-blue-600 border-t border-gray-200 dark:border-gray-700">
+                {showClosed ? 'Hide cancelled orders' : `Show ${closedOrders.length} cancelled order${closedOrders.length === 1 ? '' : 's'}`}
+              </button>
+            )}
           </div>
         )}
 

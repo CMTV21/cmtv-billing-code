@@ -220,7 +220,7 @@ export default function CmtvDashboardV2() {
       <main className="ca-page ca-v2">
         <h1>{firstName ? `Hi ${firstName}` : 'Welcome back'}</h1>
         <p className="ca-sub">{loading ? 'Loading your services…' : live.length ? `${live.length} active service${live.length === 1 ? '' : 's'}` : ''}</p>
-        <CmtvUpdates variant="dashboard" />
+        <CmtvUpdates variant="dashboard-alert" />{/* CMTV local change 2026-10-16: only a live problem shows up here; news is below the services */}
         <ResellerPanels />
         {alerts.length > 0 && (
           <section className="ca-attention" aria-label="Needs attention">
@@ -232,7 +232,6 @@ export default function CmtvDashboardV2() {
             ))}
           </section>
         )}
-        <TelegramAlerts variant="nudge" show={live.length > 0} />
 
         {!loading && cards.length === 0 ? (
           <div className="ca-empty">
@@ -254,6 +253,10 @@ export default function CmtvDashboardV2() {
             </details>
           )}
         </>)}
+
+        {/* CMTV local change 2026-10-16 (owner): the CMTV update (slim) and the Telegram alerts nudge come after the services */}
+        <CmtvUpdates variant="dashboard-slim" />
+        <TelegramAlerts variant="nudge" show={live.length > 0} />
 
         <div className="ca-tiles">
           <button type="button" className="ca-tilebtn" aria-expanded={help} onClick={() => setHelp(!help)}><span aria-hidden="true">?</span>Help</button>

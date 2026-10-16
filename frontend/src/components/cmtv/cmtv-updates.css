@@ -29,3 +29,9 @@
 .cu-status { border: 1px solid rgba(251,191,36,.55); background: rgba(251,191,36,.1); border-radius: 12px; padding: 10px 14px; margin: 0 0 12px; }
 .cu-status p { margin: 0; font-size: 14px; line-height: 1.5; }
 .cu-status p + p { margin-top: 6px; }
+/* 2026-10-16: slim news strip below the services on the dashboard (CmtvUpdates variant "dashboard-slim") */
+.cu-slim { margin: 4px 0 18px; }
+.cu-post.slim { padding: 10px 14px; border-radius: 12px; }
+.cu-post.slim .cu-head { margin-bottom: 3px; }
+.cu-post.slim .cu-head b { font-size: 12px; }
+.cu-post.slim .cu-text { font-size: 14px; }

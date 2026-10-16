@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/api';
-import { Gift, Users, TrendingUp, Copy, Check, ArrowLeft } from 'lucide-react';
+import { Gift, Copy, Check, ArrowLeft } from 'lucide-react';   // CMTV local change 2026-10-16: stat tiles removed
 import { TierCard } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 
 export default function ReferralDashboard() {
@@ -29,6 +29,15 @@ export default function ReferralDashboard() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // CMTV local change 2026-10-16: the friend's first-order minimum, said plainly on the page (GET /api/cmtv/refboost)
+  const { data: offer } = useQuery({
+    queryKey: ['cmtv-refboost-offer'],
+    queryFn: async () => (await api.get('/api/cmtv/refboost')).data,
+    staleTime: 300000,
+  });
+  const minimum = Number(offer?.minimum || 0);
+  const minText = minimum > 0 ? ` of $${minimum % 1 ? minimum.toFixed(2) : minimum} or more` : '';
 
   // Get reward amounts from API response
   const referrerReward = referralData?.settings?.referrer_reward || 10;
@@ -85,63 +94,20 @@ export default function ReferralDashboard() {
                   <Gift className="w-8 h-8" />
                   Refer & Earn
                 </h2>
+                {/* CMTV local change 2026-10-16: the minimum said plainly; the numbers shown once (one line, not a box + 3 tiles) */}
                 <p className="text-purple-100 text-lg">
-                  Earn ${referrerReward} credits for every friend who makes a purchase!
+                  Earn ${referrerReward} credit when a friend you invite makes a first order{minText}.
+                </p>
+                <p className="text-purple-100 mt-3" data-testid="referral-numbers">
+                  {referralData?.total_referrals || 0} friend{(referralData?.total_referrals || 0) === 1 ? '' : 's'} joined
+                  {' · '}{referralData?.completed_referrals || 0} bought
+                  {' · '}<b>${referralData?.total_earned || 0} earned</b>
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-purple-200 text-sm">Total Earned</p>
-                <p className="text-4xl font-bold">${referralData?.total_earned || 0}</p>
             </div>
           </div>
-        </div>
 
         <TierCard />
-
-        {/* Stats Grid */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Total Referrals</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {referralData?.total_referrals || 0}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <Check className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Completed</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {referralData?.completed_referrals || 0}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Earnings</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  ${referralData?.total_earned || 0}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Referral Link */}
         <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
@@ -173,7 +139,7 @@ export default function ReferralDashboard() {
             </button>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-3">
-            Share this link with friends. You'll earn ${referrerReward} credits when they make their first purchase!
+            Share this link with friends. You'll earn ${referrerReward} credit when their first order is{minText ? minText.replace(' of', '') : ' paid'}.
           </p>
         </div>
 

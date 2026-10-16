@@ -325,6 +325,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            {/* CMTV local change 2026-10-16: /support was a blank page; send it to the support tickets */}
+            <Route path="/support" element={<Navigate to="/tickets" replace />} />
             <Route
               path="/referrals"
               element={
