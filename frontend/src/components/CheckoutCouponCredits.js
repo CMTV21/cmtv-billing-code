@@ -166,7 +166,7 @@ const CheckoutCouponCredits = ({ subtotal, onDiscountChange, onCreditsChange }) 
               type="text"
               value={couponCode}
               onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-              placeholder="Coupon, gift card or referral code"
+              placeholder="Coupon, gift card or referral"
               className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               data-testid="coupon-input"
             />

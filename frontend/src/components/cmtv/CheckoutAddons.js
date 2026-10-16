@@ -59,6 +59,7 @@ const readDismissed = () => { try { return sessionStorage.getItem(DISMISS_KEY) =
 
 export default function CheckoutAddons({ items, addItem, removeItem, currencySymbol = '$', convertPrice = (n) => n }) {
   const [dismissed, setDismissed] = useState(readDismissed);
+  const [more, setMore] = useState(false);   // CMTV 2026-10-16: "Other add-ons"
   const addons = useAddonProducts();
   const { data: services } = useQuery({
     queryKey: ['cmtv-my-services-all'],
@@ -106,64 +107,43 @@ export default function CheckoutAddons({ items, addItem, removeItem, currencySym
   };
   const dismiss = () => { setDismissed(true); try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch (e) { /* private mode */ } };
 
+  // CMTV local change 2026-10-16 (owner, batch 3: "keep the add-on prompt, but quiet"): one line with the best offer (the
+  // bundle if it's on offer) + Add; the other add-ons behind "Other add-ons"; "No thanks" hides it for this visit.
+  const priceOf = (p) => (plusOffer && p.id === plusOffer.id ? Math.min(plusOffer.price, firstPrice(p).price) : firstPrice(p).price);
+  const label = (p) => {
+    const isBundle = bundle && p.id === bundle.id;
+    const saving = isBundle ? Math.max(0, partsTotal - priceOf(p)) : 0;
+    const what = isBundle ? ` (${partsText(partNames)})` : '';
+    const cost = freeForMe ? 'free for you' : `${currencySymbol}${convertPrice(priceOf(p)).toFixed(2)} / ${termText(firstPrice(p).term)}`;
+    return <>{p.name}{what} · {cost}{saving > 0 && !freeForMe ? ` · save ${currencySymbol}${convertPrice(saving).toFixed(2)}` : ''}</>;
+  };
+  const top = offers.find((p) => bundle && p.id === bundle.id) || offers[0];
+  const rest = offers.filter((p) => p.id !== top.id);
+  const addBtn = (p) => (
+    <button type="button" onClick={() => add(p)} data-testid={`add-addon-${p.id}`}
+      className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white rounded-md text-xs font-semibold hover:bg-blue-700">
+      <Plus className="w-3.5 h-3.5" /> Add
+    </button>
+  );
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-lg shadow mt-6" data-testid="checkout-addons">
-      <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-cyan-500" /> Complete your setup
-          </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Add these to your order{freeForMe ? '. As an Ambassador, they\'re free for you.' : '.'}
-          </p>
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 mt-6 px-4 py-3 text-sm" data-testid="checkout-addons">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Sparkles className="w-4 h-4 text-cyan-500 flex-shrink-0" aria-hidden="true" />
+        <span className="text-gray-700 dark:text-gray-300 flex-1 min-w-[12rem]">Add to your order: {label(top)}</span>
+        {addBtn(top)}
+        {rest.length > 0 && (
+          <button type="button" onClick={() => setMore(!more)} aria-expanded={more} className="text-xs text-blue-600 hover:underline">
+            {more ? 'Hide' : 'Other add-ons'}
+          </button>
+        )}
+        <button type="button" onClick={dismiss} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">No thanks</button>
+      </div>
+      {more && rest.map((p) => (
+        <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 pl-7">
+          <span className="text-gray-700 dark:text-gray-300 flex-1 min-w-[12rem]">{label(p)}</span>
+          {addBtn(p)}
         </div>
-        <button type="button" onClick={dismiss} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1">
-          <X className="w-4 h-4" /> No thanks
-        </button>
-      </div>
-      <div className="p-4 grid sm:grid-cols-2 gap-3">
-        {offers.map((p) => {
-          const { term, price: listPrice } = firstPrice(p);
-          const price = plusOffer && p.id === plusOffer.id ? Math.min(plusOffer.price, listPrice) : listPrice;   // 2026-10-05
-          const isBundle = bundle && p.id === bundle.id;
-          const saving = isBundle ? Math.max(0, partsTotal - price) : 0;
-          const logo = lookup(BRAND.logos || {}, p.name);
-          return (
-            <div key={p.id} className={`rounded-lg border p-4 flex gap-3 items-start ${isBundle
-              ? 'sm:col-span-2 border-cyan-400 bg-cyan-50/60 dark:bg-cyan-900/10' : 'border-gray-200 dark:border-gray-700'}`}>
-              {logo ? (
-                <img src={logo} alt="" className="w-12 h-12 rounded-lg object-contain bg-gray-900 p-1 flex-shrink-0" />
-              ) : (
-                <div className="w-12 h-12 rounded-lg flex-shrink-0 bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center text-white font-bold">
-                  {p.name.slice(0, 1)}
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {p.name}
-                  {isBundle && saving > 0 && (
-                    <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-600 text-white">
-                      save {currencySymbol}{convertPrice(saving).toFixed(2)}
-                    </span>
-                  )}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {isBundle ? `${partsText(partNames)} together` : (lookup(BRAND.taglines || {}, p.name) || '')}
-                </p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
-                  {freeForMe ? <><span className="line-through text-gray-400 mr-1">{currencySymbol}{convertPrice(price).toFixed(2)}</span>Free</>
-                    : <>{currencySymbol}{convertPrice(price).toFixed(2)}</>}
-                  <span className="font-normal text-gray-500 dark:text-gray-400"> / {termText(term)}</span>
-                </p>
-              </div>
-              <button type="button" onClick={() => add(p)} data-testid={`add-addon-${p.id}`}
-                className="self-center flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">
-                <Plus className="w-4 h-4" /> Add
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      ))}
     </div>
   );
 }

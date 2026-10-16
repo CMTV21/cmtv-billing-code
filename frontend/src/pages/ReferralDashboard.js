@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/api';
-import { Gift, Copy, Check, ArrowLeft } from 'lucide-react';   // CMTV local change 2026-10-16: stat tiles removed
+import { Gift, Copy, Check, ArrowLeft, Share2 } from 'lucide-react';   // CMTV local change 2026-10-16: stat tiles removed
 import { TierCard } from '../components/cmtv/ReferralTier'; // CMTV local change 2026-09-25: referral tiers
 
 export default function ReferralDashboard() {
@@ -112,12 +112,12 @@ export default function ReferralDashboard() {
         {/* Referral Link */}
         <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Your Referral Link</h3>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">{/* CMTV local change 2026-10-16: wraps on phones (Share button added) */}
             <input
               type="text"
               value={referralData?.referral_link || ''}
               readOnly
-              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white font-mono text-sm"
+              className="flex-1 min-w-[14rem] px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white font-mono text-sm"
               data-testid="referral-link-input"
             />
             <button
@@ -137,6 +137,19 @@ export default function ReferralDashboard() {
                 </>
               )}
             </button>
+            {/* CMTV local change 2026-10-16 (owner, batch 3): the phone's share sheet (Messages, WhatsApp, ...) where it exists */}
+            {typeof navigator !== 'undefined' && navigator.share && referralData?.referral_link && (
+              <button
+                type="button"
+                onClick={() => navigator.share({ title: 'CMTV', url: referralData.referral_link,
+                  text: `I use CMTV for TV. Sign up with my link and get $${referredReward} credit:` }).catch(() => {})}
+                className="flex items-center gap-2 px-6 py-3 border border-blue-600 text-blue-600 dark:text-blue-300 rounded-lg hover:bg-blue-50 dark:hover:bg-gray-800"
+                data-testid="share-link-btn"
+              >
+                <Share2 className="w-5 h-5" />
+                Share
+              </button>
+            )}
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-3">
             Share this link with friends. You'll earn ${referrerReward} credit when their first order is{minText ? minText.replace(' of', '') : ' paid'}.

@@ -12,7 +12,8 @@ import './cmtv-account.css';
 
 // CMTV local change 2026-10-13 (owner, simplified dashboard): three tabs; everything else is in the account menu
 const TABS = [['/dashboard', 'Home'], ['/', 'Shop'], ['/knowledge-base', 'Help']];
-const MENU = [['/services', 'All services'], ['/orders', 'Orders'], ['/invoices', 'Invoices'], ['/tickets', 'Support tickets'],
+// CMTV local change 2026-10-16 (owner, batch 3): "Invoices" left the menu (receipts are on Orders); /invoices still works
+const MENU = [['/services', 'All services'], ['/orders', 'Orders'], ['/tickets', 'Support tickets'],
   ['/referrals', 'Referrals and credit'], ['/downloads', 'Downloads'],
   ['/status', 'Service status'], ['/sports', 'Sports tonight']];   // CMTV local change 2026-10-16: were only in the footer
 // 2026-09-27: visitors who aren't signed in (public Guides / Terms) get these instead of account tabs

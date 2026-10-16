@@ -2,7 +2,8 @@ import { formatDate } from "../utils/timezone";
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ordersAPI, productsAPI } from '../api/api';
+import { ordersAPI, productsAPI, servicesAPI } from '../api/api';
+import OrderReceipt from '../components/cmtv/OrderReceipt'; // CMTV local change 2026-10-16: tap an order for its receipt
 import { plainItemName } from '../components/cmtv/orderNames'; // CMTV local change 2026-10-16: plain item names
 import { ArrowLeft, ShoppingBag, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,6 +30,10 @@ export default function OrdersPage() {
   const closedOrders = (orders || []).filter(isClosed);
   const [showClosed, setShowClosed] = useState(false);
   const shownOrders = showClosed ? [...openOrders, ...closedOrders] : openOrders;
+  // CMTV local change 2026-10-16 (owner, batch 3): tap an order to open its receipt
+  const [openId, setOpenId] = useState(null);
+  const { data: myServices } = useQuery({ queryKey: ['services'], queryFn: async () => (await servicesAPI.getAll()).data || [], staleTime: 60000, enabled: !!openId });
+  const toggle = (id) => setOpenId(openId === id ? null : id);
 
   // Returning from GhostPay: re-check the invoice a few times so the order flips to paid without waiting for the webhook
   useEffect(() => {
@@ -135,7 +140,9 @@ export default function OrdersPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {shownOrders.map((order) => (
-                    <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <React.Fragment key={order.id}>
+                    <tr className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer" onClick={() => toggle(order.id)} aria-expanded={openId === order.id}
+                      title="Show the receipt">
                       <td className="px-4 py-3 text-sm font-mono text-gray-900 dark:text-white">#{order.id.substring(0, 8)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{formatDate(order.created_at)}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
@@ -150,9 +157,15 @@ export default function OrdersPage() {
                         }`}>{order.status}</span>
                         {/* CMTV 2026-10-11 (owner): a pending order opens its "Pay for your order" page */}
                         {order.status === 'pending' && order.total > 0 && (
-                          <Link to={`/pay/${order.id}`} className="ml-3 text-sm font-semibold text-blue-600 hover:underline">Complete payment →</Link>)}
+                          <Link to={`/pay/${order.id}`} onClick={(e) => e.stopPropagation()} className="ml-3 text-sm font-semibold text-blue-600 hover:underline">Complete payment →</Link>)}
                       </td>
                     </tr>
+                    {openId === order.id && (
+                      <tr><td colSpan={5} className="px-4 py-4 bg-gray-50 dark:bg-gray-800/60">
+                        <OrderReceipt order={order} productsById={productsById} services={myServices} />
+                      </td></tr>
+                    )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -161,7 +174,7 @@ export default function OrdersPage() {
             <div className="sm:hidden divide-y divide-gray-200 dark:divide-gray-700">
               {shownOrders.map((order) => (
                 <div key={order.id} className="p-4">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between cursor-pointer" onClick={() => toggle(order.id)} aria-expanded={openId === order.id}>
                     <div>
                       <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">#{order.id.substring(0, 8)}</span>
                       <span className="text-xs text-gray-500 ml-2">{formatDate(order.created_at)}</span>
@@ -178,6 +191,9 @@ export default function OrdersPage() {
                   <div className="mt-1 text-sm font-bold text-gray-900 dark:text-white">${order.total.toFixed(2)}</div>
                   {order.status === 'pending' && order.total > 0 && (   /* CMTV 2026-10-11 */
                     <Link to={`/pay/${order.id}`} className="mt-3 block w-full text-center bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700">Complete payment →</Link>)}
+                  <button type="button" onClick={() => toggle(order.id)} className="mt-2 text-sm text-blue-600 hover:underline" aria-expanded={openId === order.id}>
+                    {openId === order.id ? 'Hide receipt' : 'Receipt'}</button>
+                  {openId === order.id && <div className="mt-3"><OrderReceipt order={order} productsById={productsById} services={myServices} /></div>}
                 </div>
               ))}
             </div>

@@ -4,7 +4,7 @@
 //    ended services folded away, and three tiles (Help / Orders / Refer a friend)
 //  - each card: name, devices, status, end date, login + two buttons: Renew (the renew panel for TV lines) and Details
 //    (everything else: password, server, app codes, setup, test my line, watch in browser, add devices, auto-renew,
-//    listed first, "try the other server")
+//    listed first, "try the other server"; 2026-10-16: everyday part first, then a "Manage" list)
 // Served at /dashboard after the owner's OK; the previous dashboard stays at /dashboard/classic for a week.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -62,22 +62,29 @@ function Details({ d, autoRenewEnabled, onRenew }) {
             <button type="button" className="ca-icon" onClick={() => copy(s.cmtv_tivimate.code, 'CMTivi code')}>Copy</button></div>
             <small className="ca-fieldnote">Enter this code when the CMTivi app asks for an activation code.</small></div>}
           {s.cockpit_module === 'nuviocloud' && d.username && <NuvioDevices username={d.username} />}
-          {s.panel_type === 'aether' && s.account_type !== 'reseller' && <ListedFirstControl service={s} />}
         </div>
       )}
+      {/* CMTV local change 2026-10-16 (owner, batch 3): the everyday part first (login above, set up + test my line here),
+          then a short "Manage" list for the rest */}
       <div className="ca-actions">
         {!d.ended && (d.setup ? (
           <button type="button" className="ca-btn ca-ghost" onClick={() => setShowSetup(!showSetup)}>{showSetup ? 'Hide setup' : 'Set up a device'}</button>
         ) : <Link className="ca-btn ca-ghost" to="/knowledge-base">Setup guides</Link>)}
-        {!d.ended && webPlayerLink(s) && (
-          <a className="ca-btn ca-ghost" href={webPlayerLink(s)} target="_blank" rel="noopener noreferrer">Watch in browser</a>
-        )}
         {tv && <LineCheck service={s} onRenew={d.canRenew ? () => onRenew(d) : null} />}
-        {!d.ended && !d.isTrial && tv && s.status === 'active' && <UpgradeDevices service={s} />}
-        <AutoRenewSwitch d={d} enabled={autoRenewEnabled} />
       </div>
-      {!d.ended && !d.isTrial && tv && s.status === 'active' && <SwitchTrialOffer service={s} />}
       {showSetup && d.setup && <div className="ca-setup"><FormattedText text={d.setup} /></div>}
+      <div className="ca-manage">
+        <p className="ca-manage-h">Manage</p>
+        {!d.ended && s.panel_type === 'aether' && s.account_type !== 'reseller' && <ListedFirstControl service={s} />}
+        <div className="ca-actions">
+          {!d.ended && !d.isTrial && tv && s.status === 'active' && <UpgradeDevices service={s} />}
+          {!d.ended && webPlayerLink(s) && (
+            <a className="ca-btn ca-ghost" href={webPlayerLink(s)} target="_blank" rel="noopener noreferrer">Watch in browser</a>
+          )}
+        </div>
+        <AutoRenewSwitch d={d} enabled={autoRenewEnabled} />
+        {!d.ended && !d.isTrial && tv && s.status === 'active' && <SwitchTrialOffer service={s} />}
+      </div>
     </div>
   );
 }

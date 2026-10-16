@@ -32,6 +32,23 @@ function Row({ label, value, mono = false, copy = true, note }) {
   );
 }
 
+// CMTV local change 2026-10-16 (owner, batch 3): the order number is the biggest thing on the page, with its own copy button
+function BigRef({ value, what }) {
+  const [done, setDone] = useState(false);
+  const doCopy = async () => {
+    try { await navigator.clipboard.writeText(String(value)); setDone(true); setTimeout(() => setDone(false), 1500); }
+    catch { toast.error('Copy didn\'t work: press and hold to copy instead'); }
+  };
+  return (
+    <div style={{ ...card, padding: '14px 16px', textAlign: 'center', borderColor: '#22e6f2' }}>
+      <div style={{ fontSize: 14, color: '#8391b5' }}>Put this order number in the {what}</div>
+      <div style={{ fontFamily: 'Consolas, Menlo, monospace', fontWeight: 800, fontSize: 'clamp(26px, 8vw, 38px)', letterSpacing: 3,
+        color: '#e9edf8', margin: '4px 0 8px', wordBreak: 'break-all' }}>{value}</div>
+      <button type="button" className="kb-btn glow" onClick={doCopy} aria-label="Copy the order number">{done ? 'Copied ✓' : 'Copy order number'}</button>
+    </div>
+  );
+}
+
 export default function PayPage() {
   const { orderId } = useParams();
   // 2026-10-11 (owner): PayPal / card in the same tab (no pop-up) + switch payment method on an unpaid order
@@ -102,6 +119,7 @@ export default function PayPage() {
         ) : v.method === 'emt' && v.emt ? (
           <>
             <p>Send an <b>Interac e-Transfer</b> from your bank with exactly these details:</p>
+            <BigRef value={v.emt.message} what="e-Transfer message" />
             <div style={card}>
               <Row label="Send to" value={v.emt.send_to} />
               <Row label="Amount" value={v.emt.amount.toFixed(2)} note="Canadian dollars" />
@@ -115,10 +133,14 @@ export default function PayPage() {
                 : 'You\'ll be set up soon after your e-Transfer arrives.'}
               {' '}We've also emailed you these details.
             </p>
+            {/* CMTV local change 2026-10-16: say plainly that a first e-Transfer is checked by hand */}
+            <p style={{ fontSize: 14, color: '#8391b5' }}>First e-Transfer with us? We check it by hand once, so it can take a little
+              longer. After that, your e-Transfers are set up as soon as they arrive.</p>
           </>
         ) : v.method === 'wise' && v.wise ? (
           <>
             <p>Pay with <b>Wise</b> using exactly these details. Your order is set up <b>automatically</b> as soon as the payment reaches us.</p>
+            <BigRef value={v.wise.reference} what="Wise reference" />
             <div style={card}>
               <Row label="Amount" value={v.wise.amount.toFixed(2)} note="Canadian dollars (or the same value in your currency)" />
               <Row label="Reference" value={v.wise.reference} mono note="Your order number: put it in the reference so we can match it" />

@@ -223,3 +223,10 @@
 .ca-v2 .ca-tg-nudge .msg b { font-size: 14px; }
 .ca-v2 .ca-tg-nudge .msg small { font-size: 12.5px; }
 .ca-v2 .ca-tg-nudge .ca-btn { padding: 6px 12px; font-size: 13px; }
+/* CMTV local change 2026-10-16 (owner, batch 3): PayPal's button frame showed a white strip on the dark checkout (the page is
+   color-scheme dark, PayPal's frame is light, so the browser paints it white). Same scheme = transparent again. */
+.paypal-buttons iframe { color-scheme: light; }
+/* CMTV local change 2026-10-16: line Details: everyday part first, then "Manage" */
+.ca-manage { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ca-manage-h { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ca-manage:not(:has(.ca-btn, button, select, input, a)) { display: none; }

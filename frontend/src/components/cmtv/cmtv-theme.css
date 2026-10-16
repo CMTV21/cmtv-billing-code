@@ -39,6 +39,11 @@
 .cmtv .feature { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
 .cmtv .feature h3 { font: 700 16px var(--display); margin: 0 0 4px; color: var(--text); }
 .cmtv .feature p { margin: 0; color: var(--muted); font-size: 14px; }
+/* CMTV local change 2026-10-16: three one-line points under the hero (replace the feature boxes) */
+.cmtv .points { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 26px; margin: 0; padding: 22px 0 0; }
+.cmtv .points li { color: var(--muted); font-size: 14px; }
+.cmtv .points li b { color: var(--text); }
+.cmtv .points li::before { content: "✓"; color: var(--cyan); font-weight: 800; margin-right: 7px; }
 
 /* plans */
 .cmtv section.plans { padding-block: 44px 40px; }
