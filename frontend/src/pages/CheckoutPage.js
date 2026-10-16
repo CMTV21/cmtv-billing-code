@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ordersAPI, servicesAPI } from '../api/api';
+import { ordersAPI, servicesAPI, productsAPI } from '../api/api';
+import { plainItemName } from '../components/cmtv/orderNames'; // CMTV local change 2026-10-16: plain item names
 import { useCartStore, useAuthStore } from '../store/store';
 import { ArrowLeft, ShoppingCart, Trash2, AlertCircle, CreditCard, Bitcoin, Copy, CheckCircle, Loader2, RefreshCw, Plus, DollarSign, Minus, Package } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
@@ -40,6 +41,11 @@ export default function CheckoutPage() {
   // CMTV local change 2026-09-25: add-ons only offer to extend the same add-on; TV plans never offer to extend an add-on
   const addonIds = new Set(useAddonProducts().map((p) => p.id));
   const trialOf = useTrialOf();
+  // CMTV local change 2026-10-16 (owner): plain item names ("CCTV · 1 month · 1 connection") and which server a line is on
+  const { data: cmtvProducts } = useQuery({ queryKey: ['products'], queryFn: async () => (await productsAPI.getAll()).data || [], staleTime: 300000 });
+  const cmtvById = Object.fromEntries((cmtvProducts || []).map((p) => [p.id, p]));
+  const cmtvPlain = (item) => { const n = plainItemName(item, cmtvById); return n !== String(item.product_name || '').trim() ? n : null; };
+  const cmtvWhat = (item) => { const p = cmtvById[item.product_id]; return p?.panel_type === 'xtream' ? 'CCTV line' : p?.panel_type === 'aether' ? 'Imperium line' : (p?.name || 'add-on'); };
   const hasPhysicalItems = items.some((i) => i.item_type === 'physical');
   const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
   const [shippingRates, setShippingRates] = useState(null);
@@ -282,7 +288,7 @@ export default function CheckoutPage() {
     // CMTV local change 2026-10-11 (owner): a customer renewing by "Create New Line" got a second line + login. The tick in
     // the yellow box is required (window.confirm was skipped by some phone / in-app browsers).
     if (cmtvNeedsNewLineOk()) {
-      setError('You chose "Create New Line": tick the box to confirm you want a second line, or choose "Extend" to keep your login.');
+      setError('You chose "New line instead": tick the box to confirm you want a second line, or choose "Renew" to keep your login.');
       document.getElementById('cmtv-newline-ok')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -300,7 +306,7 @@ export default function CheckoutPage() {
   const createPayPalOrder = async () => {
     try {
       if (!cmtvChannelsReady) throw new Error('Choose your channel package first (above).');   // CMTV 2026-10-04
-      if (cmtvNeedsNewLineOk()) throw new Error('tick the box to confirm a second line, or choose "Extend" to keep your login.');   // CMTV 2026-10-11
+      if (cmtvNeedsNewLineOk()) throw new Error('tick the box to confirm a second line, or choose "Renew" to keep your login.');   // CMTV 2026-10-11
       if (!currentOrderId) {
         const orderData = {
           items: buildOrderItems(),
@@ -729,7 +735,7 @@ export default function CheckoutPage() {
                   <div key={index} className="p-6">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900 dark:text-white">{item.product_name}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">{cmtvPlain(item) || item.product_name}</h3>
                         {item.item_type === 'physical' ? (
                           <div className="flex items-center gap-3 mt-2">
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/30 px-2 py-0.5 rounded-full"><Package className="w-3 h-3" /> Physical item · ships to you</span>
@@ -741,13 +747,14 @@ export default function CheckoutPage() {
                           </div>
                         ) : (
                           <>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            {/* CMTV local change 2026-10-16: a plain name already says the length and the kind, so these two lines go */}
+                            {!cmtvPlain(item) && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                               {item.gift /* CMTV 2026-10-05 */ ? (item.gift.deliver_on ? `Emailed to ${item.gift.to_email} on ${item.gift.deliver_on}` : item.gift.to_email ? `Emailed to ${item.gift.to_email} after you pay` : 'We email the code to you') : (cmtvTrialLabel(item) || `${item.term_months} ${item.term_months === 1 ? 'Month' : 'Months'}`)}
-                            </p>
+                            </p>}
                             <PromoCheckoutLine item={item} />
-                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                            {!cmtvPlain(item) && <p className="text-sm text-gray-600 dark:text-gray-300">
                               {item.gift ? 'Gift card' : item.account_type === 'subscriber' ? 'Subscriber' : item.account_type === 'reseller' ? 'Reseller' : 'Add-on' /* CMTV 2026-09-30: manual products are add-ons */}
-                            </p>
+                            </p>}
                           </>
                         )}
                       </div>
@@ -782,32 +789,14 @@ export default function CheckoutPage() {
                     )}
                     {!item.renew_locked && canExtend(item) && extendChoices(item, userServices, addonIds, trialOf).length > 0 && (
                       <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                        {/* CMTV local change 2026-10-16 (owner): "This renews your CCTV line" first; a new line is the last choice */}
                         <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-3">
-                          What would you like to do?
+                          {item.action_type === 'extend' ? `This renews your ${cmtvWhat(item)}` : 'Renew your line, or buy a new one?'}
                         </p>
                         <div className="space-y-2">
-                          {/* Option to create new line */}
-                          <label className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-2 border-transparent has-[:checked]:border-blue-500">
-                            <input
-                              type="radio"
-                              name={`action-${index}`}
-                              checked={!item.action_type || item.action_type === 'create_new'}
-                              onChange={() => updateItemAction(item.product_id, item.term_months, 'create_new', null)}
-                              className="w-4 h-4 text-blue-600"
-                              data-testid={`create-new-${index}`}
-                            />
-                            <Plus className="w-5 h-5 text-green-600" />
-                            <div>
-                              <span className="font-medium text-gray-900 dark:text-white">Create New Line</span>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">A second, separate line with a new login: you'd set it up on your TV again</p>{/* CMTV 2026-10-11 */}
-                            </div>
-                          </label>
-                          
-                          <p className="text-xs text-blue-700 dark:text-blue-300 px-2">Or extend one of your existing services:</p>
-                          
                           {extendChoices(item, userServices, addonIds, trialOf).map((service) => (
-                            <label 
-                              key={service.id} 
+                            <label
+                              key={service.id}
                               className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-2 border-transparent has-[:checked]:border-blue-500"
                             >
                               <input
@@ -820,20 +809,36 @@ export default function CheckoutPage() {
                               />
                               <RefreshCw className="w-5 h-5 text-blue-600" />
                               <div className="flex-1">
-                                <span className="font-medium text-gray-900 dark:text-white">{isRunningTvTrial(service) ? 'Keep my trial login' : 'Extend'}: {service.xtream_username}</span>
+                                <span className="font-medium text-gray-900 dark:text-white">{isRunningTvTrial(service) ? 'Keep my trial login' : 'Renew'}: {service.xtream_username}</span>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                   {isRunningTvTrial(service) ? 'Same login, nothing to set up again on your TV' /* CMTV 2026-10-05 */
-                                    : `Expires: ${service.expiry_date ? new Date(service.expiry_date).toLocaleDateString() : 'N/A'}`}
+                                    : `${service.expiry_date && new Date(service.expiry_date) < new Date() ? 'Ended' : 'Ends'} ${service.expiry_date ? new Date(service.expiry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'} · same login, nothing to set up again`}
                                 </p>
                               </div>
                             </label>
                           ))}
+
+                          <label className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 border-2 border-transparent has-[:checked]:border-blue-500">
+                            <input
+                              type="radio"
+                              name={`action-${index}`}
+                              checked={!item.action_type || item.action_type === 'create_new'}
+                              onChange={() => updateItemAction(item.product_id, item.term_months, 'create_new', null)}
+                              className="w-4 h-4 text-blue-600"
+                              data-testid={`create-new-${index}`}
+                            />
+                            <Plus className="w-5 h-5 text-gray-500" />
+                            <div>
+                              <span className="font-medium text-gray-900 dark:text-white">New line instead</span>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">A second, separate line with a new login: you'd set it up on your TV again</p>
+                            </div>
+                          </label>
                           {/* CMTV 2026-10-11 (owner): a new line next to an existing one must be confirmed here (required tick) */}
                           {(!item.action_type || item.action_type === 'create_new') && Number(item.price) > 0 && (
                             <label id="cmtv-newline-ok" className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm cursor-pointer">
                               <input type="checkbox" className="mt-1 w-4 h-4" checked={newLineOk} onChange={(e) => setNewLineOk(e.target.checked)} />
-                              <span><b>Heads up:</b> "Create New Line" gives you a second, separate line with a new login that you'd set up on your
-                                TV again. To renew the line you have, choose <b>Extend</b> above. <b>Tick here to confirm you want a new line.</b></span>
+                              <span><b>Heads up:</b> "New line instead" gives you a second, separate line with a new login that you'd set up on your
+                                TV again. To renew the line you have, choose <b>Renew</b> above. <b>Tick here to confirm you want a new line.</b></span>
                             </label>
                           )}
                         </div>
@@ -1543,7 +1548,7 @@ export default function CheckoutPage() {
                   <CheckoutAutoRenew items={items} total={getTotal()} discounted={(!!appliedCouponCode && !tierWins) || creditsApplied > 0}
                     memberPrice={tierWins ? payTotal : null}
                     clientId={settings.paypal.client_id} onDone={() => { clearCart(); navigate('/orders'); }} onError={setError}
-                    guard={() => (cmtvNeedsNewLineOk() ? 'You chose "Create New Line": tick the box to confirm a second line, or choose "Extend" to keep your login.' : null)}>
+                    guard={() => (cmtvNeedsNewLineOk() ? 'You chose "New line instead": tick the box to confirm a second line, or choose "Renew" to keep your login.' : null)}>
                   <div>
                     {/* CMTV local change 2026-10-11 (owner): PayPal's own button stays (pop-up, PayPal only); its pop-up "Debit or
                         Credit Card" button is off (a customer's Firefox closed it at once). Cards: our button below places the

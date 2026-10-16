@@ -8,6 +8,8 @@
 // the smaller package lowers it on the panel. Imperium can't lower a line's devices, so fewer devices there = a NEW line
 // (new login, emailed); the old line stays ended. The server applies the same rule (cmtv_upgrades.renewal_plan /
 // lower_needs_new_line), so the price shown here is the price charged.
+// 2026-10-16 (owner, batch 2): each length shows its price per month; a "Renew automatically" tick (PayPal, 10% off) is
+// carried to checkout (cart item want_auto_renew: checkout picks PayPal and ticks auto-renew, components/cmtv/AutoRenew.js).
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -21,6 +23,7 @@ const priceOf = (p) => {
   return { term: parseInt(term, 10) || 1, price: parseFloat(price) || 0 };
 };
 const money = (n) => `$${Number(n).toFixed(n % 1 ? 2 : 0)}`;
+const perMonth = (n) => `$${Number(n).toFixed(2)}/mo`;   // 2026-10-16
 const addMonths = (d, m) => { const x = new Date(d); const day = x.getDate(); x.setMonth(x.getMonth() + m); if (x.getDate() < day) x.setDate(0); return x; };
 const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -74,6 +77,9 @@ export default function RenewPanel({ d, products, onClose }) {
   });
   const [listed, setListed] = useState(null);
   const credit = useQuery({ queryKey: ['credit-balance'], queryFn: async () => (await api.get('/api/credits/balance')).data, staleTime: 60000 });
+  // 2026-10-16: auto-renew offer (same config as checkout; PayPal subscription at discount_percent off)
+  const arCfg = useQuery({ queryKey: ['cmtv-autorenew-config'], queryFn: async () => (await api.get('/api/cmtv/autorenew/config')).data, staleTime: 300000 });
+  const [autoRenew, setAutoRenew] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const plan = opts.find((p) => priceOf(p).term === term) || d.renewWith;
@@ -82,6 +88,10 @@ export default function RenewPanel({ d, products, onClose }) {
   const until = addMonths(from, term);
   const bal = Number(credit.data?.balance || 0);
   const listedNow = listed ?? lf.data?.id;
+  const arOn = !!arCfg.data?.enabled && !newLine && price > 0;
+  const arPct = Number(arCfg.data?.discount_percent || 0);
+  const arPrice = Math.round(price * (100 - arPct)) / 100;
+  const every = term === 1 ? 'every month' : term === 12 ? 'every year' : `every ${term} months`;
 
   const go = async () => {
     setBusy(true);
@@ -96,6 +106,7 @@ export default function RenewPanel({ d, products, onClose }) {
     addRenewalItem({
       product_id: plan.id, base_name: plan.name, product_name: keep ? lineupName(plan.name, keep) : plan.name,
       term_months: term, price, account_type: 'subscriber', lineup: keep || undefined, channels_confirmed: true, renew_locked: true,   // checkout: no new-line chooser
+      ...(arOn && autoRenew ? { want_auto_renew: true } : {}),   // 2026-10-16
     }, newLine ? null : s.id, newLine ? 'create_new' : 'extend');
     toast.success(newLine ? `Added: a new Imperium line with ${devices} device${devices === 1 ? '' : 's'}. Your new login comes by email after payment.`
       : `Renewal added: same login (${d.username || s.product_name})${fewer ? `, ${devices} device${devices === 1 ? '' : 's'}` : ''}, nothing to set up again.`);
@@ -134,7 +145,7 @@ export default function RenewPanel({ d, products, onClose }) {
           return (
             <button type="button" key={p.id} className={`ca-renew-opt${pr.term === term ? ' on' : ''}`} aria-pressed={pr.term === term} onClick={() => setTerm(pr.term)}>
               <b>{pr.term === 12 ? '12 months' : pr.term === 1 ? '1 month' : `${pr.term} months`}</b>
-              <small>{money(pr.price)}{pr.term === d.rp.term ? ' · current' : save > 0 ? ` · save ${money(save)}` : ''}</small>
+              <small>{money(pr.price)}{pr.term > 1 ? ` · ${perMonth(pr.price / pr.term)}` : ''}{pr.term === d.rp.term ? ' · current' : save > 0 ? ` · save ${money(save)}` : ''}</small>
             </button>
           );
         })}
@@ -157,8 +168,15 @@ export default function RenewPanel({ d, products, onClose }) {
       <div className="ca-renew-sum">
         Runs until <b>{fmt(until)}</b>. {newLine ? 'New login details by email; set it up once in your app.'
           : `Same login, nothing to set up again${fewer ? ` (${devices} device${devices === 1 ? '' : 's'} from now on)` : ''}.`}
-        {bal > 0 && <span className="ca-renew-credit">You have {money(bal)} store credit to use at checkout.</span>}
+        {bal > 0 && !autoRenew && <span className="ca-renew-credit">You have {money(bal)} store credit to use at checkout.</span>}
       </div>
+      {arOn && (
+        <label className="ca-renew-auto">
+          <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} />
+          <span><b>Renew automatically with PayPal</b>{arPct ? ` and save ${arPct}%` : ''}: {money(arPrice)} {every}, so it never runs out.
+            Turn it off any time.{bal > 0 ? ' (Store credit can\'t be used on an automatic renewal.)' : ''}</span>
+        </label>
+      )}
       <button type="button" className="ca-btn ca-glow ca-renew-go" disabled={busy} onClick={go}>
         {busy ? 'One moment…' : `Continue to payment · ${money(price)}`}
       </button>

@@ -145,6 +145,12 @@ const yearlySaving = (cfg, item, memberPrice) => (item && Number(item.term_month
 // picked, so e-Transfer payers see it too. "Use PayPal" just selects PayPal; the tick box there stays unticked.
 export function CheckoutAutoRenewHint({ items, total, discounted, memberPrice = null, paymentMethod, onPickPaypal }) {
   const { data: cfg } = useAutoRenewConfig();
+  // 2026-10-16: "Renew automatically" ticked in the dashboard's renew panel -> PayPal picked here once (still changeable)
+  const picked = React.useRef(false);
+  const wants = !!cfg?.enabled && items?.length === 1 && !!items[0].want_auto_renew;
+  useEffect(() => {
+    if (wants && !picked.current && paymentMethod && paymentMethod !== 'paypal') { picked.current = true; onPickPaypal(); }
+  }, [wants, paymentMethod]); // eslint-disable-line react-hooks/exhaustive-deps
   const item = checkoutItem(cfg, items, total, discounted, memberPrice);
   const save = yearlySaving(cfg, item, memberPrice);
   if (!item || save <= 0 || paymentMethod === 'paypal') return null;
@@ -164,7 +170,7 @@ export function CheckoutAutoRenewHint({ items, total, discounted, memberPrice = 
 
 export function CheckoutAutoRenew({ items, total, discounted, memberPrice = null, clientId, onDone, onError, guard, children }) {
   const { data: cfg } = useAutoRenewConfig();
-  const [auto, setAuto] = useState(false);
+  const [auto, setAuto] = useState(() => items?.length === 1 && !!items[0].want_auto_renew);   // 2026-10-16: ticked in the renew panel
   const [busy, setBusy] = useState(false);   // 2026-10-11
   const [orderId, setOrderId] = useState(null);
   const item = checkoutItem(cfg, items, total, discounted, memberPrice);

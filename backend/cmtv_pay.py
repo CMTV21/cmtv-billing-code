@@ -13,6 +13,11 @@ gateways > Wise (read-only is enough). An incoming payment received after the wa
 order's number (its first 6-24 characters) and whose amount covers the order (CAD, or another currency at Wise's rate with 3%
 leeway) -> the same steps as Admin > Orders > Mark paid (payment method Wise: paid email, alerts, setup) + Ops Billing note.
 Anything else -> Ops Billing note to check by hand. Log: cmtv_wise_payments (_id = Wise reference number; never twice).
+Auto-cancel (2026-10-16, owner, batch 2): once an hour, unpaid orders older than AUTO_CANCEL_DAYS are cancelled quietly (no
+customer email; one Ops Billing note). Orders with account credit on them, a PayPal auto-renew waiting, e-Transfer money seen or a service already set up are left for the
+owner (named in the note). A payment that arrives later is never lost: PayPal refuses a cancelled order (nothing charged),
+a late e-Transfer or Wise payment finds no pending order and goes to the owner's Telegram review as today. Switch off with
+cmtv_config {_id: "auto_cancel", enabled: false} (optional "days").
 """
 import asyncio
 import html
@@ -36,6 +41,7 @@ DEFAULTS = {"emt_email": "cmtvpayments@pm.me", "wise_tag": "", "wise_email": "",
 LEEWAY = 0.97
 HEX = re.compile(r"[0-9a-fA-F]{6,24}")
 EMT_QUESTION = "What is my CMTV order number?"
+AUTO_CANCEL_DAYS = 7   # 2026-10-16
 
 
 def init(**deps):
@@ -401,10 +407,65 @@ async def check_wise(now=None):
     return out
 
 
+async def auto_cancel(now=None, apply=True):
+    """Cancel unpaid orders older than the limit (2026-10-16). Returns (cancelled, left_for_owner) as order dicts."""
+    db = D["db"]
+    cfg = await db.cmtv_config.find_one({"_id": "auto_cancel"}) or {}
+    if cfg.get("enabled") is False:
+        return [], []
+    days = int(cfg.get("days") or AUTO_CANCEL_DAYS)
+    now = now or datetime.utcnow()
+    done, left = [], []
+    async for o in D["orders"].find({"status": "pending", "total": {"$gt": 0}, "created_at": {"$lt": now - timedelta(days=days)},
+                                     "cmtv_auto_cancel_skipped": {"$ne": True}}).limit(200):
+        # left for the owner: credit on it, a PayPal auto-renew waiting, money already seen (e-Transfer matched / in Wise /
+        # set up on trust) or a service already set up
+        if (float(o.get("credits_used") or 0) > 0 or o.get("cmtv_autorenew_pending") or o.get("cmtv_emt")
+                or o.get("provisioning") or o.get("provisioning_status")):
+            left.append(o)
+            if apply:
+                await D["orders"].update_one({"_id": o["_id"]}, {"$set": {"cmtv_auto_cancel_skipped": True}})   # named once
+            continue
+        if apply:
+            r = await D["orders"].update_one({"_id": o["_id"], "status": "pending"},
+                                             {"$set": {"status": "cancelled", "cancelled_at": now, "cmtv_auto_cancelled": True}})
+            if not r.modified_count:
+                continue   # paid or changed meanwhile
+            await db.invoices.update_one({"order_id": str(o["_id"])}, {"$set": {"status": "cancelled"}})
+        done.append(o)
+    return done, left
+
+
+async def _auto_cancel_run():
+    done, left = await auto_cancel()
+    days = int((await D["db"].cmtv_config.find_one({"_id": "auto_cancel"}) or {}).get("days") or AUTO_CANCEL_DAYS)
+    if not done and not left:
+        return
+    async def who(o):
+        u = await D["users"].find_one({"_id": _oid(o.get("user_id"))}, {"name": 1, "email": 1}) or {}
+        return html.escape(u.get("name") or u.get("email") or "?")
+    lines = []
+    for o in done:
+        lines.append(f"• #{ref_code(o['_id'])} {await who(o)}: ${float(o.get('total') or 0):.2f} {html.escape(str(o.get('payment_method') or ''))}")
+    text = f"🧹 <b>Unpaid orders cancelled</b> (older than {days} days, no email sent)\n" + "\n".join(lines) if lines else ""
+    if left:
+        text += ("\n\n" if text else "") + "Left for you (credit used, auto-renew waiting, payment seen or already set up), check in Admin > Orders:\n" + "\n".join(
+            [f"• #{ref_code(o['_id'])} {await who(o)}: ${float(o.get('total') or 0):.2f}" for o in left])
+    log.info(f"CMTV pay: auto-cancelled {len(done)} unpaid orders, {len(left)} left for the owner")
+    await _ops(text, "billing")
+
+
 async def _loop():
     await asyncio.sleep(60)
     last_alert = None
+    last_cancel = None
     while True:
+        try:   # 2026-10-16: unpaid orders, once an hour
+            if not last_cancel or datetime.utcnow() - last_cancel > timedelta(hours=1):
+                last_cancel = datetime.utcnow()
+                await _auto_cancel_run()
+        except Exception as e:
+            log.warning(f"CMTV pay: auto-cancel failed: {e}")
         try:
             if ((await D["get_settings"]()).get("wise") or {}).get("enabled"):
                 res = [r for r in await check_wise() if r != "seen"]

@@ -211,6 +211,11 @@
 .ca-renew-sum { background: var(--surface); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--muted); margin-top: 4px; }
 .ca-renew-sum b { color: var(--text); }
 .ca-renew-credit { display: block; color: var(--good); margin-top: 4px; }
+/* CMTV local change 2026-10-16: "Renew automatically" tick in the renew panel */
+.ca-renew-auto { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); font-size: 14px; color: var(--muted); cursor: pointer; }
+.ca-renew-auto b { color: var(--text); }
+.ca-renew-auto input { margin-top: 3px; width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--cyan, #22e6f2); }
 .ca-renew-go { justify-content: center; }
 /* 2026-10-13 (owner): a small Telegram prompt under the greeting on the simplified dashboard */
 .ca-v2 .ca-attention:has(.ca-tg-nudge) { margin-bottom: 18px; }

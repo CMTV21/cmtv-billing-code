@@ -223,6 +223,67 @@ def init_routes():
                               "renewal_service_id": it.get("renewal_service_id")})
         return await order_discount(current_user["sub"], items)
 
+    # CMTV local addition 2026-10-16 (owner, batch 2): a referral code typed in checkout's "Have a code?" box, for new
+    # customers who missed the box at sign-up. Same effect as signing up with the code: users.referred_by + a pending
+    # `referrals` record (paid out by the order-paid check in server.py, which applies the minimum and the same-home hold)
+    # + the friend's welcome credit, unless the same-home check holds it. Only for accounts with no referrer yet and that
+    # have never paid (no paid order over $0, no paid line); never their own code.
+    @router.post("/claim")
+    async def claim(data: dict, current_user: dict = Depends(get_user)):
+        code = str((data or {}).get("code") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{3,40}", code):
+            raise HTTPException(400, "That code isn't valid.")
+        db = D["db"]
+        settings = await db.settings.find_one({}) or {}
+        ref_cfg = settings.get("referral") or {}
+        if ref_cfg.get("enabled") is False:
+            raise HTTPException(400, "Referral codes aren't available right now.")
+        uid = current_user["sub"]
+        user = await D["users"].find_one({"_id": _oid(uid)})
+        if not user or user.get("role", "user") != "user":
+            raise HTTPException(400, "Referral codes are for customer accounts.")
+        if user.get("referred_by"):
+            raise HTTPException(400, "Your account already has a referral code.")
+        referrer = await D["users"].find_one({"referral_code": {"$regex": f"^{re.escape(code)}$", "$options": "i"}}, {"_id": 1, "referral_code": 1})
+        if not referrer:
+            raise HTTPException(400, "That code isn't a coupon, gift card or referral code we know. Check it and try again.")
+        if str(referrer["_id"]) == uid:
+            raise HTTPException(400, "That's your own referral code. Share it with friends instead.")
+        paid = await db.orders.find_one({"user_id": uid, "status": "paid", "total": {"$gt": 0}}, {"_id": 1})
+        line = await D["services"].find_one({"user_id": uid, "is_trial": {"$ne": True}, "account_type": {"$ne": "reseller"}}, {"_id": 1})
+        if paid or line:
+            raise HTTPException(400, "Referral codes are for new customers, before their first purchase.")
+        ref_code = referrer.get("referral_code") or code.upper()
+        res = await D["users"].update_one({"_id": user["_id"], "referred_by": {"$in": [None, ""]}},
+                                          {"$set": {"referred_by": ref_code.upper(), "cmtv_referral_claimed_at": datetime.utcnow()}})
+        if not res.modified_count:
+            raise HTTPException(400, "Your account already has a referral code.")
+        import cmtv_dupes   # same-home / same-device check, as at sign-up
+        held = ""
+        try:
+            held = await cmtv_dupes.referral_same_home(uid)
+            if held:
+                await D["users"].update_one({"_id": user["_id"]}, {"$set": {"cmtv_referral_held": held}})
+                await cmtv_dupes.hold_referral(uid, held, "checkout code")
+        except Exception as e:
+            logger.warning(f"referral claim same-home check failed for {uid}: {e}")
+        if not await D["referrals"].find_one({"referrer_id": str(referrer["_id"]), "referred_email": user.get("email")}):
+            await D["referrals"].insert_one({
+                "referrer_id": str(referrer["_id"]), "referred_email": user.get("email"), "referral_code": ref_code,
+                "status": "pending", "reward_amount": float(ref_cfg.get("referrer_reward", 10.0)), "reward_type": "credit",
+                "rewarded": False, "created_at": datetime.utcnow(), "cmtv_source": "checkout code"})
+        welcome = float(ref_cfg.get("referred_reward", 5.0) or 0)
+        credited = 0.0
+        if welcome > 0 and not held:
+            try:
+                await D["credit_service"].add_credits(user_id=uid, amount=welcome, transaction_type="referral_signup",
+                                                      description="Welcome bonus for using referral code")
+                credited = welcome
+            except Exception as e:
+                logger.error(f"referral claim welcome credit failed for {uid}: {e}")
+        logger.info(f"Referral code {ref_code} claimed at checkout by {uid} (credit {credited}, held {bool(held)})")
+        return {"ok": True, "welcome_credit": credited, "minimum": float(ref_cfg.get("minimum_purchase") or 0)}
+
     @router.get("/admin/overview")
     async def overview(q: str = "", current_user: dict = Depends(get_admin)):
         cfg = await config()
