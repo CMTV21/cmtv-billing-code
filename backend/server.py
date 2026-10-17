@@ -5300,8 +5300,8 @@ async def get_payment_config():
             "enabled": settings.get("helcim", {}).get("enabled", False)
         },
         "ghostpay": {
-            "enabled": settings.get("ghostpay", {}).get("enabled", False),
-            "api_key": settings.get("ghostpay", {}).get("api_key", "")
+            # CMTV local change 2026-10-17: never send the GhostPay API key to the public (it is only used server-side)
+            "enabled": settings.get("ghostpay", {}).get("enabled", False)
         },
         "tagadapay": {
             "enabled": settings.get("tagadapay", {}).get("enabled", False),
